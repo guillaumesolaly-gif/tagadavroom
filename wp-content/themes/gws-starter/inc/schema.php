@@ -35,32 +35,45 @@ function gws_schema_organization_node($business_id, $site_url, $entity_name) {
   return $node;
 }
 
+/**
+ * Émet WebSite + Organization sur toute Page, ET sur la page d'accueil quelle que soit sa
+ * configuration WordPress (page statique ou index natif des derniers articles) — dans ce
+ * second cas, il n'existe pas de Page réelle à décrire : WebSite + Organization suffisent, sans
+ * fabriquer un WebPage ni un breadcrumb qui ne correspondrait à aucun contenu réel. Sur une
+ * Page, WebPage est ajouté (comme avant), et le breadcrumb uniquement si ce n'est pas l'accueil.
+ */
 function gws_site_structured_data() {
-  if (gws_has_seo_plugin() || !is_page()) return;
-  $page_id = get_queried_object_id();
+  if (gws_has_seo_plugin()) return;
+  $is_front = is_front_page();
+  if (!is_page() && !$is_front) return;
+
   $site_url = home_url('/');
   $entity_name = gws_get_setting('entity_name') ?: get_bloginfo('name');
   $business_id = $site_url . '#organization';
   $website_id = $site_url . '#website';
-  $webpage_id = get_permalink($page_id) . '#webpage';
 
   $graph = array(
     array('@type' => 'WebSite', '@id' => $website_id, 'url' => $site_url, 'name' => $entity_name, 'publisher' => array('@id' => $business_id)),
     gws_schema_organization_node($business_id, $site_url, $entity_name),
-    array('@type' => 'WebPage', '@id' => $webpage_id, 'url' => get_permalink($page_id), 'name' => get_the_title($page_id), 'isPartOf' => array('@id' => $website_id)),
   );
 
-  if (!is_front_page()) {
-    $breadcrumb_id = get_permalink($page_id) . '#breadcrumb';
-    $graph[] = array(
-      '@type' => 'BreadcrumbList',
-      '@id' => $breadcrumb_id,
-      'itemListElement' => array(
-        array('@type' => 'ListItem', 'position' => 1, 'name' => 'Accueil', 'item' => $site_url),
-        array('@type' => 'ListItem', 'position' => 2, 'name' => get_the_title($page_id), 'item' => get_permalink($page_id)),
-      ),
-    );
-    $graph[2]['breadcrumb'] = array('@id' => $breadcrumb_id);
+  if (is_page()) {
+    $page_id = get_queried_object_id();
+    $webpage_id = get_permalink($page_id) . '#webpage';
+    $graph[] = array('@type' => 'WebPage', '@id' => $webpage_id, 'url' => get_permalink($page_id), 'name' => get_the_title($page_id), 'isPartOf' => array('@id' => $website_id));
+
+    if (!$is_front) {
+      $breadcrumb_id = get_permalink($page_id) . '#breadcrumb';
+      $graph[] = array(
+        '@type' => 'BreadcrumbList',
+        '@id' => $breadcrumb_id,
+        'itemListElement' => array(
+          array('@type' => 'ListItem', 'position' => 1, 'name' => 'Accueil', 'item' => $site_url),
+          array('@type' => 'ListItem', 'position' => 2, 'name' => get_the_title($page_id), 'item' => get_permalink($page_id)),
+        ),
+      );
+      $graph[2]['breadcrumb'] = array('@id' => $breadcrumb_id);
+    }
   }
 
   echo '<script type="application/ld+json">' . wp_json_encode(array('@context' => 'https://schema.org', '@graph' => $graph), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";

@@ -18,5 +18,8 @@
     ?>
     <span>© <?php echo esc_html(wp_date('Y')); ?> <?php echo esc_html(gws_get_setting('entity_name') ?: get_bloginfo('name')); ?></span>
   </nav>
+  <?php if (function_exists('gws_core_show_footer_social') && gws_core_show_footer_social()) : ?>
+    <?php get_template_part('template-parts/content/social-links'); ?>
+  <?php endif; ?>
   <?php gws_render_credit(); ?>
 </footer>

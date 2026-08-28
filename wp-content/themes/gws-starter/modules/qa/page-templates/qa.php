@@ -141,11 +141,15 @@ get_header();
         <li>E-mail : <?php echo gws_get_setting('public_email') ? esc_html(gws_get_setting('public_email')) : '(non renseigné)'; ?></li>
         <li>WhatsApp (<code>gws_core_whatsapp_url()</code>) :
           <?php $gws_qa_wa = function_exists('gws_core_whatsapp_url') ? gws_core_whatsapp_url() : ''; ?>
-          <?php echo $gws_qa_wa ? esc_html($gws_qa_wa) : '(non renseigné)'; ?>
+          <?php echo $gws_qa_wa ? esc_html($gws_qa_wa) : '(non renseigné, ou numéro saisi sans indicatif international)'; ?>
         </li>
       </ul>
+      <p><small>Le numéro doit être saisi au format international (ex. <code>+33 6 12 34 56 78</code>).
+        Tester aussi une saisie nationale sans indicatif (ex. <code>06 12 34 56 78</code>) : le
+        résultat ci-dessus doit alors être « non renseigné » — aucun indicatif n’est jamais
+        deviné automatiquement, contrairement au comportement corrigé en v1.5.0.</small></p>
 
-      <h3>Réseaux sociaux (<code>gws_core_social_links()</code>)</h3>
+      <h3>Réseaux sociaux structurés (<code>gws_core_social_links()</code>, inclut X)</h3>
       <?php $gws_qa_social = function_exists('gws_core_social_links') ? gws_core_social_links() : array(); ?>
       <?php if ($gws_qa_social) : ?>
         <ul>
@@ -154,7 +158,7 @@ get_header();
           <?php endforeach; ?>
         </ul>
       <?php else : ?>
-        <p>Aucun réseau social renseigné pour l’instant.</p>
+        <p>Aucun réseau social renseigné pour l’instant (tester en particulier le champ X).</p>
       <?php endif; ?>
 
       <h3>Google Business Profile (<code>gws_core_google_business_url()</code>)</h3>
@@ -168,11 +172,33 @@ get_header();
       <?php else : ?>
         <p>Vide — aucune URL sociale renseignée pour l’instant.</p>
       <?php endif; ?>
-      <p><small>Vérification réelle : afficher le code source de cette page et contrôler le
-        bloc <code>application/ld+json</code> — les clés <code>telephone</code>,
-        <code>email</code>, <code>logo</code> et <code>sameAs</code> ne doivent jamais y
-        apparaître vides, y compris quand les champs ci-dessus sont vides (elles doivent alors
-        être totalement absentes du JSON, pas présentes avec une valeur vide).</small></p>
+      <p><small>Vérification réelle : afficher le code source de cette page (et de l’accueil du
+        site) et contrôler le bloc <code>application/ld+json</code> — les clés
+        <code>telephone</code>, <code>email</code>, <code>logo</code> et <code>sameAs</code> ne
+        doivent jamais y apparaître vides, y compris quand les champs ci-dessus sont vides
+        (elles doivent alors être totalement absentes du JSON, pas présentes avec une valeur
+        vide). Tester aussi la même URL X dans le champ « X » et dans « Autres réseaux sociaux »
+        (<code>social_links</code>) : elle ne doit apparaître qu’une seule fois dans la liste
+        ci-dessus.</small></p>
+
+      <h3>Pictogrammes des réseaux sociaux</h3>
+      <p>
+        En-tête : <?php echo (function_exists('gws_core_show_header_social') && gws_core_show_header_social()) ? 'activé' : 'désactivé'; ?>
+        (désactivé par défaut) — pied de page :
+        <?php echo (function_exists('gws_core_show_footer_social') && gws_core_show_footer_social()) ? 'activé' : 'désactivé'; ?>
+        (activé par défaut). Si aucun réseau structuré n’est renseigné, aucune liste ne doit
+        apparaître ni dans l’en-tête ni dans le pied de page — pas de conteneur vide.
+      </p>
+      <p>Aperçu du composant (<code>template-parts/content/social-links.php</code>), ici sur
+        fond de couleur pour vérifier qu’il hérite bien <code>currentColor</code> plutôt qu’une
+        couleur de marque figée :</p>
+      <div style="color:#fff;background:var(--color-primary);padding:var(--space-3);display:inline-block">
+        <?php get_template_part('template-parts/content/social-links'); ?>
+      </div>
+      <p><small>Vérifier au clavier (Tab) que chaque icône est atteignable et a un contour de
+        focus visible, et via les outils de développement que chaque lien a un nom accessible
+        (LinkedIn, Facebook...) et non un texte vide — et qu’il s’ouvre dans un nouvel onglet
+        (<code>target="_blank" rel="noopener noreferrer"</code>).</small></p>
 
       <h3>Crédit Tagada Vroom</h3>
       <p>
@@ -180,7 +206,9 @@ get_header();
         <?php echo (function_exists('gws_core_credit_enabled') && gws_core_credit_enabled()) ? 'Oui' : 'Non'; ?><br>
         URL renseignée : <?php echo gws_get_setting('credit_url') ? esc_html(gws_get_setting('credit_url')) : '(vide)'; ?><br>
         Le crédit ne doit apparaître dans le pied de page de cette page (tout en bas) que si les
-        deux conditions ci-dessus sont vraies simultanément.
+        deux conditions ci-dessus sont vraies simultanément, et son lien doit s’ouvrir dans un
+        nouvel onglet (vérifier <code>target="_blank" rel="noopener noreferrer"</code> dans le
+        code source).
       </p>
     </section>
 

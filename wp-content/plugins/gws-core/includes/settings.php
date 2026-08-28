@@ -23,8 +23,11 @@ function gws_core_settings_defaults() {
     'instagram_url' => '',
     'youtube_url' => '',
     'tiktok_url' => '',
+    'x_url' => '',
     'google_business_url' => '',
     'social_links' => '', // une URL par ligne ; libre à un projet de structurer davantage via le filtre ci-dessous
+    'header_social_enabled' => '',
+    'footer_social_enabled' => '1',
     'credit_enabled' => '1',
     'credit_url' => 'https://tagadavroom.fr/',
   );
@@ -40,7 +43,7 @@ function gws_core_settings_fields() {
     'entity_name' => array('label' => 'Nom de l’entité', 'type' => 'text', 'description' => 'Nom affiché dans les données structurées et les gabarits.'),
     'phone_display' => array('label' => 'Téléphone', 'type' => 'text', 'description' => 'Format affiché sur le site.'),
     'public_email' => array('label' => 'E-mail public', 'type' => 'email', 'description' => ''),
-    'whatsapp_number' => array('label' => 'Numéro WhatsApp', 'type' => 'text', 'description' => 'Numéro complet, sans le 0 initial (ex. 33612345678) — sert à générer un lien wa.me. Laisser vide pour ne rien afficher.'),
+    'whatsapp_number' => array('label' => 'Numéro WhatsApp', 'type' => 'text', 'description' => 'Format international obligatoire, avec l’indicatif pays (+ ou 00). Exemple France : +33 6 12 34 56 78 — ne pas ajouter de « (0) » après l’indicatif. Laisser vide pour ne rien afficher : aucun indicatif n’est jamais deviné automatiquement.'),
     'address_line' => array('label' => 'Adresse', 'type' => 'text', 'description' => ''),
     'postal_code' => array('label' => 'Code postal', 'type' => 'text', 'description' => ''),
     'city' => array('label' => 'Ville', 'type' => 'text', 'description' => ''),
@@ -50,8 +53,11 @@ function gws_core_settings_fields() {
     'instagram_url' => array('label' => 'Instagram', 'type' => 'url', 'description' => ''),
     'youtube_url' => array('label' => 'YouTube', 'type' => 'url', 'description' => ''),
     'tiktok_url' => array('label' => 'TikTok', 'type' => 'url', 'description' => ''),
+    'x_url' => array('label' => 'X', 'type' => 'url', 'description' => 'Anciennement Twitter.'),
     'google_business_url' => array('label' => 'Fiche Google Business Profile', 'type' => 'url', 'description' => ''),
-    'social_links' => array('label' => 'Autres réseaux sociaux', 'type' => 'textarea', 'description' => 'Une URL par ligne, pour un réseau non listé ci-dessus.'),
+    'social_links' => array('label' => 'Autres réseaux sociaux', 'type' => 'textarea', 'description' => 'Une URL par ligne, pour un réseau non listé ci-dessus (Threads, Bluesky, Pinterest...). Alimente le Schema mais pas le composant de pictogrammes sociaux du thème, réservé aux réseaux structurés ci-dessus.'),
+    'header_social_enabled' => array('label' => 'Réseaux sociaux — en-tête', 'type' => 'checkbox', 'checkbox_label' => 'Afficher les pictogrammes des réseaux sociaux dans l’en-tête', 'description' => 'Désactivé par défaut.'),
+    'footer_social_enabled' => array('label' => 'Réseaux sociaux — pied de page', 'type' => 'checkbox', 'checkbox_label' => 'Afficher les pictogrammes des réseaux sociaux dans le pied de page', 'description' => 'Activé par défaut ; sans effet si aucun réseau structuré n’est renseigné.'),
     'credit_enabled' => array('label' => 'Crédit de réalisation', 'type' => 'checkbox', 'checkbox_label' => 'Afficher « Site réalisé par Tagada Vroom » dans le pied de page', 'description' => ''),
     'credit_url' => array('label' => 'URL Tagada Vroom', 'type' => 'url', 'description' => 'Le crédit ci-dessus ne s’affiche que si cette adresse est renseignée.'),
   );
@@ -91,16 +97,33 @@ function gws_core_get_logo_url($size = 'full') {
 }
 
 /**
- * Lien wa.me construit à partir du numéro renseigné — vide si aucun numéro.
+ * Lien wa.me construit à partir du numéro renseigné — exige un format international explicite
+ * (préfixé par + ou 00) et ne devine ou n'ajoute JAMAIS d'indicatif pays lui-même : un numéro
+ * saisi sous forme nationale (ex. « 06 12 34 56 78 ») produirait un lien wa.me non fonctionnel,
+ * donc renvoie une chaîne vide plutôt qu'un lien faux. Espaces, tirets et parenthèses dans la
+ * saisie sont ignorés ; ne traite pas les notations du type « (0) » après l'indicatif — saisir
+ * le numéro sans ce zéro entre parenthèses.
  */
 function gws_core_whatsapp_url() {
-  $digits = preg_replace('/\D+/', '', gws_core_get_setting('whatsapp_number'));
+  $number = trim((string) gws_core_get_setting('whatsapp_number'));
+  if ($number === '') return '';
+  $digits = preg_replace('/[^0-9+]/', '', $number);
+  if (strpos($digits, '+') === 0) {
+    $digits = substr($digits, 1);
+  } elseif (strpos($digits, '00') === 0) {
+    $digits = substr($digits, 2);
+  } else {
+    return ''; // pas de marqueur international reconnu ('+' ou '00') : indicatif jamais deviné
+  }
+  $digits = preg_replace('/\D+/', '', $digits);
   return $digits ? 'https://wa.me/' . $digits : '';
 }
 
 /**
  * Réseaux sociaux structurés réellement renseignés, sous la forme ['linkedin' => 'https://...'].
- * Un réseau vide n'apparaît simplement pas dans le tableau retourné.
+ * Un réseau vide n'apparaît simplement pas dans le tableau retourné. C'est cette liste (et
+ * uniquement elle) que consomme le composant de pictogrammes sociaux du thème — 'social_links'
+ * (champ libre) n'y figure jamais, voir gws_core_extra_social_urls() plus bas.
  */
 function gws_core_social_links() {
   $map = array(
@@ -109,6 +132,7 @@ function gws_core_social_links() {
     'instagram' => 'instagram_url',
     'youtube' => 'youtube_url',
     'tiktok' => 'tiktok_url',
+    'x' => 'x_url',
   );
   $links = array();
   foreach ($map as $network => $key) {
@@ -158,6 +182,14 @@ function gws_core_schema_same_as() {
 
 function gws_core_credit_enabled() {
   return gws_core_get_setting('credit_enabled') === '1';
+}
+
+function gws_core_show_header_social() {
+  return gws_core_get_setting('header_social_enabled') === '1';
+}
+
+function gws_core_show_footer_social() {
+  return gws_core_get_setting('footer_social_enabled') === '1';
 }
 
 function gws_core_sanitize_settings($input) {

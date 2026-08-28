@@ -1,5 +1,47 @@
 # Changelog — GWS Starter
 
+## 1.5.0
+
+Dernière passe de finition avant gel de la baseline GWS, après recette fonctionnelle réelle de
+la v1.4.x dans WordPress Local.
+
+- **X ajouté comme réseau structuré** (`gws-core`), au même niveau que LinkedIn/Facebook/
+  Instagram/YouTube/TikTok : sanitizé/validé comme URL, exposé par `gws_core_social_links()`,
+  alimente `gws_core_schema_same_as()`, dédupliqué avec une même URL saisie dans `social_links`.
+- **Composant générique de pictogrammes sociaux** (`gws-starter`) :
+  `template-parts/content/social-links.php`, réutilisable tel quel par tout projet. SVG locaux
+  au thème (aucune police, bibliothèque ou requête externe), `currentColor` (aucune couleur de
+  marque imposée), nom accessible par lien, aucun conteneur si aucun réseau n'est renseigné,
+  liens externes ouverts en nouvel onglet (`rel="noopener noreferrer"`). N'inclut jamais
+  WhatsApp (canal de contact) ni Google Business Profile (présence locale) — à afficher
+  séparément si besoin. Deux nouveaux réglages : affichage dans l'en-tête (désactivé par
+  défaut) et dans le pied de page (activé par défaut).
+- **WhatsApp fiabilisé** : un numéro saisi sous forme nationale (ex. `06...`) ne produit plus de
+  lien `wa.me` non fonctionnel. `gws_core_whatsapp_url()` exige désormais un format
+  international explicite (préfixe `+` ou `00`), accepte espaces/tirets/parenthèses dans la
+  saisie, et ne devine ni ne complète jamais d'indicatif pays — retourne une chaîne vide si le
+  numéro n'est pas exploitable en l'état. Aide et QA mises à jour en conséquence.
+- **Crédit Tagada Vroom** : le lien s'ouvre désormais dans un nouvel onglet
+  (`target="_blank" rel="noopener noreferrer"`) ; réglages d'activation et URL inchangés.
+- **Schema de l'accueil corrigé** : WebSite + Organization sont désormais émis sur la page
+  d'accueil quelle que soit sa configuration WordPress (page statique ou index natif des
+  derniers articles) — ce second cas ne recevait auparavant aucune donnée structurée. Aucun
+  WebPage ni Breadcrumb n'est fabriqué pour un index qui ne correspond à aucune Page réelle ;
+  comportement inchangé pour toutes les autres pages, et toujours aucune sortie si un plugin SEO
+  compatible est actif.
+- Page QA étendue (toujours un outil technique, pas une vitrine) pour vérifier X, le rendu
+  conditionnel des pictogrammes sociaux, `currentColor`, les réglages d'affichage en-tête/pied
+  de page, la normalisation WhatsApp, le crédit en nouvel onglet, et l'absence de doublon entre
+  X structuré et `social_links` dans `sameAs`.
+- **Nouveau document `AI-AGENT.md`** à la racine du dépôt : instructions impératives destinées à
+  un agent IA qui développe un nouveau site à partir de GWS (rôle des composants, interdictions
+  explicites, règles de sécurité/SEO, migrations, definition of done, méthode de travail,
+  transmission à un développeur tiers). `README.md` mis à jour avec une procédure de démarrage
+  simple, destinée à un utilisateur non technique, qui y renvoie explicitement.
+- 21 nouvelles assertions automatisées (11 ajoutées à `settings-helpers-logic-test.php`, 10
+  dans le nouveau `schema-homepage-logic-test.php`), toutes passées, en plus de la suite
+  existante inchangée (44 assertions au total sur ces deux fichiers).
+
 ## 1.4.1
 
 Le champ libre « Autres réseaux sociaux » (`social_links`, une URL par ligne) alimente

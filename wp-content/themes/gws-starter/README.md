@@ -22,12 +22,17 @@ stockée par ce thème — voir le plugin compagnon `gws-core`
 
 Volontairement sobre : l'en-tête affiche le logo (ou le nom de l'entité en texte s'il n'y en a
 pas) et la navigation ; le pied de page affiche le nom de l'entité, la navigation de pied de
-page et, si activé, le crédit Tagada Vroom. **Le téléphone, l'e-mail, l'adresse, WhatsApp, les
-réseaux sociaux et la fiche Google Business Profile ne s'affichent nulle part automatiquement**
-— ce sont des réglages disponibles via des helpers (`gws_get_setting()`,
-`gws_core_whatsapp_url()`, `gws_core_social_links()`...), à un projet de décider où et comment
-les afficher (voir `gws_render_contact_card()` dans `inc/template-tags.php` pour un exemple de
-composant prêt à l'emploi, non appelé par défaut).
+page, les pictogrammes des réseaux sociaux structurés s'il y en a au moins un de renseigné
+(réglage activé par défaut — désactivable dans Réglages > Entité), et si activé, le crédit
+Tagada Vroom. **Le téléphone, l'e-mail, l'adresse, WhatsApp et la fiche Google Business Profile
+ne s'affichent nulle part automatiquement** — ce sont des réglages disponibles via des helpers
+(`gws_get_setting()`, `gws_core_whatsapp_url()`, `gws_core_google_business_url()`...), à un
+projet de décider où et comment les afficher (voir `gws_render_contact_card()` dans
+`inc/template-tags.php` pour un exemple de composant prêt à l'emploi, non appelé par défaut).
+Les pictogrammes sociaux dans l'en-tête suivent le même principe mais sont **désactivés** par
+défaut (réglage séparé). Composant réutilisable :
+`template-parts/content/social-links.php` (`get_template_part('template-parts/content/social-links')`),
+appelable depuis n'importe quel gabarit de projet.
 
 ## Modules optionnels fournis en exemple
 

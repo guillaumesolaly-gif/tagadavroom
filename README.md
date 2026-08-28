@@ -22,15 +22,34 @@ Ce dépôt contient deux composants installés côte à côte dans un WordPress 
 Cette séparation garantit qu'un futur changement de thème ne fait jamais disparaître les types
 de contenus ou les données métier du back-office.
 
-## Démarrage rapide
+## Démarrer un nouveau site — procédure simple
 
-1. Copier les deux dossiers dans l'installation WordPress cible (`wp-content/plugins/gws-core`
-   et `wp-content/themes/gws-starter`).
-2. Activer le plugin `GWS Core`, puis le thème `GWS Starter`.
-3. Suivre le README de chaque composant pour la suite (réglages, charte visuelle, modules).
+Pas besoin d'être développeur pour lancer un nouveau projet à partir de GWS : l'essentiel du
+travail (créer les bonnes fonctionnalités pour le site) revient à un agent IA de développement
+(ex. Claude Code), à qui l'on transmet ce dépôt comme point de départ.
+
+1. **Installer `gws-core`** : dans WordPress, Extensions > Ajouter une extension > Téléverser
+   `gws-core.zip` > Installer > Activer.
+2. **Installer `gws-starter`** : Apparence > Thèmes > Ajouter un thème > Téléverser
+   `gws-starter.zip` > Installer > Activer.
+3. **Transmettre ce dépôt à son agent IA** (donner accès au code du projet, comme n'importe quel
+   dépôt de travail).
+4. **Lui demander de lire `AI-AGENT.md`** (et `README.md`/`ARCHITECTURE.md`) avant de toucher au
+   code, et de respecter ces règles pendant tout le projet. Exemple de phrase à lui donner telle
+   quelle : *« Lis intégralement README.md, ARCHITECTURE.md et AI-AGENT.md avant de toucher au
+   code. Respecte ces règles pendant tout le projet. »*
+5. **Définir le besoin du nouveau site** avec l'agent : à qui s'adresse le site, quels contenus,
+   quelles fonctionnalités (ex. « un site d'élevage avec une fiche par cheval »).
+6. **Ne pas commencer par modifier le cœur** (`gws-core`/`gws-starter`) : les besoins propres au
+   projet se développent dans un module métier séparé (voir `AI-AGENT.md`) — le cœur ne change
+   normalement pas d'un projet à l'autre.
 
 ## Documentation
 
+- [`AI-AGENT.md`](AI-AGENT.md) — instructions impératives destinées à l'agent IA qui développera
+  le projet : rôle de chaque composant, interdictions explicites, règles de sécurité/SEO,
+  méthode de travail, critère de fin de tâche. **À faire lire à l'agent avant tout
+  développement.**
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — philosophie du starter, séparation thème/plugin,
   mécanisme des modules métier, pièges WordPress connus à ne pas reproduire.
 - [`wp-content/plugins/gws-core/README.md`](wp-content/plugins/gws-core/README.md)

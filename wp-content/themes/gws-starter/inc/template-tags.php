@@ -25,11 +25,12 @@ function gws_render_contact_card() {
 /**
  * Crédit de réalisation Tagada Vroom — affiché uniquement si l'option est activée ET qu'une
  * URL valide est renseignée (Réglages > Entité). Aucun markup si l'une des deux conditions
- * manque. Ancre naturelle, aucun `target="_blank"` forcé.
+ * manque. Ancre naturelle « Tagada Vroom » ; lien externe, ouvert dans un nouvel onglet avec les
+ * attributs de sécurité appropriés (rel="noopener noreferrer").
  */
 function gws_render_credit() {
   if (!function_exists('gws_core_credit_enabled') || !gws_core_credit_enabled()) return;
   $url = gws_get_setting('credit_url');
   if (!$url) return;
-  echo '<p class="site-credit">Site réalisé par <a href="' . esc_url($url) . '">Tagada Vroom</a></p>';
+  echo '<p class="site-credit">Site réalisé par <a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">Tagada Vroom</a></p>';
 }

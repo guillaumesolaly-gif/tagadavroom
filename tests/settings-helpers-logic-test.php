@@ -80,13 +80,25 @@ $GLOBALS['__gws_test_attachment_urls'] = array(42 => 'https://example.test/logo.
 gws_test_assert(gws_core_get_logo_url() === 'https://example.test/logo.png', 'Avec un logo enregistré : gws_core_get_logo_url() renvoie bien son URL');
 
 // =====================================================================================
-// WhatsApp : lien wa.me construit uniquement si un numéro est renseigné
+// WhatsApp : format international obligatoire (v1.5.0), jamais d'indicatif deviné
 // =====================================================================================
 $GLOBALS['__gws_test_options'] = array();
 gws_test_assert(gws_core_whatsapp_url() === '', 'Sans numéro WhatsApp : aucun lien généré');
 
-$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('whatsapp_number' => '33 6 12 34 56 78'));
-gws_test_assert(gws_core_whatsapp_url() === 'https://wa.me/33612345678', 'Avec un numéro WhatsApp (espaces compris) : lien wa.me correctement construit');
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('whatsapp_number' => '+33 6 12 34 56 78'));
+gws_test_assert(gws_core_whatsapp_url() === 'https://wa.me/33612345678', 'Numéro international avec "+" (espaces compris) : lien wa.me correctement construit — exemple exact de la consigne');
+
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('whatsapp_number' => '0033 6 12 34 56 78'));
+gws_test_assert(gws_core_whatsapp_url() === 'https://wa.me/33612345678', 'Numéro international avec "00" : équivalent au "+", même résultat');
+
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('whatsapp_number' => '+33 (6) 12-34-56-78'));
+gws_test_assert(gws_core_whatsapp_url() === 'https://wa.me/33612345678', 'Parenthèses et tirets ignorés, seuls "+" et les chiffres comptent');
+
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('whatsapp_number' => '06 12 34 56 78'));
+gws_test_assert(gws_core_whatsapp_url() === '', 'Numéro national sans indicatif (bug corrigé en v1.5.0) : aucun lien, jamais d’indicatif deviné');
+
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('whatsapp_number' => '0612345678'));
+gws_test_assert(gws_core_whatsapp_url() === '', 'Numéro national sans espaces ni indicatif : aucun lien non plus');
 
 // =====================================================================================
 // Réseaux sociaux : uniquement les champs réellement renseignés, jamais une entrée vide
@@ -102,8 +114,12 @@ $GLOBALS['__gws_test_options'] = array('gws_core_settings' => array(
 $social = gws_core_social_links();
 gws_test_assert(
   $social === array('linkedin' => 'https://linkedin.com/company/test', 'instagram' => 'https://instagram.com/test'),
-  'Avec deux réseaux renseignés sur cinq : seuls les deux non vides apparaissent (facebook absent, pas vide)'
+  'Avec deux réseaux renseignés sur six : seuls les deux non vides apparaissent (facebook absent, pas vide)'
 );
+
+// --- X (v1.5.0) : structuré au même titre que les autres, récupérable individuellement ---
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('x_url' => 'https://x.com/test'));
+gws_test_assert(gws_core_social_links() === array('x' => 'https://x.com/test'), 'X est bien exposé par gws_core_social_links(), comme LinkedIn/Facebook/Instagram/YouTube/TikTok');
 
 // =====================================================================================
 // sameAs Schema : fusion réseaux + Google Business Profile, sans doublon, jamais de valeur vide
@@ -153,6 +169,27 @@ gws_test_assert(
 
 $GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('social_links' => ''));
 gws_test_assert(gws_core_extra_social_urls() === array(), 'social_links vide : aucune URL, tableau vide');
+
+// --- X (v1.5.0) : dédupliqué avec la même URL saisie aussi dans social_links ---
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array(
+  'x_url' => 'https://x.com/test',
+  'social_links' => "https://x.com/test\nhttps://bsky.app/profile/test",
+));
+gws_test_assert(
+  gws_core_schema_same_as() === array('https://x.com/test', 'https://bsky.app/profile/test'),
+  'sameAs : la même URL X saisie à la fois dans le champ structuré et dans social_links n’apparaît qu’une fois'
+);
+
+// =====================================================================================
+// Réseaux sociaux dans le header/footer (v1.5.0) : footer activé par défaut, header désactivé
+// =====================================================================================
+$GLOBALS['__gws_test_options'] = array();
+gws_test_assert(gws_core_show_footer_social() === true, 'Pictogrammes sociaux dans le pied de page : activés par défaut');
+gws_test_assert(gws_core_show_header_social() === false, 'Pictogrammes sociaux dans l’en-tête : désactivés par défaut');
+
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('header_social_enabled' => '1', 'footer_social_enabled' => ''));
+gws_test_assert(gws_core_show_header_social() === true, 'En-tête : activable explicitement');
+gws_test_assert(gws_core_show_footer_social() === false, 'Pied de page : désactivable explicitement');
 
 // =====================================================================================
 // Crédit Tagada Vroom : désactivable, et son URL suit le même sanitize que les autres URLs

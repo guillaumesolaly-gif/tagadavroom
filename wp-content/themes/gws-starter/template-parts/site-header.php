@@ -25,6 +25,9 @@ $gws_logo_url = gws_get_logo_url();
     ));
     ?>
   </nav>
+  <?php if (function_exists('gws_core_show_header_social') && gws_core_show_header_social()) : ?>
+    <?php get_template_part('template-parts/content/social-links'); ?>
+  <?php endif; ?>
   <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="main-navigation" aria-label="Ouvrir le menu">
     <?php echo gws_icon('menu'); ?>
   </button>

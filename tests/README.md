@@ -11,6 +11,7 @@ Ce dossier n'est pas inclus dans `gws-core.zip` ni `gws-starter.zip`.
 ```
 php tests/starter-logic-test.php
 php tests/settings-helpers-logic-test.php
+php tests/schema-homepage-logic-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -23,10 +24,19 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   et création/suppression réelle d'un fichier de test.
 - Bascule de développement du module QA (`includes/modules.php`) : ignorée en production,
   effective en local/développement, jamais de doublon avec `config/modules.php`.
-- Réglages enrichis en v1.4.0 (`settings-helpers-logic-test.php`) : valeurs par défaut, champ
-  `attachment_id` (accepte uniquement une vraie image), logo/WhatsApp/réseaux sociaux/`sameAs`
-  absents tant qu'ils ne sont pas renseignés (jamais d'entrée vide), crédit Tagada Vroom
-  activé par défaut et désactivable, URL du crédit personnalisable.
+- Réglages enrichis en v1.4.0/v1.5.0 (`settings-helpers-logic-test.php`) : valeurs par défaut,
+  champ `attachment_id` (accepte uniquement une vraie image), logo/WhatsApp/réseaux sociaux
+  (dont X)/`sameAs` absents tant qu'ils ne sont pas renseignés (jamais d'entrée vide),
+  dédoublonnage entre un réseau structuré et `social_links`, réglages d'affichage des
+  pictogrammes sociaux en header/footer (footer activé par défaut, header désactivé), crédit
+  Tagada Vroom activé par défaut et désactivable, URL du crédit personnalisable.
+- Normalisation WhatsApp (v1.5.0) : format international obligatoire (`+` ou `00`), espaces/
+  tirets/parenthèses ignorés, aucun indicatif jamais deviné — une saisie nationale sans
+  indicatif renvoie une chaîne vide plutôt qu'un lien wa.me non fonctionnel.
+- Schema de la page d'accueil (v1.5.0, `schema-homepage-logic-test.php`) : WebSite + Organization
+  toujours présents sur l'accueil qu'il s'agisse d'une page statique ou de l'index natif des
+  articles, sans fabriquer de WebPage/Breadcrumb pour ce second cas ; comportement historique
+  inchangé sur les autres pages ; aucune sortie si un plugin SEO est actif.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -36,3 +46,5 @@ un processus PHP séparé — il peut aussi être lancé seul.)
 - Écran d'administration **Outils > Recette GWS** (rendu, nonce, capability) en conditions
   réelles.
 - Flush effectif des permaliens et fonctionnement réel de l'archive `/qa-items/` dans WordPress.
+- Rendu réel des pictogrammes sociaux (composant `template-parts/content/social-links.php`) :
+  `currentColor`, focus clavier, nom accessible de chaque lien, ouverture en nouvel onglet.
