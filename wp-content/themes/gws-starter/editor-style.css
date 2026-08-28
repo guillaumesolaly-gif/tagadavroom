@@ -1,0 +1,3 @@
+/* Styles minimaux dans l'éditeur de blocs, pour un rendu approximatif du front. */
+@import url("assets/css/tokens.css");
+body { font-family: var(--font-body); color: var(--color-text); }

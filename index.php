@@ -1,1 +1,0 @@
-<?php get_header(); ?><main id="contenu"><?php get_template_part('template-parts/site-header'); ?><section class="reading-layout"><article class="legal-article"><h1><?php the_title(); ?></h1><?php while (have_posts()) : the_post(); the_content(); endwhile; ?></article></section><?php get_template_part('template-parts/site-footer'); ?></main><?php get_footer(); ?>

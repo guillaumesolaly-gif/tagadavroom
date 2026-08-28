@@ -1,0 +1,24 @@
+/* Accessibilité : focus visible renforcé, lien d'évitement. */
+*:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 16px;
+  z-index: 9999;
+  background: var(--color-text);
+  color: var(--color-bg);
+  padding: var(--space-2) var(--space-3);
+  transform: translateY(-150%);
+  transition: transform 0.18s;
+  border-radius: var(--radius);
+}
+.skip-link:focus { transform: none; }
+
+@media (prefers-contrast: more) {
+  :root { --color-border: #666666; --color-text-muted: #333333; }
+  .btn { border-width: 2px; }
+}

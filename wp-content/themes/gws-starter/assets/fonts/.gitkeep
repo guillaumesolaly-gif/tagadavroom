@@ -1,0 +1,2 @@
+Placer ici les fichiers de police locale du projet (woff2), référencés depuis tokens.css ou un
+fichier @font-face dédié — jamais avec un chemin de thème en dur (voir ARCHITECTURE.md, §6.4).

@@ -1,0 +1,3 @@
+.diagnostic-questions { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
+.diagnostic-question { border-bottom: 1px solid var(--color-border); padding: var(--space-3) 0; }
+.diagnostic-choice { display: block; margin-top: var(--space-2); cursor: pointer; }

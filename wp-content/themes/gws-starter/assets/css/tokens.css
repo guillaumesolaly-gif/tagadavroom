@@ -1,0 +1,52 @@
+/*
+ * Design tokens — LE seul fichier à modifier pour poser l'identité visuelle d'un nouveau projet.
+ * Les valeurs ci-dessous sont neutres et fonctionnelles par défaut (pas de charte imposée) :
+ * ne jamais coder une couleur, une police ou un espacement en dur ailleurs que dans ce fichier.
+ */
+:root {
+  /* Couleurs */
+  --color-text: #1a1a1a;
+  --color-text-muted: #5a5a5a;
+  --color-bg: #ffffff;
+  --color-bg-alt: #f5f5f5;
+  --color-border: #d9d9d9;
+  --color-primary: #1d4ed8;
+  --color-primary-contrast: #ffffff;
+  --color-primary-hover: #1e40af;
+  --color-accent: #0f766e;
+  --color-danger: #b91c1c;
+  --color-success: #15803d;
+
+  /* Typographie */
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-heading: var(--font-body);
+  --font-size-base: 1rem;
+  --line-height-base: 1.6;
+
+  /* Espacements (échelle) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2.5rem;
+  --space-6: 4rem;
+
+  /* Mise en page */
+  --container-max-width: 1200px;
+  --radius: 4px;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+
+  /* Grille responsive */
+  --breakpoint-sm: 560px;
+  --breakpoint-md: 900px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #f2f2f2;
+    --color-text-muted: #b5b5b5;
+    --color-bg: #121212;
+    --color-bg-alt: #1e1e1e;
+    --color-border: #3a3a3a;
+  }
+}

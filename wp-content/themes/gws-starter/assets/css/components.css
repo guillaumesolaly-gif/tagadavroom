@@ -1,0 +1,81 @@
+/* Composants génériques : boutons, cartes, formulaires, modales. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.btn-primary { background: var(--color-primary); color: var(--color-primary-contrast); }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-secondary { background: transparent; border-color: var(--color-border); color: var(--color-text); }
+.icon { display: inline-block; width: 1em; height: 1em; fill: currentColor; vertical-align: -0.15em; }
+
+.card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.card-media img { width: 100%; }
+.card-body { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); flex: 1; }
+.card-title { margin: 0; font-size: 1.1rem; }
+.card-title a { color: inherit; text-decoration: none; }
+.card-excerpt { color: var(--color-text-muted); font-size: 0.9rem; margin: 0; }
+.card-link { margin-top: auto; font-weight: 600; text-decoration: none; }
+
+.contact-card .label {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+}
+.contact-card p { margin-bottom: var(--space-3); }
+
+.form-field { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
+.form-field label { font-weight: 600; font-size: 0.9rem; }
+.form-field input,
+.form-field textarea,
+.form-field select {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.form-feedback { padding: var(--space-3); border-radius: var(--radius); margin-bottom: var(--space-3); }
+.form-feedback-success { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
+.form-feedback-error { background: color-mix(in srgb, var(--color-danger) 15%, transparent); color: var(--color-danger); }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+}
+.modal.is-open { display: flex; }
+.modal-panel {
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  max-width: 480px;
+  width: calc(100% - var(--space-4) * 2);
+  box-shadow: var(--shadow);
+}
+
+.pagination ul { display: flex; gap: var(--space-2); list-style: none; margin: var(--space-5) 0 0; padding: 0; }
+.pagination a, .pagination span { display: inline-block; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius); text-decoration: none; color: var(--color-text); }
+.pagination .current { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
