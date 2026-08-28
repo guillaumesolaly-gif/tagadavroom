@@ -17,15 +17,20 @@
     toggle?.focus();
   });
 
+  document.querySelectorAll('.modal').forEach((modal) => {
+    modal.querySelectorAll('[data-modal-close]').forEach((button) => {
+      button.addEventListener('click', () => modal.classList.remove('is-open'));
+    });
+    modal.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') modal.classList.remove('is-open');
+    });
+  });
   document.querySelectorAll('[data-modal-open]').forEach((button) => {
     button.addEventListener('click', () => {
       const modal = document.getElementById(button.dataset.modalOpen);
-      modal?.classList.add('is-open');
-    });
-  });
-  document.querySelectorAll('[data-modal-close]').forEach((button) => {
-    button.addEventListener('click', () => {
-      button.closest('.modal')?.classList.remove('is-open');
+      if (!modal) return;
+      modal.classList.add('is-open');
+      requestAnimationFrame(() => modal.querySelector('button, a, input, select, textarea')?.focus());
     });
   });
 })();

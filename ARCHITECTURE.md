@@ -66,14 +66,26 @@ fichier, via `add_action('wp_enqueue_scripts', ...)` placé **avant** l'appel à
 à un enregistrement fait après `get_header()`). Ce pattern évite de toucher au fichier central
 d'enqueue du thème (`inc/setup.php`) pour chaque module.
 
-## 5. Cadre de migration
+## 5. Flush automatique des permaliens
+
+Un module s'active ou se désactive en éditant `config/modules.php`, pas via un écran Extensions
+classique — aucun événement d'activation/désactivation WordPress standard ne se déclenche donc
+tout seul. `includes/modules.php` compare à chaque chargement la liste des modules actifs à
+celle mémorisée lors du chargement précédent ; en cas d'écart, un flush des règles de réécriture
+est programmé et exécuté en fin de traitement de `init`, une fois que les modules encore actifs
+ont eu l'occasion d'enregistrer leurs propres post types/taxonomies. **Aucune étape manuelle
+dans Réglages > Permaliens n'est donc jamais nécessaire**, ni pour un module qui déclare un CPT,
+ni pour les pages WordPress classiques (le thème lui-même ne déclare aucun CPT ni règle de
+réécriture — les pages standards n'ont jamais eu besoin de flush après l'activation du thème).
+
+## 6. Cadre de migration
 
 `wp-content/plugins/gws-core/includes/migration.php` fournit un cadre générique — versionné,
 avec sauvegarde et rollback — pour tout remplacement explicite de contenu existant. Il est
 **inerte tant qu'aucun module n'y déclare de migration** via `gws_core_register_migration()`.
 Utiliser ce cadre plutôt que d'écrire un script de migration ad hoc à chaque fois.
 
-## 6. Pièges WordPress connus — à ne jamais reproduire
+## 7. Pièges WordPress connus — à ne jamais reproduire
 
 Ces règles viennent d'un incident de production réel sur un projet ayant précédé ce starter.
 
@@ -85,7 +97,7 @@ Ces règles viennent d'un incident de production réel sur un projet ayant préc
    migré » (postmeta absente) est vrai par défaut sur n'importe quel contenu, y compris un
    contenu étranger sans rapport avec le projet. La seule écriture automatique tolérée est la
    création d'un contenu **absent** (`wp_insert_post()` gardé par une vérification d'existence).
-   Tout remplacement de contenu existant passe par le cadre de migration explicite (§5),
+   Tout remplacement de contenu existant passe par le cadre de migration explicite (§6),
    jamais par un hook `init` inconditionnel.
 3. **Ne jamais transformer du HTML déjà rendu par recherche/remplacement** (`ob_start()` +
    `str_replace()` sur la sortie). Interpoler les variables directement dans le gabarit PHP au
@@ -105,7 +117,7 @@ Ces règles viennent d'un incident de production réel sur un projet ayant préc
    Vérifier au cas par cas avant de l'utiliser pour une limite de tentatives ; ne jamais lire
    `X-Forwarded-For` sans confiance explicite dans le proxy qui le pose.
 
-## 7. Conventions de nommage
+## 8. Conventions de nommage
 
 - Cœur du plugin : préfixe `gws_core_`.
 - Cœur du thème : préfixe `gws_`.

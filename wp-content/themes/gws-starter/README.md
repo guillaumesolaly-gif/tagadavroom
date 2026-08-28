@@ -21,9 +21,19 @@ assets. Aucune donnée persistante n'est stockée par ce thème — voir le plug
 `diagnostic` et `guides` (voir `modules/README.md`) sont désactivés par défaut. Le cœur reste
 volontairement minimal tant qu'aucun module n'est activé.
 
+Un module supplémentaire, `qa`, sert uniquement à recetter le starter lui-même sur un
+WordPress vierge avant de démarrer un projet — **jamais à utiliser sur un site réel**. Voir
+`wp-content/plugins/gws-core/modules/qa/README.md`.
+
+## Permaliens
+
+Aucune étape manuelle dans Réglages > Permaliens n'est nécessaire, ni après l'activation du
+thème (qui ne déclare aucun CPT ni règle de réécriture), ni après l'activation ou le retrait
+d'un module métier qui en déclare une : le plugin `gws-core` détecte le changement et relance
+le flush tout seul (voir `ARCHITECTURE.md`, §5).
+
 ## Checklist avant mise en production
 
-- [ ] Permaliens enregistrés (Réglages > Permaliens > Enregistrer).
 - [ ] Réglages de l'entité renseignés (Réglages > Entité).
 - [ ] Envoi d'e-mail testé depuis l'environnement réel (`wp_mail()` ne délivre pas forcément en
       local) ; configurer un SMTP authentifié si l'hébergeur ne délivre pas correctement.
@@ -36,6 +46,8 @@ volontairement minimal tant qu'aucun module n'est activé.
       (title, meta description, JSON-LD).
 - [ ] Vérifier la fiabilité de `$_SERVER['REMOTE_ADDR']` pour la limite de tentatives des
       formulaires selon l'hébergement/CDN réel (voir `gws_core_rate_limit_check()`).
+- [ ] Module `qa` bien retiré (config, contenu de test, gabarits copiés dans le thème) — voir
+      son README pour la procédure complète.
 
 Voir `ARCHITECTURE.md` à la racine du dépôt pour la philosophie complète du starter et les
 pièges WordPress connus à ne pas reproduire.

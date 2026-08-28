@@ -32,6 +32,7 @@ aucun fichier du cœur n'a besoin d'être modifié.
 | `_boilerplate-cpt` (squelette, jamais actif) | `bp_` | `bp_item` |
 | `diagnostic` | `gws_diag_` | — (aucun CPT, formulaire → e-mail uniquement) |
 | `guides` | `gws_guides_` | `page` (gabarit dédié) |
+| `qa` (développement uniquement, jamais en production) | `gws_qa_` | `gws_qa_item` |
 
 Tenir ce tableau à jour à chaque nouveau module évite toute collision de préfixe/meta entre
 deux modules d'un même projet.
