@@ -46,8 +46,8 @@ le flush tout seul (voir `ARCHITECTURE.md`, §5).
       (title, meta description, JSON-LD).
 - [ ] Vérifier la fiabilité de `$_SERVER['REMOTE_ADDR']` pour la limite de tentatives des
       formulaires selon l'hébergement/CDN réel (voir `gws_core_rate_limit_check()`).
-- [ ] Module `qa` bien retiré (config, contenu de test, gabarits copiés dans le thème) — voir
-      son README pour la procédure complète.
+- [ ] Module `qa` bien désactivé (bascule **Outils > Recette GWS** ou `config/modules.php`
+      selon la méthode utilisée) et son contenu de test supprimé — voir son README.
 
 Voir `ARCHITECTURE.md` à la racine du dépôt pour la philosophie complète du starter et les
 pièges WordPress connus à ne pas reproduire.

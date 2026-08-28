@@ -76,34 +76,57 @@ add_filter('page_template', 'gws_load_module_page_template');
 
 /**
  * Gabarits single/archive fournis par les modules actifs : modules/<slug>/templates/
- * single-{post_type}.php et archive-{post_type}.php, utilisés uniquement si aucun fichier de
- * même nom n'existe déjà à la racine du thème (jamais de conflit avec un vrai gabarit de
- * projet) et si le module correspondant est bien listé dans config/modules.php.
+ * single-{post_type}.php et archive-{post_type}.php.
+ *
+ * Ordre de priorité voulu : 1) un gabarit spécifique déjà présent à la racine du thème
+ * (single-{post_type}.php / archive-{post_type}.php) ; 2) le gabarit fourni par le module actif
+ * s'il existe ; 3) le fallback générique du thème (single.php / archive.php).
+ *
+ * WordPress résout déjà ce genre de priorité via {$type}_template_hierarchy (liste ordonnée de
+ * noms de fichiers, du plus spécifique au plus générique) puis locate_template(), qui retourne
+ * le premier fichier RÉELLEMENT PRÉSENT dans cette liste. On ne peut donc pas se contenter de
+ * regarder si le $template déjà résolu par WordPress est vide : le thème fournissant toujours
+ * single.php/archive.php en filet de sécurité, ce $template n'est jamais vide, et un module ne
+ * serait alors jamais consulté. La bonne approche consiste à insérer le gabarit du module DANS
+ * la hiérarchie elle-même, juste après l'entrée spécifique et avant le fallback générique — WP
+ * choisit alors naturellement le premier fichier qui existe réellement, dans le bon ordre.
  */
-function gws_find_module_template($filenames) {
+function gws_module_relative_template_path($filename) {
   $active = gws_active_module_slugs();
   if (!$active) return '';
   $base = gws_module_templates_dir();
-  foreach ((array) $filenames as $filename) {
-    foreach (glob($base . '/*/templates/' . basename($filename)) ?: array() as $match) {
-      if (in_array(gws_module_slug_from_path($match), $active, true)) return $match;
+  foreach (glob($base . '/*/templates/' . basename($filename)) ?: array() as $match) {
+    if (in_array(gws_module_slug_from_path($match), $active, true)) {
+      return 'modules' . str_replace($base, '', $match);
     }
   }
   return '';
 }
 
-function gws_load_module_single_template($template) {
-  if ($template) return $template;
-  $found = gws_find_module_template(array('single-' . get_post_type() . '.php', 'single.php'));
-  return $found ?: $template;
+function gws_insert_module_template_in_hierarchy($templates, $specific_filename) {
+  $module_relative = gws_module_relative_template_path($specific_filename);
+  if (!$module_relative) return $templates;
+  $position = array_search($specific_filename, $templates, true);
+  // Repli défensif si l'entrée spécifique n'apparaît pas dans la hiérarchie fournie par
+  // WordPress (cas non observé pour un CPT standard non hiérarchique) : insérer juste avant le
+  // dernier élément plutôt qu'après, pour ne jamais faire perdre au module sa priorité sur le
+  // fallback générique.
+  $position = ($position === false) ? max(0, count($templates) - 1) : $position + 1;
+  array_splice($templates, $position, 0, array($module_relative));
+  return $templates;
 }
-add_filter('single_template', 'gws_load_module_single_template');
 
-function gws_load_module_archive_template($template) {
-  if ($template) return $template;
+function gws_extend_single_template_hierarchy($templates) {
+  $post_type = get_post_type();
+  if (!$post_type) return $templates;
+  return gws_insert_module_template_in_hierarchy($templates, 'single-' . $post_type . '.php');
+}
+add_filter('single_template_hierarchy', 'gws_extend_single_template_hierarchy');
+
+function gws_extend_archive_template_hierarchy($templates) {
   $post_type = get_query_var('post_type');
   if (is_array($post_type)) $post_type = reset($post_type);
-  $found = gws_find_module_template(array('archive-' . $post_type . '.php', 'archive.php'));
-  return $found ?: $template;
+  if (!$post_type) return $templates;
+  return gws_insert_module_template_in_hierarchy($templates, 'archive-' . $post_type . '.php');
 }
-add_filter('archive_template', 'gws_load_module_archive_template');
+add_filter('archive_template_hierarchy', 'gws_extend_archive_template_hierarchy');

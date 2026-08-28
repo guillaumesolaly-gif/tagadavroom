@@ -11,7 +11,18 @@ if (!defined('ABSPATH')) exit;
 function gws_core_active_modules() {
   $config_file = GWS_CORE_DIR . 'config/modules.php';
   $modules = file_exists($config_file) ? include $config_file : array();
-  return is_array($modules) ? array_values(array_unique(array_map('sanitize_key', $modules))) : array();
+  $modules = is_array($modules) ? $modules : array();
+  // Bascule de développement du module QA (voir includes/admin/qa-tool-page.php) : une
+  // commodité locale distincte de config/modules.php, qui reste l'unique source de vérité
+  // versionnée pour les modules métier réels. N'ajoute jamais rien d'autre que 'qa', et n'a
+  // aucun effet hors d'un environnement local/de développement.
+  if (gws_core_qa_dev_toggle_enabled()) $modules[] = 'qa';
+  return array_values(array_unique(array_map('sanitize_key', $modules)));
+}
+
+function gws_core_qa_dev_toggle_enabled() {
+  if (!in_array(wp_get_environment_type(), array('local', 'development'), true)) return false;
+  return (bool) get_option('gws_core_qa_dev_enabled', false);
 }
 
 /**

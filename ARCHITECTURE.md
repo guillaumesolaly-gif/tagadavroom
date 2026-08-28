@@ -53,7 +53,16 @@ Un module métier a deux moitiés portant le même slug :
 
 **Activation** : ajouter le slug à `wp-content/plugins/gws-core/config/modules.php`. C'est
 l'unique interrupteur, pour les deux moitiés du module — aucun fichier n'a besoin d'être créé,
-copié ou modifié côté thème.
+copié ou modifié côté thème. `config/modules.php` reste l'unique source de vérité versionnée
+pour les modules métier réels d'un projet.
+
+Exception volontairement isolée : le module `qa` (développement uniquement) peut en plus être
+basculé depuis **Outils > Recette GWS** dans l'admin, sans édition de fichier — voir
+`includes/admin/qa-tool-page.php`. Cet écran n'existe et n'agit que si
+`wp_get_environment_type()` vaut `local` ou `development`, et sa bascule
+(`gws_core_qa_dev_enabled`) est une option séparée, uniquement OR-ée avec `config/modules.php`
+dans `gws_core_active_modules()` — ce n'est pas un mécanisme générique d'activation des modules
+métier depuis l'admin, et le retirer ne casse rien du fonctionnement normal du plugin.
 
 **Gabarits côté thème, sans copie.** Un gabarit de module reste physiquement dans
 `wp-content/themes/gws-starter/modules/<slug>/` :
@@ -63,14 +72,30 @@ copié ou modifié côté thème.
 
 `inc/module-templates.php` (chargé en permanence par le cœur du thème, sans coût quand aucun
 module n'en a besoin) les rend disponibles auprès de WordPress via ses filtres natifs prévus à
-cet effet — `theme_page_templates`/`page_template` pour les gabarits de page,
-`single_template`/`archive_template` pour les CPT — en ne considérant que les modules
-effectivement listés dans `config/modules.php` (interrogé via `gws_core_active_modules()`,
-la seule fonction du plugin que ce fichier appelle). Un gabarit de projet déjà présent à la
-racine du thème garde toujours la priorité. Retirer un module de la configuration fait
-disparaître ses gabarits du sélecteur de l'éditeur et de la hiérarchie de gabarits dès la
-requête suivante, sans aucune trace côté thème. Voir
-`wp-content/themes/gws-starter/modules/README.md`.
+cet effet, en ne considérant que les modules effectivement listés dans `config/modules.php`
+(interrogé via `gws_core_active_modules()`, la seule fonction du plugin que ce fichier appelle).
+Retirer un module de la configuration fait disparaître ses gabarits du sélecteur de l'éditeur
+et de la hiérarchie de gabarits dès la requête suivante, sans aucune trace côté thème.
+
+- **Gabarit de page** : `theme_page_templates` (liste le gabarit dans le sélecteur de
+  l'éditeur) + `page_template` (fournit le chemin réel une fois ce gabarit assigné à une page).
+  Ici l'assignation est un choix explicite de l'admin (la meta `_wp_page_template`), donc aucune
+  question de priorité entre plusieurs fichiers ne se pose.
+- **Single / archive de CPT** : priorité voulue = 1) un gabarit spécifique déjà présent à la
+  racine du thème (`single-{post_type}.php` / `archive-{post_type}.php`) ; 2) le gabarit fourni
+  par le module actif ; 3) le fallback générique du thème (`single.php` / `archive.php`).
+  WordPress résout déjà ce genre de priorité via les filtres `single_template_hierarchy` /
+  `archive_template_hierarchy` (liste ordonnée de noms de fichiers, la plus spécifique en
+  premier) puis `locate_template()`, qui retourne le premier fichier réellement présent dans
+  cette liste. **Piège à éviter** : les filtres `single_template`/`archive_template` (qui
+  reçoivent le résultat déjà tranché) ne conviennent pas ici, car le thème fournissant toujours
+  `single.php`/`archive.php` en filet de sécurité, ce résultat n'est jamais vide — un module ne
+  serait donc jamais consulté. La bonne approche, utilisée ici, consiste à insérer le gabarit du
+  module dans la hiérarchie elle-même (`gws_insert_module_template_in_hierarchy()`), juste après
+  l'entrée spécifique et avant le fallback générique, pour que `locate_template()` choisisse
+  naturellement le bon fichier dans le bon ordre.
+
+Voir `wp-content/themes/gws-starter/modules/README.md`.
 
 Un gabarit de module qui a besoin de ses propres CSS/JS les enregistre lui-même, en tête de
 fichier, via `add_action('wp_enqueue_scripts', ...)` placé **avant** l'appel à `get_header()`

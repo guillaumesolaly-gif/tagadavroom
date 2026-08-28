@@ -29,18 +29,34 @@
   // Rend inerte tout le contenu de la page en dehors de la chaîne d'ancêtres de `target` (donc
   // en dehors de la modale elle-même), en remontant jusqu'à <body> : fonctionne quelle que soit
   // la profondeur de la modale dans le DOM, sans avoir à déplacer la modale elle-même.
-  const setBackgroundInert = (target, isInert) => {
+  //
+  // Défensif : un élément qui possède déjà `inert` avant l'ouverture (pour une tout autre
+  // raison que cette modale) n'est jamais touché — ni re-marqué (déjà inerte, rien à faire), ni
+  // surtout dé-marqué à la fermeture. Seuls les éléments que la modale a elle-même rendus
+  // inertes sont mémorisés, puis restaurés un par un à la fermeture.
+  let inertedElements = [];
+
+  const setBackgroundInert = (target) => {
+    inertedElements = [];
     let node = target;
     while (node && node !== document.body) {
       const parent = node.parentElement;
       if (parent) {
         [...parent.children].forEach((sibling) => {
           if (sibling === node) return;
-          if (isInert) sibling.setAttribute('inert', ''); else sibling.removeAttribute('inert');
+          if (!sibling.hasAttribute('inert')) {
+            sibling.setAttribute('inert', '');
+            inertedElements.push(sibling);
+          }
         });
       }
       node = parent;
     }
+  };
+
+  const clearBackgroundInert = () => {
+    inertedElements.forEach((el) => el.removeAttribute('inert'));
+    inertedElements = [];
   };
 
   let modalOpener = null;
@@ -48,7 +64,7 @@
   const closeModal = (modal, restoreFocus = true) => {
     if (!modal.classList.contains('is-open')) return;
     modal.classList.remove('is-open');
-    setBackgroundInert(modal, false);
+    clearBackgroundInert();
     modalOpener?.setAttribute('aria-expanded', 'false');
     if (restoreFocus) modalOpener?.focus();
     modalOpener = null;
@@ -57,7 +73,7 @@
   const openModal = (modal, opener) => {
     modalOpener = opener;
     modal.classList.add('is-open');
-    setBackgroundInert(modal, true);
+    setBackgroundInert(modal);
     requestAnimationFrame(() => focusableIn(modal)[0]?.focus());
   };
 

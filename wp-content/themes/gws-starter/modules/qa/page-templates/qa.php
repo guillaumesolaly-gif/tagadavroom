@@ -92,6 +92,11 @@ get_header();
         rester à l’intérieur (essayer de sortir avec Tab depuis le dernier élément, ou Maj+Tab
         depuis le premier), Échap et le bouton « Fermer » doivent tous deux fermer la modale, et
         le focus doit revenir sur ce bouton après fermeture.</p>
+      <p id="qa-pre-existing-inert" inert>Élément volontairement <code>inert</code> avant même
+        l’ouverture de la modale (inspecter son attribut dans les outils de développement). Il
+        doit conserver cet attribut après une ouverture puis une fermeture de la modale
+        ci-dessous — la modale ne doit jamais retirer un <code>inert</code> qu’elle n’a pas
+        posé elle-même.</p>
       <button class="btn btn-secondary" type="button" data-modal-open="qa-modal" aria-expanded="false">Ouvrir la modale de test</button>
       <div class="modal" id="qa-modal" role="dialog" aria-modal="true" aria-labelledby="qa-modal-title">
         <div class="modal-panel">

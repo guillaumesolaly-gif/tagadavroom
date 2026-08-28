@@ -33,3 +33,5 @@ de contenus ou les données métier du back-office.
 - [`wp-content/themes/gws-starter/README.md`](wp-content/themes/gws-starter/README.md)
 - Registre des modules et de leurs préfixes :
   [`wp-content/plugins/gws-core/modules/README.md`](wp-content/plugins/gws-core/modules/README.md)
+- [`tests/README.md`](tests/README.md) — tests de logique autonomes (hors WordPress), non
+  inclus dans les paquets installables.
