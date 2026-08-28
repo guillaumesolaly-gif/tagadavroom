@@ -1,31 +1,31 @@
 # Modules métier — présentation (thème)
 
 Chaque dossier ici est le pendant **présentation** d'un module de données défini dans le plugin
-`gws-core` (`wp-content/plugins/gws-core/modules/<même-slug>/`). Rien ici n'est chargé
-automatiquement : ces fichiers sont des références prêtes à l'emploi que l'on active à la main,
-selon la nature du module.
+`gws-core` (`wp-content/plugins/gws-core/modules/<même-slug>/`).
+
+Les gabarits fournis par un module restent **physiquement dans son propre dossier** — aucun
+fichier n'a besoin d'être copié, déplacé ou supprimé à la racine du thème pour les activer ou
+les retirer. C'est `inc/module-templates.php` (chargé en permanence par le cœur du thème, sans
+coût quand aucun module n'en a besoin) qui les rend disponibles auprès de WordPress via ses
+propres filtres natifs — voir `ARCHITECTURE.md` à la racine du dépôt pour le détail du mécanisme.
 
 ## Module basé sur un Custom Post Type (ex. `_boilerplate-cpt`)
 
-WordPress détecte nativement `single-{post_type}.php` et `archive-{post_type}.php` **s'ils sont
-placés à la racine du thème**. Pour activer l'affichage d'un module CPT :
+Placer `single-{post_type}.php` et/ou `archive-{post_type}.php` dans
+`modules/<slug>/templates/` : ils sont automatiquement utilisés dès que le CPT correspondant est
+enregistré (module activé côté plugin), exactement comme s'ils étaient à la racine du thème —
+sauf qu'ils n'y sont jamais copiés. Un vrai fichier `single-{post_type}.php` déjà présent à la
+racine du thème garde toujours la priorité.
 
-1. Copier les fichiers de `modules/<slug>/templates/` vers la racine du thème.
-2. Renommer `{post_type}` par le vrai nom du post type déclaré côté plugin.
+## Module basé sur un gabarit de page (ex. `guides`, `diagnostic`, `qa`)
 
-Aucun filtre, aucune configuration côté thème : c'est la hiérarchie de gabarits standard de
-WordPress qui fait le travail.
+Placer le fichier dans `modules/<slug>/page-templates/`, avec un en-tête `Template Name:` comme
+n'importe quel gabarit de page WordPress natif. Il apparaît automatiquement dans le sélecteur de
+gabarit de l'éditeur dès que le module est actif, sans jamais être copié dans
+`page-templates/` à la racine du thème.
 
-## Module basé sur un gabarit de page (ex. `guides`)
+## Activer / retirer un module
 
-Les fichiers de `modules/<slug>/` avec un en-tête `Template Name:` sont déjà des gabarits de
-page WordPress natifs. Il suffit qu'ils soient présents dans `page-templates/` à la racine du
-thème (copier depuis le dossier du module) pour apparaître dans le sélecteur de gabarit de
-l'éditeur — aucune autre étape.
-
-## Pourquoi ce n'est pas automatique
-
-Garder le thème « nu » par défaut (aucun template de module dans sa racine) rend immédiatement
-visible, pour un développeur qui reprend le projet, quels modules sont réellement utilisés :
-il lui suffit de regarder la racine du thème plutôt que de déchiffrer un fichier de
-configuration supplémentaire.
+Le seul geste nécessaire est côté plugin : ajouter ou retirer le slug dans
+`wp-content/plugins/gws-core/config/modules.php`. Les gabarits du module apparaissent ou
+disparaissent en conséquence, sans aucune manipulation de fichier côté thème.

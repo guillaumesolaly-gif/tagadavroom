@@ -18,7 +18,9 @@
 if (!defined('ABSPATH')) exit;
 
 const GWS_QA_POST_TYPE = 'gws_qa_item';
-const GWS_QA_PAGE_TEMPLATE = 'page-templates/qa.php';
+// Chemin virtuel : le fichier reste dans le thème sous modules/qa/page-templates/qa.php,
+// détecté sans copie par inc/module-templates.php (thème) — voir son README.
+const GWS_QA_PAGE_TEMPLATE = 'modules/qa/page-templates/qa.php';
 const GWS_QA_PAGE_SLUG = 'qa-recette-starter';
 
 function gws_qa_register_post_type() {

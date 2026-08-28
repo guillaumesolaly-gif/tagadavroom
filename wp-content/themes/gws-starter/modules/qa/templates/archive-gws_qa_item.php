@@ -1,9 +1,10 @@
 <?php
 /**
- * Gabarit de test pour l'archive du CPT QA (gws_qa_item). À copier à la racine du thème sous le
- * nom archive-gws_qa_item.php. Utilise le même template-part de carte qu'un vrai projet
- * (template-parts/content/card.php), pour le vérifier en conditions réelles de boucle
- * WordPress. À supprimer avec le reste du module QA avant un site réel.
+ * Gabarit de test pour l'archive du CPT QA (gws_qa_item). Reste dans ce dossier — détecté sans
+ * copie par inc/module-templates.php dès que le module QA est actif. Utilise le même
+ * template-part de carte qu'un vrai projet (template-parts/content/card.php), pour le vérifier
+ * en conditions réelles de boucle WordPress. À retirer avec le reste du module QA avant un site
+ * réel.
  */
 get_header();
 ?>

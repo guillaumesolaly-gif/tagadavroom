@@ -5,11 +5,16 @@ module côté plugin (`config/modules.php`) et adapter le questionnaire.
 
 ## Activer l'affichage
 
-1. Copier `page-diagnostic.php` vers `page-templates/diagnostic.php` à la racine du thème.
-2. Créer une page dans wp-admin, lui assigner le gabarit « Diagnostic (module) ».
-3. Les fichiers `assets/diagnostic.css` et `assets/diagnostic.js` restent référencés depuis ce
-   dossier de module — inutile de les déplacer, seul le fichier `.php` doit être copié.
+Aucune copie de fichier : dès que `'diagnostic'` est ajouté à `config/modules.php` côté plugin,
+le gabarit « Diagnostic (module) » (`page-templates/diagnostic.php`, resté dans ce dossier)
+apparaît automatiquement dans le sélecteur de gabarit de l'éditeur. Il suffit de créer une page
+dans wp-admin et de lui assigner ce gabarit.
 
-Le gabarit s'auto-enregistre pour ses propres assets via un `add_action('wp_enqueue_scripts', ...)`
-placé en tête du fichier, avant `get_header()` : aucune modification de `inc/setup.php` n'est
-nécessaire pour activer ou désactiver ce module.
+Les fichiers `assets/diagnostic.css` et `assets/diagnostic.js` restent eux aussi référencés
+depuis ce dossier de module. Le gabarit s'auto-enregistre pour ses propres assets via un
+`add_action('wp_enqueue_scripts', ...)` placé en tête du fichier, avant `get_header()`.
+
+## Retirer
+
+Retirer `'diagnostic'` de `config/modules.php` : le gabarit disparaît du sélecteur dès la
+requête suivante, sans rien à supprimer côté thème.

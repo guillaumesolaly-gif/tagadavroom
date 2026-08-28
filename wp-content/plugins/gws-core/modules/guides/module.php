@@ -14,8 +14,10 @@
 
 if (!defined('ABSPATH')) exit;
 
-const GWS_GUIDES_TEMPLATE = 'page-templates/guide.php';
-const GWS_GUIDES_HUB_TEMPLATE = 'page-templates/guides-hub.php';
+// Chemins virtuels : les fichiers restent dans le thème sous modules/guides/page-templates/,
+// détectés sans copie par inc/module-templates.php (thème) — voir son README.
+const GWS_GUIDES_TEMPLATE = 'modules/guides/page-templates/guide.php';
+const GWS_GUIDES_HUB_TEMPLATE = 'modules/guides/page-templates/guides-hub.php';
 const GWS_GUIDES_HUB_SLUG = 'guides';
 
 require_once __DIR__ . '/content.sample.php';

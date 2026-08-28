@@ -22,7 +22,9 @@ sur un Custom Post Type.
 4. Renommer les deux relations génériques `_bp_parent_a`/`_bp_parent_b` en `_elv_sire`/`_elv_dam`
    (père/mère), et leurs libellés dans `bp_render_relation_meta_box()`.
 5. Créer `wp-content/themes/gws-starter/modules/elevage-chevaux/templates/single-elv_horse.php`
-   et `archive-elv_horse.php` pour l'affichage (fiche cheval, listing des chevaux).
+   et `archive-elv_horse.php` pour l'affichage (fiche cheval, listing des chevaux) — aucune copie
+   vers la racine du thème n'est nécessaire, ils sont détectés automatiquement dès que le module
+   est actif (voir `inc/module-templates.php` côté thème).
 6. Ajouter `'elevage-chevaux'` à `config/modules.php`.
 
 ## Ce qu'il ne faut pas faire

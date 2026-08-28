@@ -12,6 +12,7 @@ define('GWS_THEME_URI', get_template_directory_uri());
 
 require_once GWS_THEME_DIR . '/inc/compat.php';
 require_once GWS_THEME_DIR . '/inc/setup.php';
+require_once GWS_THEME_DIR . '/inc/module-templates.php';
 require_once GWS_THEME_DIR . '/inc/icons.php';
 require_once GWS_THEME_DIR . '/inc/blocks.php';
 require_once GWS_THEME_DIR . '/inc/template-tags.php';

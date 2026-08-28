@@ -2,9 +2,10 @@
 /**
  * Template Name: Guide
  *
- * Gabarit d'un article de la rubrique Guides. À copier vers page-templates/guide.php à la
- * racine du thème (chemin attendu tel quel par le module côté plugin, voir GWS_GUIDES_TEMPLATE
- * dans wp-content/plugins/gws-core/modules/guides/module.php).
+ * Gabarit d'un article de la rubrique Guides. Reste dans ce dossier — détecté sans copie par
+ * inc/module-templates.php dès que le module Guides est actif (chemin virtuel attendu tel quel
+ * par le module côté plugin, voir GWS_GUIDES_TEMPLATE dans
+ * wp-content/plugins/gws-core/modules/guides/module.php).
  */
 get_header();
 $category = get_post_meta(get_the_ID(), '_gws_guides_category', true);

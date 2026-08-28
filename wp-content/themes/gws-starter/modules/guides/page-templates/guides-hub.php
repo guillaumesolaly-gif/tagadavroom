@@ -3,8 +3,9 @@
  * Template Name: Guides — Hub
  *
  * Page hub de la rubrique Guides, regroupant par catégorie toutes les pages utilisant le
- * gabarit Guide. À copier vers page-templates/guides-hub.php à la racine du thème (chemin
- * attendu tel quel par le module côté plugin, voir GWS_GUIDES_HUB_TEMPLATE).
+ * gabarit Guide. Reste dans ce dossier — détecté sans copie par inc/module-templates.php dès
+ * que le module Guides est actif (chemin virtuel attendu tel quel par le module côté plugin,
+ * voir GWS_GUIDES_HUB_TEMPLATE).
  */
 get_header();
 $grouped = function_exists('gws_guides_by_category') ? gws_guides_by_category() : array();

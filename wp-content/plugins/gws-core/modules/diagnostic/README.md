@@ -10,8 +10,9 @@ confidentialité à conserver si le projet en hérite, pas une limite technique.
 2. Remplacer `questions.sample.php` par le questionnaire réel du projet (même structure :
    `id`, `question`, `choices` avec un score par réponse).
 3. Ajuster les seuils de `gws_diag_level()` au nombre de questions retenu.
-4. Côté thème, copier `wp-content/themes/gws-starter/modules/diagnostic/` vers un gabarit de
-   page réel (voir le README de ce dossier thème).
+4. Côté thème, aucune copie n'est nécessaire : le gabarit fourni dans
+   `wp-content/themes/gws-starter/modules/diagnostic/` devient automatiquement disponible dans
+   l'éditeur (voir le README de ce dossier thème).
 
 ## Ce que fait ce fichier
 

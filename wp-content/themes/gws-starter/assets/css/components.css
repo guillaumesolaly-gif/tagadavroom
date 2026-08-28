@@ -57,6 +57,19 @@
 .form-feedback-success { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
 .form-feedback-error { background: color-mix(in srgb, var(--color-danger) 15%, transparent); color: var(--color-danger); }
 
+/*
+ * Modale générique — balisage attendu par assets/js/theme.js (ouverture/fermeture, focus trap,
+ * restitution du focus, isolement du contenu d'arrière-plan) :
+ *   <div class="modal" id="mon-modal" role="dialog" aria-modal="true" aria-labelledby="mon-modal-titre">
+ *     <div class="modal-panel">
+ *       <h2 id="mon-modal-titre">Titre</h2>
+ *       ...
+ *       <button type="button" data-modal-close>Fermer</button>
+ *     </div>
+ *   </div>
+ *   <button type="button" data-modal-open="mon-modal">Ouvrir</button>
+ * Voir modules/qa/page-templates/qa.php pour un exemple complet.
+ */
 .modal {
   position: fixed;
   inset: 0;

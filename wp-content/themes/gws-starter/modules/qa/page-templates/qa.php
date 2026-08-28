@@ -3,12 +3,13 @@
  * Template Name: QA — Recette (dev uniquement)
  *
  * Page de recette technique du design system et des composants du starter — À NE JAMAIS
- * UTILISER SUR UN SITE EN PRODUCTION. Copier ce fichier vers page-templates/qa.php à la racine
- * du thème pour l'activer (voir modules/README.md du thème). Ne modifie jamais page.php.
+ * UTILISER SUR UN SITE EN PRODUCTION. Reste physiquement dans ce dossier : le chargeur
+ * générique du thème (inc/module-templates.php) le rend disponible sans copie. Ne modifie
+ * jamais page.php.
  */
 
 add_action('wp_enqueue_scripts', function () {
-  if (!is_page_template('page-templates/qa.php')) return;
+  if (!is_page_template('modules/qa/page-templates/qa.php')) return;
   wp_enqueue_style('gws-qa', GWS_THEME_URI . '/modules/qa/assets/qa.css', array('gws-components'), GWS_THEME_VERSION);
 });
 
@@ -87,11 +88,16 @@ get_header();
 
     <section>
       <h2>Modale</h2>
-      <button class="btn btn-secondary" type="button" data-modal-open="qa-modal">Ouvrir la modale de test</button>
-      <div class="modal" id="qa-modal">
+      <p>À tester : le focus doit se placer dans la modale à l’ouverture, Tab/Maj+Tab doivent
+        rester à l’intérieur (essayer de sortir avec Tab depuis le dernier élément, ou Maj+Tab
+        depuis le premier), Échap et le bouton « Fermer » doivent tous deux fermer la modale, et
+        le focus doit revenir sur ce bouton après fermeture.</p>
+      <button class="btn btn-secondary" type="button" data-modal-open="qa-modal" aria-expanded="false">Ouvrir la modale de test</button>
+      <div class="modal" id="qa-modal" role="dialog" aria-modal="true" aria-labelledby="qa-modal-title">
         <div class="modal-panel">
-          <h3>Modale de test</h3>
+          <h3 id="qa-modal-title">Modale de test</h3>
           <p>Vérifier l’ouverture, la fermeture au clic, et la fermeture au clavier (touche Échap).</p>
+          <p><a href="#">Lien de test dans la modale</a></p>
           <button class="btn btn-primary" type="button" data-modal-close>Fermer</button>
         </div>
       </div>

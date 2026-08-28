@@ -1,8 +1,8 @@
 <?php
 /**
- * Gabarit de test pour un élément QA (gws_qa_item). À copier à la racine du thème sous le nom
- * single-gws_qa_item.php pour vérifier l'affichage du CPT de recette. À supprimer avec le reste
- * du module QA avant un site réel — voir modules/qa/README.md.
+ * Gabarit de test pour un élément QA (gws_qa_item). Reste dans ce dossier — détecté sans copie
+ * par inc/module-templates.php dès que le module QA est actif. À retirer avec le reste du
+ * module QA avant un site réel — voir modules/qa/README.md.
  */
 get_header();
 ?>

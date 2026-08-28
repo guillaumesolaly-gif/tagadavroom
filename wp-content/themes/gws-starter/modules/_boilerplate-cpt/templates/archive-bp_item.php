@@ -1,7 +1,8 @@
 <?php
 /**
- * Gabarit d'exemple pour le listing du CPT boilerplate (bp_item). À copier à la racine du thème
- * sous le nom archive-{post_type}.php une fois le module métier réel dérivé de ce squelette.
+ * Gabarit d'exemple pour le listing du CPT boilerplate (bp_item). Reste dans ce dossier
+ * (modules/<slug>/templates/archive-{post_type}.php) une fois le module métier réel dérivé de
+ * ce squelette : inc/module-templates.php le détecte sans copie dès que le module est actif.
  */
 get_header();
 ?>

@@ -5,17 +5,19 @@ un site de production.**
 
 ## Activer l'affichage
 
-1. Copier `page-templates/qa.php` de ce dossier vers `page-templates/qa.php` à la racine du
-   thème (créer le dossier `page-templates/` à la racine s'il n'existe pas encore).
-2. Copier `templates/single-gws_qa_item.php` et `templates/archive-gws_qa_item.php` de ce
-   dossier vers la racine du thème (mêmes noms de fichiers, sans le sous-dossier `templates/`).
-3. Les fichiers `assets/qa.css` restent référencés depuis ce dossier de module — inutile de le
-   déplacer.
-4. Activer `'qa'` dans `config/modules.php` du plugin : la page de recette est créée
-   automatiquement (voir son README).
+Aucune copie de fichier. Ajouter `'qa'` à `config/modules.php` côté plugin suffit :
 
-## Retirer l'affichage
+- le gabarit de page « QA — Recette (dev uniquement) » (`page-templates/qa.php`, resté dans ce
+  dossier) apparaît dans le sélecteur de gabarit, et la page de recette est créée
+  automatiquement ;
+- les gabarits `templates/single-gws_qa_item.php` et `templates/archive-gws_qa_item.php`
+  s'activent automatiquement pour le CPT de test dès qu'il est enregistré côté plugin.
 
-Supprimer les 3 fichiers `.php` copiés à l'étape ci-dessus (`page-templates/qa.php`,
-`single-gws_qa_item.php`, `archive-gws_qa_item.php`) à la racine du thème. Voir le README du
-module côté plugin pour l'ordre complet des étapes (y compris le nettoyage du contenu de test).
+Les fichiers `assets/qa.css` restent eux aussi référencés depuis ce dossier de module.
+
+## Retirer
+
+Retirer `'qa'` de `config/modules.php` : les trois gabarits disparaissent du sélecteur et de la
+hiérarchie de gabarits dès la requête suivante, sans rien à supprimer côté thème. Voir le README
+du module côté plugin pour l'ordre complet des étapes (y compris le nettoyage du contenu de
+test, indépendant de cette étape).

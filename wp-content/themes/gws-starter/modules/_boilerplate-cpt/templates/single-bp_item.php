@@ -1,8 +1,9 @@
 <?php
 /**
- * Gabarit d'exemple pour une fiche du CPT boilerplate (bp_item). À copier à la racine du thème
- * sous le nom single-{post_type}.php une fois le module métier réel dérivé de ce squelette
- * (voir wp-content/plugins/gws-core/modules/_boilerplate-cpt/README.md).
+ * Gabarit d'exemple pour une fiche du CPT boilerplate (bp_item). Reste dans ce dossier
+ * (modules/<slug>/templates/single-{post_type}.php) une fois le module métier réel dérivé de ce
+ * squelette : inc/module-templates.php le détecte sans copie dès que le module est actif (voir
+ * wp-content/plugins/gws-core/modules/_boilerplate-cpt/README.md).
  */
 get_header();
 ?>

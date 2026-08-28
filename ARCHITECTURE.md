@@ -51,14 +51,26 @@ Un module métier a deux moitiés portant le même slug :
 - `wp-content/plugins/gws-core/modules/<slug>/` — CPT, taxonomies, champs, logique.
 - `wp-content/themes/gws-starter/modules/<slug>/` — gabarits de référence, assets.
 
-**Activation côté plugin** : ajouter le slug à `wp-content/plugins/gws-core/config/modules.php`.
-C'est l'unique interrupteur — aucun autre fichier du cœur du plugin n'a besoin d'être modifié.
+**Activation** : ajouter le slug à `wp-content/plugins/gws-core/config/modules.php`. C'est
+l'unique interrupteur, pour les deux moitiés du module — aucun fichier n'a besoin d'être créé,
+copié ou modifié côté thème.
 
-**Activation côté thème** : copier le(s) fichier(s) `.php` de gabarit du module vers l'endroit où
-WordPress les détecte nativement — la racine du thème pour `single-{post_type}.php` /
-`archive-{post_type}.php`, ou `page-templates/` pour un gabarit de page. Aucun filtre
-`template_include` n'est nécessaire : c'est la hiérarchie de gabarits standard de WordPress qui
-fait le travail. Voir `wp-content/themes/gws-starter/modules/README.md`.
+**Gabarits côté thème, sans copie.** Un gabarit de module reste physiquement dans
+`wp-content/themes/gws-starter/modules/<slug>/` :
+
+- `page-templates/*.php` (avec un en-tête `Template Name:`) pour un gabarit de page ;
+- `templates/single-{post_type}.php` / `archive-{post_type}.php` pour un CPT.
+
+`inc/module-templates.php` (chargé en permanence par le cœur du thème, sans coût quand aucun
+module n'en a besoin) les rend disponibles auprès de WordPress via ses filtres natifs prévus à
+cet effet — `theme_page_templates`/`page_template` pour les gabarits de page,
+`single_template`/`archive_template` pour les CPT — en ne considérant que les modules
+effectivement listés dans `config/modules.php` (interrogé via `gws_core_active_modules()`,
+la seule fonction du plugin que ce fichier appelle). Un gabarit de projet déjà présent à la
+racine du thème garde toujours la priorité. Retirer un module de la configuration fait
+disparaître ses gabarits du sélecteur de l'éditeur et de la hiérarchie de gabarits dès la
+requête suivante, sans aucune trace côté thème. Voir
+`wp-content/themes/gws-starter/modules/README.md`.
 
 Un gabarit de module qui a besoin de ses propres CSS/JS les enregistre lui-même, en tête de
 fichier, via `add_action('wp_enqueue_scripts', ...)` placé **avant** l'appel à `get_header()`

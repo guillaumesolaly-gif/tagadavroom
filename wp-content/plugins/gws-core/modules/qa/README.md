@@ -11,15 +11,14 @@ les briques génériques du starter fonctionnent avant de démarrer un vrai proj
   réécriture (`/qa-items/...`) — sert à vérifier concrètement le flush automatique des
   permaliens (voir `includes/modules.php`).
 - Une page « QA — Recette du design system (à supprimer) », créée une seule fois (insert-only),
-  qui affiche tous les composants génériques du thème une fois son gabarit copié côté thème
-  (voir `wp-content/themes/gws-starter/modules/qa/README.md`).
+  qui affiche tous les composants génériques du thème dès que le gabarit du module (resté dans
+  `wp-content/themes/gws-starter/modules/qa/`, aucune copie nécessaire) est disponible.
 
 ## Activer
 
 1. Ajouter `'qa'` à `config/modules.php`.
-2. Suivre le README du dossier miroir côté thème pour copier les gabarits nécessaires.
-3. Recharger n'importe quelle page de l'admin : le flush des permaliens se fait tout seul, sans
-   passer par Réglages > Permaliens.
+2. Recharger n'importe quelle page de l'admin : les gabarits du module deviennent disponibles et
+   le flush des permaliens se fait tout seul, sans passer par Réglages > Permaliens.
 
 ## Retirer intégralement (avant un site réel)
 
@@ -29,9 +28,9 @@ les briques génériques du starter fonctionnent avant de démarrer un vrai proj
 2. Faire de même avec la page **QA — Recette du design system** dans **Pages**.
 3. Retirer `'qa'` de `config/modules.php`.
 4. Recharger une page de l'admin : le flush des permaliens se refait automatiquement, cette fois
-   sans les règles du CPT QA.
-5. Supprimer les fichiers de gabarit copiés dans le thème (voir son README).
-6. Si ce module ne sera plus jamais utilisé sur ce projet, supprimer entièrement ce dossier
+   sans les règles du CPT QA, et les gabarits du module disparaissent du sélecteur — sans aucun
+   fichier à toucher côté thème.
+5. Si ce module ne sera plus jamais utilisé sur ce projet, supprimer entièrement ce dossier
    (`modules/qa/`) des deux côtés (plugin et thème).
 
 Aucune étape ci-dessus n'est automatique ou silencieuse : conforme au principe du starter de

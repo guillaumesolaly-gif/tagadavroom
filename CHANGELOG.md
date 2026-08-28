@@ -1,5 +1,22 @@
 # Changelog — GWS Starter
 
+## 1.2.0
+
+- Modale générique mise aux standards d'accessibilité : `role="dialog"`/`aria-modal`/
+  `aria-labelledby` attendus dans le balisage (documentés dans `assets/css/components.css`),
+  vrai focus trap limité aux éléments réellement visibles, restitution du focus au déclencheur
+  à la fermeture, et isolement du contenu d'arrière-plan (`inert`) pendant l'ouverture.
+- Les gabarits fournis par un module (page template, single, archive) restent désormais
+  physiquement dans `modules/<slug>/` : plus aucune copie manuelle de fichier vers la racine du
+  thème n'est nécessaire pour les activer, ni à supprimer pour les retirer. Nouveau fichier
+  générique `inc/module-templates.php`, qui s'appuie sur les filtres natifs de WordPress
+  (`theme_page_templates`, `page_template`, `single_template`, `archive_template`) et sur la
+  liste des modules actifs déclarée côté plugin. Le mécanisme de flush automatique des
+  permaliens n'a pas changé.
+- Modules `diagnostic`, `guides` et `qa` mis à jour pour ce nouveau fonctionnement (chemins de
+  gabarit virtuels, documentation) ; le module QA sert de preuve de fonctionnement, y compris
+  pour le focus trap de sa modale de démonstration.
+
 ## 1.1.0
 
 - Ajout du module `qa` (développement uniquement, désactivé par défaut) : recette du design

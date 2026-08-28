@@ -9,8 +9,9 @@ d'avocat — le contenu fourni (`content.sample.php`) est un exemple à remplace
 1. Ajouter `'guides'` à `config/modules.php`.
 2. Remplacer `content.sample.php` par le contenu réel du projet (autant de pages que
    nécessaire, mêmes clés : `title`, `category`, `summary`, `content`).
-3. Côté thème, s'assurer que `page-templates/guide.php` et `page-templates/guides-hub.php`
-   existent (fournis en exemple dans `wp-content/themes/gws-starter/modules/guides/`).
+3. Côté thème, aucune copie n'est nécessaire : les gabarits fournis dans
+   `wp-content/themes/gws-starter/modules/guides/page-templates/` deviennent automatiquement
+   disponibles dès que ce module est actif.
 
 ## Principe conservé : insert-only
 

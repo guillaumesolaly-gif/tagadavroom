@@ -2,17 +2,15 @@
 /**
  * Template Name: Diagnostic (module)
  *
- * Gabarit d'exemple pour le module Diagnostic. À copier vers page-templates/diagnostic.php à la
- * racine du thème pour qu'il apparaisse dans le sélecteur de gabarit de l'éditeur — voir
- * wp-content/themes/gws-starter/modules/README.md. Les questions affichées viennent du plugin
- * gws-core (modules/diagnostic/questions.sample.php) : les adapter là-bas, pas ici.
- *
- * Le style et le script restent référencés depuis ce dossier de module (pas besoin de les
- * copier) : seul ce fichier .php doit être déplacé pour activer le gabarit.
+ * Gabarit d'exemple pour le module Diagnostic. Reste physiquement dans ce dossier : le chargeur
+ * générique du thème (inc/module-templates.php) le rend disponible dans le sélecteur de
+ * gabarit de l'éditeur sans qu'aucun fichier n'ait besoin d'être copié à la racine du thème.
+ * Les questions affichées viennent du plugin gws-core
+ * (modules/diagnostic/questions.sample.php) : les adapter là-bas, pas ici.
  */
 
 add_action('wp_enqueue_scripts', function () {
-  if (!is_page_template('page-templates/diagnostic.php')) return;
+  if (!is_page_template('modules/diagnostic/page-templates/diagnostic.php')) return;
   wp_enqueue_style('gws-diagnostic', GWS_THEME_URI . '/modules/diagnostic/assets/diagnostic.css', array('gws-components'), GWS_THEME_VERSION);
   wp_enqueue_script('gws-diagnostic', GWS_THEME_URI . '/modules/diagnostic/assets/diagnostic.js', array(), GWS_THEME_VERSION, true);
 });
