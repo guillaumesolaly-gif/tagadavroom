@@ -1,0 +1,18 @@
+@import url('fonts.css');
+.editor-styles-wrapper{background:#f8f5ef;color:#171514;font-family:Montserrat,Arial,sans-serif;padding:32px!important}
+.editor-styles-wrapper .wp-block{width:min(790px,calc(100% - 48px));max-width:790px;margin-left:auto!important;margin-right:auto!important}
+.editor-styles-wrapper h2{font:600 clamp(38px,5vw,58px)/1 "Cormorant Garamond",Georgia,serif;letter-spacing:-.035em;margin:0 0 32px}
+.editor-styles-wrapper h3{font:600 32px/1.15 "Cormorant Garamond",Georgia,serif;margin:45px 0 14px}
+.editor-styles-wrapper p{font-size:15px;line-height:1.9;color:#6f6a65}
+.editor-styles-wrapper p.article-intro{font:500 23px/1.55 "Cormorant Garamond",Georgia,serif;color:#171514;margin-bottom:22px}
+.editor-styles-wrapper p.kicker{font-size:12px;line-height:1.45;text-transform:uppercase;letter-spacing:.18em;color:#a85e55;font-weight:600;margin-bottom:26px}
+.editor-styles-wrapper ul.article-list{list-style:none;padding:5px 0 12px;margin:0;border-top:1px solid #d8d2ca}
+.editor-styles-wrapper ul.article-list li{padding:12px 4px;border-bottom:1px solid #d8d2ca;font-size:14px;line-height:1.55;color:#6f6a65}
+.editor-styles-wrapper a{color:#8f4f47;text-decoration:underline;text-decoration-color:#df8d82;text-underline-offset:3px}
+.editor-styles-wrapper .wp-block-html{padding:18px;border:1px dashed #b8afa7;background:#fffdf9}
+.editor-styles-wrapper .article-divider{width:80px!important;height:3px;border:0;background:#df8d82;margin:45px auto 45px calc((100% - min(790px,calc(100% - 48px)))/2)!important}
+.editor-styles-wrapper .spa-resource-editor{display:grid;grid-template-columns:38px 1fr auto;align-items:center;gap:14px;padding:24px;border-top:1px solid #171514;border-bottom:1px solid #d8d2ca;background:#fffdf9}
+.editor-styles-wrapper .spa-resource-editor>.material-symbols-outlined,.editor-styles-wrapper .spa-resource-editor>b{color:#a85e55}
+.editor-styles-wrapper .spa-resource-editor-copy strong,.editor-styles-wrapper .spa-resource-editor-copy small{display:block}
+.editor-styles-wrapper .spa-resource-editor-copy strong{font:600 21px/1.25 "Cormorant Garamond",Georgia,serif;color:#171514}
+.editor-styles-wrapper .spa-resource-editor-copy small{font-size:11px;line-height:1.5;color:#6f6a65;margin-top:3px}

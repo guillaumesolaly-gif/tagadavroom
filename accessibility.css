@@ -1,0 +1,3 @@
+*:focus-visible{outline:3px solid #9b5148;outline-offset:4px}
+.support-band .kicker,footer .kicker{color:var(--salmon)}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}*,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

@@ -1,0 +1,12 @@
+.profile-page .legal-article h2{max-width:680px;margin:58px 0 24px;font-size:46px;line-height:1.04}
+.profile-page .legal-article h2:first-of-type{margin-top:0}
+.profile-page .legal-article h3{margin:34px 0 10px;font-size:29px;line-height:1.16}
+.profile-page .legal-article>ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 28px;border-top:1px solid var(--line);margin:8px 0 28px;padding:0;list-style:none}
+.profile-page .legal-article>ul li{position:relative;border-bottom:1px solid var(--line);color:var(--black);padding:15px 8px 15px 28px;font-size:15px;line-height:1.5}
+.profile-page .legal-article>ul li:before{content:"✓";position:absolute;left:4px;color:var(--salmon);font-weight:700}
+.profile-page .article-resource{position:relative;border-top:1px solid var(--black);border-bottom:1px solid var(--line);background:#fffdfa;margin:22px 0 48px;padding:22px 52px 22px 24px}
+.profile-page .article-resource:after{content:"→";position:absolute;right:22px;top:50%;color:var(--salmon);font-size:22px;transform:translateY(-50%)}
+.profile-page .article-resource p{margin:0;color:var(--grey);font-size:14px;line-height:1.55}
+.profile-page .article-resource strong{display:block;color:var(--black);font:600 22px/1.2 Cormorant Garamond,Georgia,serif}
+.profile-page .article-resource a{display:inline-block;margin-top:4px;color:#8f4f47;border-bottom:1px solid #d8a29a;font-size:13px}
+@media (width<=560px){.profile-page .legal-article h2{margin-top:48px;font-size:38px}.profile-page .legal-article h3{font-size:27px}.profile-page .legal-article>ul{grid-template-columns:1fr}.profile-page .article-resource{padding:20px 46px 20px 18px}.profile-page .article-resource strong{font-size:21px}}
