@@ -1,5 +1,42 @@
 # Changelog — GWS Starter
 
+## 1.4.0
+
+Passe de finition produit, sans changement d'architecture, après validation de la recette
+fonctionnelle v1.3.0 dans WordPress Local.
+
+- **Réglages de l'entité enrichis** (`gws-core`) : logo (champ média WordPress natif, ID
+  d'attachement, aperçu/remplacement/suppression dans Réglages > Entité), numéro WhatsApp,
+  LinkedIn, Facebook, Instagram, YouTube, TikTok, fiche Google Business Profile. Tous
+  facultatifs ; un champ vide ne génère jamais de balise ni d'entrée Schema vide. Nouveaux
+  helpers : `gws_core_get_logo_url()`, `gws_core_whatsapp_url()`, `gws_core_social_links()`,
+  `gws_core_google_business_url()`, `gws_core_schema_same_as()`.
+- **Nouveau type de champ `attachment_id`** dans le générateur minimal de champs
+  (`includes/fields.php`) : ID de média vérifié comme étant une image, réutilisable par un
+  futur module.
+- **Logo dans l'en-tête du thème** : affiché s'il est renseigné, sinon secours propre sur le nom
+  de l'entité en texte (comportement inchangé). Mise à jour minimale de `layout.css` pour la
+  taille du logo, sans modification du reste du gabarit.
+- **`sameAs` Schema.org** construit uniquement à partir des URLs réellement renseignées et
+  validées à l'enregistrement (`esc_url_raw()`), aussi bien dans le fallback maison
+  (`inc/schema.php`) que dans l'enrichissement du graphe Yoast (`inc/seo-yoast-bridge.php`, de
+  façon additive — jamais d'écrasement d'un `sameAs`/`logo` déjà fourni par Yoast). Au passage,
+  correction d'un défaut préexistant dans ces deux mêmes fonctions : `telephone`/`email`
+  pouvaient être émis vides quand les réglages correspondants ne l'étaient pas — désormais omis
+  s'ils sont vides, comme les nouveaux champs.
+- **Crédit de réalisation Tagada Vroom** dans le pied de page : nouveau réglage « Afficher le
+  crédit » (case à cocher, activée par défaut sur un nouveau projet) et « URL Tagada Vroom »
+  (pré-remplie à `https://tagadavroom.fr/`). Ne s'affiche que si les deux conditions sont
+  réunies ; aucun markup sinon. Ancre naturelle « Tagada Vroom », pas d'ouverture forcée dans un
+  nouvel onglet.
+- **Signature du produit** : `Author: Tagada Vroom` ajouté aux en-têtes du thème et du plugin
+  (noms techniques `gws-starter`/`gws-core` et préfixes `gws_`/`gws_core_` inchangés), ajout
+  d'un `screenshot.png` (1200×900) neutre pour le thème dans `Apparence > Thèmes`, documentation
+  mise à jour pour mentionner Tagada Vroom comme éditeur.
+- Page QA étendue (section technique, pas marketing) pour vérifier logo/fallback, réseaux
+  sociaux récupérables, `sameAs`, WhatsApp, et les deux conditions d'affichage du crédit —
+  disponible uniquement quand le module QA est actif.
+
 ## 1.3.0
 
 Corrections issues d'une revue indépendante de la v1.2.0, avant recette fonctionnelle réelle.

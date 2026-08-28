@@ -1,16 +1,22 @@
 # GWS Core
 
-Plugin compagnon du thème `gws-starter`. Détient tout ce qui doit **survivre à un changement de
-thème** : réglages de l'entité, champs SEO de secours, cadre de migration, et modules métier
-(CPT, taxonomies, champs structurés, relations, logique métier persistante).
+Édité par [Tagada Vroom](https://tagadavroom.fr/). Plugin compagnon du thème `gws-starter`.
+Détient tout ce qui doit **survivre à un changement de thème** : réglages de l'entité, champs
+SEO de secours, cadre de migration, et modules métier (CPT, taxonomies, champs structurés,
+relations, logique métier persistante).
 
 Ce plugin doit rester actif en permanence sur un site construit avec ce starter, quel que soit
 le thème utilisé — y compris si le thème est un jour remplacé.
 
 ## Contenu
 
-- `includes/settings.php` — réglages génériques de l'entité (coordonnées, réseaux), lus par le
-  thème via `gws_core_get_setting($key)`.
+- `includes/settings.php` — réglages génériques de l'entité (identité, coordonnées, logo,
+  réseaux sociaux, crédit de réalisation), lus par le thème via `gws_core_get_setting($key)` et
+  quelques helpers dédiés (`gws_core_get_logo_url()`, `gws_core_whatsapp_url()`,
+  `gws_core_social_links()`, `gws_core_schema_same_as()`...). Tous les champs au-delà du socle
+  minimal (nom, téléphone, e-mail, adresse, ville) sont facultatifs : un champ vide ne génère
+  jamais de balise ni d'entrée Schema vide côté thème. Un projet ajoute ses propres réseaux via
+  le filtre `gws_core_settings_fields` plutôt qu'en modifiant ce fichier.
 - `includes/fields.php` — générateur minimal de champs structurés (meta box depuis un schéma),
   volontairement réduit : pas un concurrent d'ACF.
 - `includes/security.php` — helpers réutilisables pour sécuriser un formulaire public (nonce,

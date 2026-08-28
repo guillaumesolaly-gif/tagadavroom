@@ -1,12 +1,19 @@
 <?php
 /**
- * En-tête visible du site. Structure générique : logo, navigation principale (menu WordPress
- * natif "primary"), bouton de menu mobile.
+ * En-tête visible du site. Structure générique : logo (ou nom de l'entité en secours si aucun
+ * logo n'est renseigné dans Réglages > Entité), navigation principale (menu WordPress natif
+ * "primary"), bouton de menu mobile.
  */
+$gws_entity_name = gws_get_setting('entity_name') ?: get_bloginfo('name');
+$gws_logo_url = gws_get_logo_url();
 ?>
 <header class="site-header">
-  <a href="<?php echo esc_url(home_url('/')); ?>" class="site-logo" aria-label="<?php echo esc_attr(get_bloginfo('name')); ?> — Accueil">
-    <?php echo esc_html(gws_get_setting('entity_name') ?: get_bloginfo('name')); ?>
+  <a href="<?php echo esc_url(home_url('/')); ?>" class="site-logo" aria-label="<?php echo esc_attr($gws_entity_name); ?> — Accueil">
+    <?php if ($gws_logo_url) : ?>
+      <img src="<?php echo esc_url($gws_logo_url); ?>" alt="<?php echo esc_attr($gws_entity_name); ?>">
+    <?php else : ?>
+      <?php echo esc_html($gws_entity_name); ?>
+    <?php endif; ?>
   </a>
   <nav id="main-navigation" aria-label="Navigation principale">
     <?php

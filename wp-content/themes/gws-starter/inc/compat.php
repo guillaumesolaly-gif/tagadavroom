@@ -15,6 +15,10 @@ function gws_phone_href() {
   return function_exists('gws_core_phone_href') ? gws_core_phone_href() : '';
 }
 
+function gws_get_logo_url($size = 'full') {
+  return function_exists('gws_core_get_logo_url') ? gws_core_get_logo_url($size) : '';
+}
+
 function gws_admin_notice_if_core_missing() {
   if (function_exists('gws_core_get_setting')) return;
   echo '<div class="notice notice-warning"><p>Le plugin compagnon <strong>GWS Core</strong> est inactif : les réglages de l’entité et les champs SEO ne sont pas disponibles. Activez-le pour un fonctionnement complet du thème.</p></div>';

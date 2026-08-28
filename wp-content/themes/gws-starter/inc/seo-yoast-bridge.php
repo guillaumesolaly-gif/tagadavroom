@@ -14,8 +14,12 @@
 if (!defined('ABSPATH') || !defined('WPSEO_VERSION')) return;
 
 function gws_enrich_yoast_organization($data) {
-  $data['telephone'] = gws_phone_href();
-  $data['email'] = gws_get_setting('public_email');
+  $phone = gws_phone_href();
+  if ($phone) $data['telephone'] = $phone;
+
+  $email = gws_get_setting('public_email');
+  if ($email) $data['email'] = $email;
+
   $address_line = gws_get_setting('address_line');
   if ($address_line) {
     $data['address'] = array(
@@ -25,6 +29,21 @@ function gws_enrich_yoast_organization($data) {
       'addressLocality' => gws_get_setting('city'),
     );
   }
+
+  // Additif uniquement : ne jamais écraser un logo (souvent un ImageObject plus riche) ou des
+  // sameAs déjà renseignés par les propres réglages de Yoast.
+  if (empty($data['logo']) && function_exists('gws_core_get_logo_url')) {
+    $logo = gws_core_get_logo_url();
+    if ($logo) $data['logo'] = $logo;
+  }
+  if (function_exists('gws_core_schema_same_as')) {
+    $same_as = gws_core_schema_same_as();
+    if ($same_as) {
+      $existing = isset($data['sameAs']) && is_array($data['sameAs']) ? $data['sameAs'] : array();
+      $data['sameAs'] = array_values(array_unique(array_merge($existing, $same_as)));
+    }
+  }
+
   return $data;
 }
 add_filter('wpseo_schema_organization', 'gws_enrich_yoast_organization', 11);

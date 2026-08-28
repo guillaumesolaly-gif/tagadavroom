@@ -18,4 +18,5 @@
     ?>
     <span>© <?php echo esc_html(wp_date('Y')); ?> <?php echo esc_html(gws_get_setting('entity_name') ?: get_bloginfo('name')); ?></span>
   </nav>
+  <?php gws_render_credit(); ?>
 </footer>

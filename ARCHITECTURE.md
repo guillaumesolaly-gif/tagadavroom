@@ -39,10 +39,23 @@ de fonction du thème.
 
 `gws-core` fournit un générateur minimal de champs (`includes/fields.php`) : un schéma
 déclaratif PHP produit une meta box + une sauvegarde sécurisée, sans dépendance à ACF. Il gère
-des champs simples (texte, nombre, e-mail, url, select, case à cocher, zone de texte). **Ce
-n'est volontairement pas un concurrent d'ACF** : pour un besoin complexe (repeater riche,
-galerie, relation many-to-many), la décision (code dédié ou extension éprouvée) se prend projet
-par projet — ne pas étendre ce générateur pour l'y forcer.
+des champs simples (texte, nombre, e-mail, url, select, case à cocher, zone de texte,
+`attachment_id` pour référencer un média de la médiathèque). **Ce n'est volontairement pas un
+concurrent d'ACF** : pour un besoin complexe (repeater riche, galerie, relation many-to-many),
+la décision (code dédié ou extension éprouvée) se prend projet par projet — ne pas étendre ce
+générateur pour l'y forcer.
+
+`attachment_id` ne couvre que la sanitization (vérifie que l'ID pointe vers une vraie image) :
+un sélecteur avec aperçu (comme celui du logo de l'entité, `includes/admin/settings-page.php` +
+`assets/admin-logo-picker.js`) reste un rendu dédié à écrire au cas par cas — ce générateur ne
+fournit pas de widget média générique.
+
+**Réglages de l'entité — discipline « rien de vide ».** Au-delà du socle minimal (nom,
+téléphone, e-mail, adresse, ville), tous les champs (logo, WhatsApp, réseaux sociaux, fiche
+Google Business Profile, crédit de réalisation) sont facultatifs. Toute fonction qui consomme
+ces réglages (rendu du thème, Schema.org maison, enrichissement Yoast) doit omettre entièrement
+la clé correspondante si la donnée est vide — jamais une balise ou une entrée de tableau vide.
+Voir `gws_schema_organization_node()` (thème, `inc/schema.php`) pour le patron à suivre.
 
 ## 4. Mécanisme des modules métier
 

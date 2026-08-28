@@ -11,11 +11,16 @@
  * Schéma attendu, un tableau associatif clé => définition :
  *   'clé_du_champ' => [
  *     'label'       => 'Libellé affiché',
- *     'type'        => 'text|textarea|url|email|number|select|checkbox',
+ *     'type'        => 'text|textarea|url|email|number|select|checkbox|attachment_id',
  *     'description' => 'Aide optionnelle affichée sous le champ',
  *     'options'     => ['valeur' => 'Libellé', ...], // uniquement pour 'select'
  *     'default'     => '', // valeur si aucune meta enregistrée
  *   ],
+ *
+ * 'attachment_id' ne couvre que la sanitization (un ID d'image de la médiathèque, vérifié) : son
+ * rendu (sélecteur avec aperçu) n'est pas fourni par gws_core_render_meta_fields() — c'est une
+ * UI plus riche que ce générateur minimal ne prend pas en charge pour l'instant. Voir
+ * includes/admin/settings-page.php pour un exemple de rendu dédié (logo de l'entité).
  *
  * La meta est stockée sous le nom exact de la clé (pas de préfixe automatique) : au module
  * appelant de préfixer ses propres clés pour éviter toute collision avec un autre module.
@@ -33,6 +38,9 @@ function gws_core_field_sanitize($type, $raw_value) {
       return is_numeric($raw_value) ? (float) $raw_value : '';
     case 'checkbox':
       return $raw_value ? '1' : '';
+    case 'attachment_id':
+      $attachment_id = absint($raw_value);
+      return ($attachment_id && wp_attachment_is_image($attachment_id)) ? $attachment_id : 0;
     case 'textarea':
       return sanitize_textarea_field(wp_unslash($raw_value));
     case 'select':

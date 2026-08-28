@@ -12,6 +12,29 @@ function gws_schema_entity_type() {
   return apply_filters('gws_schema_entity_type', 'Organization');
 }
 
+/**
+ * Nœud Organization/LocalBusiness... du fallback maison. Ne fixe une clé que si la donnée
+ * correspondante est réellement renseignée — jamais de balise Schema vide (telephone: "",
+ * sameAs: [], etc.).
+ */
+function gws_schema_organization_node($business_id, $site_url, $entity_name) {
+  $node = array('@type' => gws_schema_entity_type(), '@id' => $business_id, 'name' => $entity_name, 'url' => $site_url);
+
+  $phone = gws_phone_href();
+  if ($phone) $node['telephone'] = $phone;
+
+  $email = gws_get_setting('public_email');
+  if ($email) $node['email'] = $email;
+
+  $logo = function_exists('gws_core_get_logo_url') ? gws_core_get_logo_url() : '';
+  if ($logo) $node['logo'] = $logo;
+
+  $same_as = function_exists('gws_core_schema_same_as') ? gws_core_schema_same_as() : array();
+  if ($same_as) $node['sameAs'] = $same_as;
+
+  return $node;
+}
+
 function gws_site_structured_data() {
   if (gws_has_seo_plugin() || !is_page()) return;
   $page_id = get_queried_object_id();
@@ -23,7 +46,7 @@ function gws_site_structured_data() {
 
   $graph = array(
     array('@type' => 'WebSite', '@id' => $website_id, 'url' => $site_url, 'name' => $entity_name, 'publisher' => array('@id' => $business_id)),
-    array('@type' => gws_schema_entity_type(), '@id' => $business_id, 'name' => $entity_name, 'url' => $site_url, 'telephone' => gws_phone_href(), 'email' => gws_get_setting('public_email')),
+    gws_schema_organization_node($business_id, $site_url, $entity_name),
     array('@type' => 'WebPage', '@id' => $webpage_id, 'url' => get_permalink($page_id), 'name' => get_the_title($page_id), 'isPartOf' => array('@id' => $website_id)),
   );
 

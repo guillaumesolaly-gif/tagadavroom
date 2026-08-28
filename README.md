@@ -5,6 +5,10 @@ secteur (avocat, élevage, artisan, PME...). Ce n'est pas un thème « universel
 page builder : c'est un socle léger, sécurisé et documenté, pensé pour être repris par n'importe
 quel développeur WordPress.
 
+Développé et maintenu par [Tagada Vroom](https://tagadavroom.fr/). Les identifiants techniques
+(`gws-core`, `gws-starter`, préfixes `gws_`/`gws_core_`) restent neutres et stables d'un projet
+à l'autre — Tagada Vroom est l'éditeur du produit, pas le namespace technique.
+
 ## Composition
 
 Ce dépôt contient deux composants installés côte à côte dans un WordPress standard :

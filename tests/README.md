@@ -10,10 +10,11 @@ Ce dossier n'est pas inclus dans `gws-core.zip` ni `gws-starter.zip`.
 
 ```
 php tests/starter-logic-test.php
+php tests/settings-helpers-logic-test.php
 ```
 
-(`tests/qa-toggle-logic-test.php` est appelé automatiquement par le script ci-dessus, dans un
-processus PHP séparé — il peut aussi être lancé seul.)
+(`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
+un processus PHP séparé — il peut aussi être lancé seul.)
 
 ## Ce qui est couvert
 
@@ -22,6 +23,10 @@ processus PHP séparé — il peut aussi être lancé seul.)
   et création/suppression réelle d'un fichier de test.
 - Bascule de développement du module QA (`includes/modules.php`) : ignorée en production,
   effective en local/développement, jamais de doublon avec `config/modules.php`.
+- Réglages enrichis en v1.4.0 (`settings-helpers-logic-test.php`) : valeurs par défaut, champ
+  `attachment_id` (accepte uniquement une vraie image), logo/WhatsApp/réseaux sociaux/`sameAs`
+  absents tant qu'ils ne sont pas renseignés (jamais d'entrée vide), crédit Tagada Vroom
+  activé par défaut et désactivable, URL du crédit personnalisable.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

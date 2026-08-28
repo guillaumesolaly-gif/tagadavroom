@@ -118,6 +118,72 @@ get_header();
       </p>
     </section>
 
+    <section>
+      <h2>Réglages génériques de l’entité</h2>
+      <p>Vérifie que les réglages ajoutés en v1.4.0 (Réglages &gt; Entité) sont bien
+        récupérables via les helpers de <code>gws-core</code>, et qu’aucune valeur vide n’est
+        jamais produite en façade ou dans le Schema quand un champ est laissé vide.</p>
+
+      <h3>Logo</h3>
+      <p>
+        <?php if (gws_get_logo_url()) : ?>
+          Logo renseigné — il doit s’afficher dans l’en-tête de cette page (tout en haut), à la
+          place du nom de l’entité en texte.
+        <?php else : ?>
+          Aucun logo renseigné — l’en-tête de cette page doit afficher le nom de l’entité en
+          texte (secours normal, pas une erreur).
+        <?php endif; ?>
+      </p>
+
+      <h3>Contact</h3>
+      <ul>
+        <li>Téléphone : <?php echo gws_get_setting('phone_display') ? esc_html(gws_get_setting('phone_display')) : '(non renseigné)'; ?></li>
+        <li>E-mail : <?php echo gws_get_setting('public_email') ? esc_html(gws_get_setting('public_email')) : '(non renseigné)'; ?></li>
+        <li>WhatsApp (<code>gws_core_whatsapp_url()</code>) :
+          <?php $gws_qa_wa = function_exists('gws_core_whatsapp_url') ? gws_core_whatsapp_url() : ''; ?>
+          <?php echo $gws_qa_wa ? esc_html($gws_qa_wa) : '(non renseigné)'; ?>
+        </li>
+      </ul>
+
+      <h3>Réseaux sociaux (<code>gws_core_social_links()</code>)</h3>
+      <?php $gws_qa_social = function_exists('gws_core_social_links') ? gws_core_social_links() : array(); ?>
+      <?php if ($gws_qa_social) : ?>
+        <ul>
+          <?php foreach ($gws_qa_social as $gws_qa_network => $gws_qa_url) : ?>
+            <li><?php echo esc_html(ucfirst($gws_qa_network)); ?> : <a href="<?php echo esc_url($gws_qa_url); ?>"><?php echo esc_html($gws_qa_url); ?></a></li>
+          <?php endforeach; ?>
+        </ul>
+      <?php else : ?>
+        <p>Aucun réseau social renseigné pour l’instant.</p>
+      <?php endif; ?>
+
+      <h3>Google Business Profile (<code>gws_core_google_business_url()</code>)</h3>
+      <?php $gws_qa_gbp = function_exists('gws_core_google_business_url') ? gws_core_google_business_url() : ''; ?>
+      <p><?php echo $gws_qa_gbp ? '<a href="' . esc_url($gws_qa_gbp) . '">' . esc_html($gws_qa_gbp) . '</a>' : '(non renseigné)'; ?></p>
+
+      <h3><code>sameAs</code> Schema.org (<code>gws_core_schema_same_as()</code>)</h3>
+      <?php $gws_qa_same_as = function_exists('gws_core_schema_same_as') ? gws_core_schema_same_as() : array(); ?>
+      <?php if ($gws_qa_same_as) : ?>
+        <ul><?php foreach ($gws_qa_same_as as $gws_qa_same_as_url) : ?><li><?php echo esc_html($gws_qa_same_as_url); ?></li><?php endforeach; ?></ul>
+      <?php else : ?>
+        <p>Vide — aucune URL sociale renseignée pour l’instant.</p>
+      <?php endif; ?>
+      <p><small>Vérification réelle : afficher le code source de cette page et contrôler le
+        bloc <code>application/ld+json</code> — les clés <code>telephone</code>,
+        <code>email</code>, <code>logo</code> et <code>sameAs</code> ne doivent jamais y
+        apparaître vides, y compris quand les champs ci-dessus sont vides (elles doivent alors
+        être totalement absentes du JSON, pas présentes avec une valeur vide).</small></p>
+
+      <h3>Crédit Tagada Vroom</h3>
+      <p>
+        Option activée (<code>gws_core_credit_enabled()</code>) :
+        <?php echo (function_exists('gws_core_credit_enabled') && gws_core_credit_enabled()) ? 'Oui' : 'Non'; ?><br>
+        URL renseignée : <?php echo gws_get_setting('credit_url') ? esc_html(gws_get_setting('credit_url')) : '(vide)'; ?><br>
+        Le crédit ne doit apparaître dans le pied de page de cette page (tout en bas) que si les
+        deux conditions ci-dessus sont vraies simultanément.
+      </p>
+    </section>
+
     <?php while (have_posts()) : the_post(); ?>
       <?php the_content(); ?>
     <?php endwhile; ?>

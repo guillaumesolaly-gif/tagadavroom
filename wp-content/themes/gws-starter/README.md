@@ -1,13 +1,15 @@
 # GWS Starter (thème)
 
-Thème de présentation du starter GWS : templates WordPress, design system, accessibilité,
-assets. Aucune donnée persistante n'est stockée par ce thème — voir le plugin compagnon
-`gws-core` (`wp-content/plugins/gws-core/`), qui doit rester actif en permanence.
+Édité par [Tagada Vroom](https://tagadavroom.fr/). Thème de présentation du starter GWS :
+templates WordPress, design system, accessibilité, assets. Aucune donnée persistante n'est
+stockée par ce thème — voir le plugin compagnon `gws-core`
+(`wp-content/plugins/gws-core/`), qui doit rester actif en permanence.
 
 ## Démarrer un nouveau projet
 
 1. Activer le plugin `gws-core` puis ce thème.
-2. Renseigner Réglages > Entité (coordonnées, réseaux sociaux).
+2. Renseigner Réglages > Entité (coordonnées, logo, réseaux sociaux — tous les champs au-delà du
+   socle minimal nom/téléphone/e-mail/adresse/ville sont facultatifs).
 3. Personnaliser `assets/css/tokens.css` avec la charte du projet (couleurs, typographies,
    espacements) — c'est le seul fichier CSS à modifier pour l'identité visuelle ; ne jamais
    coder une couleur en dur ailleurs.
@@ -15,6 +17,17 @@ assets. Aucune donnée persistante n'est stockée par ce thème — voir le plug
 5. Pour un contenu métier répétable (fiches produit, réalisations, biens...), dupliquer
    `wp-content/plugins/gws-core/modules/_boilerplate-cpt/` plutôt que de créer des pages
    éditoriales — voir son README.
+
+## Ce que le cœur du thème affiche réellement par défaut
+
+Volontairement sobre : l'en-tête affiche le logo (ou le nom de l'entité en texte s'il n'y en a
+pas) et la navigation ; le pied de page affiche le nom de l'entité, la navigation de pied de
+page et, si activé, le crédit Tagada Vroom. **Le téléphone, l'e-mail, l'adresse, WhatsApp, les
+réseaux sociaux et la fiche Google Business Profile ne s'affichent nulle part automatiquement**
+— ce sont des réglages disponibles via des helpers (`gws_get_setting()`,
+`gws_core_whatsapp_url()`, `gws_core_social_links()`...), à un projet de décider où et comment
+les afficher (voir `gws_render_contact_card()` dans `inc/template-tags.php` pour un exemple de
+composant prêt à l'emploi, non appelé par défaut).
 
 ## Modules optionnels fournis en exemple
 
@@ -34,7 +47,10 @@ le flush tout seul (voir `ARCHITECTURE.md`, §5).
 
 ## Checklist avant mise en production
 
-- [ ] Réglages de l'entité renseignés (Réglages > Entité).
+- [ ] Réglages de l'entité renseignés (Réglages > Entité), y compris le logo si le projet en a
+      un.
+- [ ] Crédit Tagada Vroom : décider avec le client s'il reste affiché (activé par défaut) ou
+      non, et vérifier que l'URL renseignée est correcte si affiché.
 - [ ] Envoi d'e-mail testé depuis l'environnement réel (`wp_mail()` ne délivre pas forcément en
       local) ; configurer un SMTP authentifié si l'hébergeur ne délivre pas correctement.
 - [ ] `tokens.css` reflète bien la charte du projet, pas les valeurs neutres par défaut.
