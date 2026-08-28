@@ -123,13 +123,36 @@ function gws_core_google_business_url() {
 }
 
 /**
- * Liste dédupliquée des URLs à publier dans un `sameAs` Schema.org (réseaux structurés +
- * fiche Google Business Profile). Ne contient jamais de chaîne vide.
+ * Analyse le champ libre 'social_links' (une URL par ligne, extension générique pour un réseau
+ * non listé ci-dessus) : lignes vides ignorées, chaque URL restante sanitizée puis validée —
+ * jamais de ligne vide ou invalide dans le résultat. Volontairement absent de
+ * gws_core_social_links() : les réseaux nommés y restent seuls, pour rester facilement
+ * exploitables individuellement en front (icône dédiée, libellé...) ; ce champ libre n'alimente
+ * que le Schema, via gws_core_schema_same_as() ci-dessous.
+ */
+function gws_core_extra_social_urls() {
+  $raw = gws_core_get_setting('social_links');
+  if (!$raw) return array();
+  $urls = array();
+  foreach (preg_split('/[\r\n]+/', $raw) as $line) {
+    $line = trim($line);
+    if ($line === '') continue;
+    $url = esc_url_raw($line);
+    if ($url && wp_http_validate_url($url)) $urls[] = $url;
+  }
+  return array_values(array_unique($urls));
+}
+
+/**
+ * Liste dédupliquée des URLs à publier dans un `sameAs` Schema.org : réseaux structurés, fiche
+ * Google Business Profile, et le champ d'extension libre 'social_links'. Ne contient jamais de
+ * chaîne vide ou invalide.
  */
 function gws_core_schema_same_as() {
   $urls = array_values(gws_core_social_links());
   $gbp = gws_core_google_business_url();
   if ($gbp) $urls[] = $gbp;
+  $urls = array_merge($urls, gws_core_extra_social_urls());
   return array_values(array_unique(array_filter($urls)));
 }
 

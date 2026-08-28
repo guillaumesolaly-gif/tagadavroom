@@ -25,6 +25,10 @@ function sanitize_text_field($value) { return trim(strip_tags((string) $value));
 function sanitize_textarea_field($value) { return trim((string) $value); }
 function sanitize_email($value) { $value = trim((string) $value); return strpos($value, '@') !== false ? $value : ''; }
 function esc_url_raw($value) { $value = trim((string) $value); return $value === '' ? '' : $value; }
+function wp_http_validate_url($url) {
+  if (!is_string($url) || $url === '') return false;
+  return preg_match('~^https?://[^\s/$.?#][^\s]*$~i', $url) ? $url : false;
+}
 function absint($value) { return abs((int) $value); }
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
 
@@ -115,6 +119,40 @@ gws_test_assert(
   gws_core_schema_same_as() === array('https://linkedin.com/company/test', 'https://maps.google.com/test'),
   'sameAs : combine réseaux structurés et fiche Google Business Profile, uniquement les valeurs renseignées'
 );
+
+// =====================================================================================
+// sameAs : le champ libre 'social_links' (une URL par ligne) alimente aussi sameAs — lignes
+// vides supprimées, URLs sanitizées/validées, dédupliquées avec les réseaux structurés et GBP,
+// jamais reprises par gws_core_social_links() (réseaux nommés uniquement, pour le front).
+// =====================================================================================
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array(
+  'social_links' => "https://mastodon.social/@test\n\n  \nhttps://bsky.app/profile/test\nceci n'est pas une URL\nhttps://mastodon.social/@test",
+));
+gws_test_assert(
+  gws_core_extra_social_urls() === array('https://mastodon.social/@test', 'https://bsky.app/profile/test'),
+  'gws_core_extra_social_urls() : lignes vides et ligne invalide ignorées, doublon interne à social_links supprimé'
+);
+gws_test_assert(
+  gws_core_social_links() === array(),
+  'social_links ne fuite jamais dans gws_core_social_links() (réseaux nommés uniquement)'
+);
+gws_test_assert(
+  gws_core_schema_same_as() === array('https://mastodon.social/@test', 'https://bsky.app/profile/test'),
+  'sameAs : reprend les URLs valides de social_links quand aucun réseau structuré n’est renseigné'
+);
+
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array(
+  'linkedin_url' => 'https://linkedin.com/company/test',
+  'google_business_url' => 'https://maps.google.com/test',
+  'social_links' => "https://linkedin.com/company/test\nhttps://mastodon.social/@test",
+));
+gws_test_assert(
+  gws_core_schema_same_as() === array('https://linkedin.com/company/test', 'https://maps.google.com/test', 'https://mastodon.social/@test'),
+  'sameAs : fusion réseaux structurés + GBP + social_links, doublon entre LinkedIn structuré et social_links dédupliqué'
+);
+
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('social_links' => ''));
+gws_test_assert(gws_core_extra_social_urls() === array(), 'social_links vide : aucune URL, tableau vide');
 
 // =====================================================================================
 // Crédit Tagada Vroom : désactivable, et son URL suit le même sanitize que les autres URLs

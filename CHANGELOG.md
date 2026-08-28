@@ -1,5 +1,17 @@
 # Changelog — GWS Starter
 
+## 1.4.1
+
+Le champ libre « Autres réseaux sociaux » (`social_links`, une URL par ligne) alimente
+désormais réellement `gws_core_schema_same_as()` : lignes vides ignorées, chaque URL restante
+sanitizée (`esc_url_raw()`) puis validée (`wp_http_validate_url()`), dédupliquée en interne et
+avec les réseaux structurés/la fiche Google Business Profile — jamais de valeur vide ou
+invalide dans le `sameAs` produit. Volontairement absent de `gws_core_social_links()` : les
+réseaux nommés y restent seuls, pour rester facilement exploitables individuellement en front ;
+`social_links` reste une extension générique réservée au Schema. 4 assertions ajoutées à
+`tests/settings-helpers-logic-test.php` (23/23 au total pour ce fichier). Aucun autre
+changement.
+
 ## 1.4.0
 
 Passe de finition produit, sans changement d'architecture, après validation de la recette
