@@ -12,6 +12,7 @@ Ce dossier n'est pas inclus dans `gws-core.zip` ni `gws-starter.zip`.
 php tests/starter-logic-test.php
 php tests/settings-helpers-logic-test.php
 php tests/schema-homepage-logic-test.php
+php tests/gws-equestrian-foundations-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -37,6 +38,13 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   toujours présents sur l'accueil qu'il s'agisse d'une page statique ou de l'index natif des
   articles, sans fabriquer de WebPage/Breadcrumb pour ce second cas ; comportement historique
   inchangé sur les autres pages ; aucune sortie si un plugin SEO est actif.
+- Module métier `gws-equestrian`, Étape 1 — Fondations (`gws-equestrian-foundations-test.php`) :
+  post types et taxonomie réellement enregistrés, respect des limites WordPress de longueur de
+  slug (20/32 caractères), préfixe `gwseq_` systématique (slugs et noms de fonctions, absence de
+  toute réutilisation de `gws_`/`gws_core_`), absence de collision avec les post types des autres
+  modules du projet, Groupe tarifaire jamais public (pas d'archive, pas de rewrite, exclu de la
+  recherche), Prestation/Cheval publics avec archive, taxonomie de catégorie de cheval non
+  hiérarchique attachée au bon post type.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

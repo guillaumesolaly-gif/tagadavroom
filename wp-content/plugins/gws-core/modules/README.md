@@ -33,6 +33,7 @@ aucun fichier du cœur n'a besoin d'être modifié.
 | `diagnostic` | `gws_diag_` | — (aucun CPT, formulaire → e-mail uniquement) |
 | `guides` | `gws_guides_` | `page` (gabarit dédié) |
 | `qa` (développement uniquement, jamais en production) | `gws_qa_` | `gws_qa_item` |
+| `gws-equestrian` (Étape 1 — Fondations, voir son README) | `gwseq_` | `gwseq_prestation`, `gwseq_groupe`, `gwseq_cheval` |
 
 Tenir ce tableau à jour à chaque nouveau module évite toute collision de préfixe/meta entre
 deux modules d'un même projet.
