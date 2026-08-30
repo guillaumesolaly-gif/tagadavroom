@@ -5,6 +5,84 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.4.0 — Étape 4 : Cheval — socle métier, catégories, commercialisation, Global Horse ID
+
+Construction du socle métier réel de la fiche cheval, en attente de sa propre recette runtime.
+
+- **Identité** (meta box « Identité ») : Sexe (Mâle/Femelle/Hongre, valeurs techniques stables
+  `male`/`female`/`gelding`), Année de naissance (entier 4 chiffres, bornes 1900 → année courante
+  + 1 documentées), Robe et Race/Stud-book (listes pratiques non exhaustives + « Autre » avec
+  précision libre, valeurs techniques stables), Taille en centimètres (entier, jamais la notation
+  « 1m68 »), Éleveur et Propriétaire (texte simple), UELN et numéro SIRE (texte simple, aucune
+  validation de format ni appel à une API distante — voir « Limitations connues » ci-dessous).
+  Âge calculé à la volée depuis l'année de naissance (`gwseq_cheval_age_from_birth_year()`),
+  jamais stocké — approximatif (calendaire), jamais au jour près.
+- **Aucune meta parallèle au natif** : Nom = `post_title`, Photo principale = image à la une
+  native (labels ré-étiquetés « Photo principale »/« Définir la photo principale »/« Supprimer la
+  photo principale »/« Utiliser comme photo principale », aucun champ dédié créé), Ordre =
+  `menu_order` natif (support `page-attributes` ajouté, meta box renommée comme pour
+  Prestation/Groupe). Support `editor` retiré : aucun contenu éditorial n'est développé à cette
+  étape (blocs génériques prévus à l'Étape 6).
+- **Catégories de chevaux enfin utilisables** : interface à cases à cocher native
+  (`meta_box_cb => 'post_categories_meta_box'`, le même rendu que la boîte « Catégories » des
+  articles, aucun code de rendu personnalisé), un cheval peut appartenir à plusieurs catégories.
+  Affordance de création rapide de catégorie masquée directement sur la fiche cheval (règle CSS
+  ciblant l'identifiant natif du bloc, chargée uniquement sur cet écran) pour éviter les doublons
+  quasi identiques — la création/gestion des catégories reste possible depuis
+  Chevaux → Catégories.
+- **Commercialisation** (meta box dédiée), structurée et indépendante des catégories : Statut
+  commercial (`not_offered`/`for_sale`/`reserved`/`sold`), Mode de prix (Prix fixe / Fourchette /
+  Sur demande), montant(s) correspondants, Libellé affiché personnalisable pour le mode « Sur
+  demande » (même mécanisme « jamais initialisé » vs « volontairement vidé » que la Prestation,
+  via `metadata_exists()`). `0` reste une vraie valeur de prix, jamais confondue avec une absence
+  de prix. Devise globale de l'Étape 3 réutilisée telle quelle (`gwseq_settings['currency']`),
+  aucun second réglage propre au cheval. Le prix reste toujours visible/enregistré quel que soit
+  le statut choisi — un texte d'aide explicite rappelle qu'un futur rendu public respectera le
+  statut, sans qu'aucune donnée ne soit jamais effacée par un changement de statut.
+- **Global Horse ID** (`_gwseq_global_id`) : UUID v4 (`wp_generate_uuid4()`) assigné une seule
+  fois, au premier enregistrement réel de la fiche (jamais sur un auto-draft, une autosave ou une
+  révision), jamais régénéré ensuite — indépendant du nom, du slug, de l'URL, du domaine et du
+  thème. Jamais exposé en REST (`show_in_rest => false`), jamais saisissable depuis un formulaire,
+  jamais réutilisé comme secret ou jeton d'accès. Boîte de vérification en lecture seule
+  disponible uniquement en environnement local/développement
+  (`wp_get_environment_type()` — jamais enregistrée du tout hors de ces environnements, pas
+  seulement masquée visuellement) pour permettre sa vérification pendant la recette sans jamais
+  l'exposer à un utilisateur de production.
+- **Éditeur par blocs désactivé pour ce post type** (`includes/cheval-editor.php`), avec un
+  arbitrage propre à Cheval et non un copier-coller de celui de Prestation : la fiche est
+  désormais 100 % structurée (plus de support `editor`), sans mécanisme de préremplissage par
+  modèle à faire fonctionner — l'éditeur classique offre simplement un écran de meta boxes plus
+  lisible et prévisible pour une fiche métier sans contenu éditorial à cette étape.
+- **Colonnes d'administration** : Catégories, Statut commercial, Prix (résumé texte réutilisable),
+  Ordre.
+- **UELN / SIRE — point analysé, retenu avec une limitation documentée** : les deux champs sont
+  de simples identifiants texte, sans validation de format, sans appel SIRE/IFCE, sans
+  déduplication. Point d'ambiguïté explicitement signalé : SIRE est un identifiant propre au
+  système français, UELN un identifiant international — le module n'a aujourd'hui aucun réglage
+  de pays/locale distinguant les deux, ce qui est cohérent avec un produit actuellement pensé pour
+  des professionnels francophones mais pourrait devenir ambigu si le module s'internationalise un
+  jour. Aucune décision d'architecture n'a été prise qui empêcherait de clarifier ce point plus
+  tard (les deux champs restent de simples chaînes indépendantes l'une de l'autre).
+- **HT/TTC — non traité pour le prix du cheval (limitation assumée)** : contrairement à la
+  tarification des Prestations, aucune mention HT/TTC n'est appliquée au prix commercial d'un
+  cheval — construire un moteur fiscal spécifique n'a pas semblé justifié pour ce socle ; ce point
+  reste ouvert si un besoin réel apparaît en recette ou plus tard.
+- Fichiers créés : `includes/cheval-fields.php`, `includes/cheval-editor.php`,
+  `includes/cheval-categories.php`, `assets/cheval-admin.js`.
+- Fichiers modifiés : `includes/post-types.php` (Cheval : support `editor` retiré,
+  `page-attributes` ajouté, labels Photo principale), `includes/taxonomies.php` (`meta_box_cb`),
+  `includes/admin-ui.php` (Cheval ajouté au tri par défaut et au renommage de la meta box Ordre),
+  `module.php` (chargement des trois nouveaux fichiers, version) ;
+  `includes/settings.php` (relocalisation de `gwseq_format_price_number()`, helper de formatage
+  désormais partagé entre Prestation et Cheval plutôt que propre à la Prestation — aucun
+  changement de comportement).
+- 125 nouvelles assertions dans le nouveau fichier `tests/gws-equestrian-cheval-logic-test.php`
+  (identité, catégories, commercialisation, Global Horse ID — génération réelle, idempotence,
+  bornes de sécurité —, meta boxes réellement rendues, arbitrage Gutenberg, colonnes
+  d'administration, sécurité de la sauvegarde via le chemin réel `$_POST`, internationalisation).
+  Suite existante (268 assertions réparties sur les sept autres fichiers de `tests/`) toujours
+  100 % passante.
+
 ## 0.3.3 — Étape 3 : corrections post-recette runtime (presets, UX, i18n)
 
 Trois corrections suite au CR de recette runtime de GWS Core 1.6.2 / GWS Equestrian 0.3.2 :

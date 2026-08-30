@@ -16,6 +16,7 @@ php tests/gws-equestrian-foundations-test.php
 php tests/gws-equestrian-repeater-logic-test.php
 php tests/gws-equestrian-prestations-logic-test.php
 php tests/gws-equestrian-prestation-editor-test.php
+php tests/gws-equestrian-cheval-logic-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -91,6 +92,23 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   le cas GBP signalé en recette —, contenu utilisateur jamais passé dans une fonction de
   traduction).
 
+- Socle métier Cheval de `gws-equestrian`, Étape 4 (`gws-equestrian-cheval-logic-test.php`) :
+  identité (sexe/robe/race avec valeurs techniques stables et « Autre » à précision libre, année de
+  naissance et taille avec bornes raisonnables documentées, âge calculé jamais stocké, éleveur/
+  propriétaire/UELN/SIRE en texte simple), absence de toute meta parallèle à `post_title`/l'image à
+  la une, catégories à cases à cocher natives (`meta_box_cb` réutilisant `post_categories_meta_box`)
+  avec masquage réel de l'affordance de création rapide sur la fiche, commercialisation (statut
+  indépendant des catégories, prix fixe/fourchette/sur demande, valeur `0` jamais confondue avec une
+  absence de prix, libellé « sur demande » jamais initialisé/personnalisé/volontairement vidé,
+  devise globale de l'Étape 3 réutilisée sans réglage propre au cheval, aucune mention HT/TTC),
+  Global Horse ID (`_gwseq_global_id`, UUID v4 réellement généré au premier enregistrement réel,
+  jamais sur un auto-draft/une révision/un autre post type, jamais régénéré, jamais accessible
+  depuis le formulaire ni exposé en REST, boîte de vérification strictement réservée aux
+  environnements local/développement), désactivation réelle de l'éditeur par blocs pour ce post
+  type (comportement du filtre, pas seulement sa présence) avec un arbitrage distinct de celui de
+  la Prestation, colonnes d'administration (Catégories/Statut commercial/Prix/Ordre), portée des
+  assets, et internationalisation (text domain cohérent, contenu utilisateur jamais traduit).
+
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
 - Rendu HTML réel des gabarits, comportement de l'éditeur (sélecteur de gabarit de page).
@@ -101,3 +119,9 @@ un processus PHP séparé — il peut aussi être lancé seul.)
 - Flush effectif des permaliens et fonctionnement réel de l'archive `/qa-items/` dans WordPress.
 - Rendu réel des pictogrammes sociaux (composant `template-parts/content/social-links.php`) :
   `currentColor`, focus clavier, nom accessible de chaque lien, ouverture en nouvel onglet.
+- Rendu navigateur réel de l'écran d'édition d'une fiche cheval : apparence effective de la liste
+  de cases à cocher native de `post_categories_meta_box()` (widget WordPress non réimplémenté ici),
+  bascule visuelle des champs conditionnels par `assets/cheval-admin.js` (robe/race « Autre », mode
+  de prix), ordre visuel réel des meta boxes (Identité/Commercialisation/Catégories/Ordre/Image à la
+  une), et disparition effective de l'affordance de création rapide de catégorie une fois le CSS
+  chargé dans une vraie page d'administration.

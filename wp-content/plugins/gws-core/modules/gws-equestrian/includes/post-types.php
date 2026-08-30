@@ -15,6 +15,13 @@
  * 'excerpt' (Groupe uniquement) pour sa description courte — deux champs natifs réutilisés tels
  * quels plutôt que des meta dédiées. Voir includes/admin-ui.php et includes/groupe-admin.php pour
  * le renommage de leurs libellés en vocabulaire métier.
+ *
+ * Étape 4 : Cheval reçoit à son tour 'page-attributes' (ordre global — voir includes/admin-ui.php)
+ * et perd le support 'editor' — aucun contenu éditorial de type article n'est développé à cette
+ * étape (§22 de la demande ; les blocs éditoriaux appartiennent à l'Étape 6), post_content resterait
+ * une source de vérité fantôme sans jamais être exploitée. Les libellés de l'image à la une sont
+ * également adaptés en "Photo principale" (§3/§5) : Featured Image reste l'unique source de vérité
+ * pour la photo principale, aucune meta parallèle n'est créée.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -67,12 +74,16 @@ function gwseq_register_post_types() {
       'edit_item' => __('Modifier la fiche cheval', 'gws-core'),
       'all_items' => __('Chevaux', 'gws-core'),
       'not_found' => __('Aucun cheval trouvé', 'gws-core'),
+      'featured_image' => __('Photo principale', 'gws-core'),
+      'set_featured_image' => __('Définir la photo principale', 'gws-core'),
+      'remove_featured_image' => __('Supprimer la photo principale', 'gws-core'),
+      'use_featured_image' => __('Utiliser comme photo principale', 'gws-core'),
     ),
     'public' => true,
     'has_archive' => true,
     'show_in_rest' => true,
     'menu_icon' => 'dashicons-pets',
-    'supports' => array('title', 'editor', 'thumbnail'),
+    'supports' => array('title', 'thumbnail', 'page-attributes'),
     'rewrite' => array('slug' => 'chevaux'),
   ));
 }

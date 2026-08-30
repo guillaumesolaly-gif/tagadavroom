@@ -200,15 +200,6 @@ function gwseq_get_prestation_tarif($post_id) {
   );
 }
 
-/** Formatte un montant pour l'affichage : entier sans décimale, sinon deux décimales, virgule française. */
-function gwseq_format_price_number($value) {
-  if ($value === '' || $value === null) return '';
-  $value = (float) $value;
-  return (abs($value - round($value)) < 0.001)
-    ? number_format($value, 0, ',', ' ')
-    : number_format($value, 2, ',', ' ');
-}
-
 /**
  * Libellé d'affichage d'une unité, y compris le cas "Autre" avec son libellé personnalisé (donnée
  * du site, jamais traduite — seul le mot "Autre" de repli, s'il n'a pas été précisé, est une

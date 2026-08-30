@@ -7,12 +7,114 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 3 — Prestations / Groupes tarifaires (Étapes 1 et 2 validées)
+## État actuel : Étape 4 — Cheval (Étapes 1, 2 et 3 validées)
 
-Les Étapes 1 (fondations) et 2 (composant répétable) ont été recettées en conditions réelles et
-validées. L'Étape 3 construit la gestion métier réelle des Prestations et des Groupes tarifaires,
-en attente de sa propre recette runtime. Voir `CHANGELOG.md` de ce dossier pour l'historique
-détaillé par étape, et la proposition de conception validée pour le contexte d'ensemble.
+Les Étapes 1 (fondations), 2 (composant répétable) et 3 (Prestations/Groupes tarifaires) ont été
+recettées en conditions réelles et validées — gel à GWS Core 1.6.3 / GWS Equestrian 0.3.3.
+L'Étape 4 construit le socle métier réel de la fiche Cheval (identité, catégories,
+commercialisation, Global Horse ID), en attente de sa propre recette runtime. Le pedigree
+(Étape 5) n'a pas commencé. Voir `CHANGELOG.md` de ce dossier pour l'historique détaillé par
+étape, et la proposition de conception validée pour le contexte d'ensemble.
+
+### Cheval (Étape 4)
+
+**Identité** (meta box « Identité ») : Sexe (Mâle/Femelle/Hongre), Année de naissance (âge
+calculé à la volée, jamais stocké, toujours approximatif — calendaire, jamais au jour près),
+Robe et Race/Stud-book (listes pratiques + « Autre » avec précision libre — aucune logique du
+module ne dépend d'un nom de stud-book précis), Taille en centimètres, Éleveur, Propriétaire,
+UELN et numéro SIRE (texte simple, sans validation de format ni service distant — voir
+« Limitations connues » plus bas). Nom = `post_title`, Photo principale = image à la une native
+(ré-étiquetée, aucun champ dédié) : aucune meta ne duplique jamais ces deux sources de vérité.
+
+**Catégories de chevaux** : interface à cases à cocher native (`post_categories_meta_box`, un
+cheval peut appartenir à plusieurs catégories), avec l'affordance de création rapide masquée
+directement sur la fiche pour éviter les doublons quasi identiques (« Chevaux à vendre » /
+« Chevaux a vendre » / « A vendre »...) — la création et la gestion des catégories elles-mêmes
+restent possibles depuis **Chevaux → Catégories**, sans aucune restriction.
+
+**Commercialisation** (meta box dédiée), volontairement indépendante des catégories : une
+catégorie éditoriale « Chevaux à vendre » n'implique jamais un statut commercial, et
+réciproquement. Statut (Non proposé/À vendre/Réservé/Vendu), Mode de prix (Prix fixe/Fourchette/
+Sur demande avec libellé personnalisable), devise globale de l'Étape 3 réutilisée telle quelle.
+Le prix reste toujours visible et enregistré quel que soit le statut choisi — rien n'est jamais
+effacé par un changement de statut, un texte d'aide rappelle qu'un futur rendu public respectera
+ce statut.
+
+**Global Horse ID** (`_gwseq_global_id`) : identifiant technique de la fiche (UUID v4), assigné
+une seule fois au premier enregistrement réel, jamais régénéré, indépendant du nom/slug/URL/
+domaine/thème. Ce n'est ni un identifiant biologique de l'animal (deux fiches indépendantes du
+même cheval réel n'auront jamais automatiquement le même identifiant), ni un secret. Jamais
+exposé en REST, jamais saisissable par un utilisateur. Une boîte de vérification en lecture seule
+existe uniquement en environnement local/développement, pour permettre sa vérification pendant la
+recette sans jamais l'exposer à un utilisateur de production.
+
+**Éditeur par blocs désactivé pour ce post type** (`includes/cheval-editor.php`) : arbitrage
+propre à Cheval, distinct de celui de Prestation (Étape 3) — la fiche est désormais entièrement
+structurée (support `editor` retiré, aucun contenu éditorial à cette étape), sans mécanisme de
+préremplissage par modèle à faire fonctionner ; l'éditeur classique offre un écran de meta boxes
+plus lisible et prévisible pour une fiche métier à ce stade.
+
+#### Limitations connues (Étape 4)
+
+- **UELN / SIRE** : simples champs texte, sans validation de format, sans appel à un service
+  distant (SIRE/IFCE), sans déduplication. SIRE est un identifiant propre au système français,
+  UELN un identifiant international — le module n'a aujourd'hui aucun réglage de pays/locale
+  distinguant les deux, cohérent avec un produit actuellement pensé pour des professionnels
+  francophones, mais un point à garder en tête si une internationalisation est envisagée plus
+  tard. Les deux champs restent des chaînes indépendantes, aucune décision actuelle ne bloquerait
+  une clarification future.
+- **Aucune mention HT/TTC pour le prix d'un cheval** : contrairement à la tarification des
+  Prestations, le prix commercial d'un cheval n'affiche aujourd'hui ni HT ni TTC — construire un
+  moteur fiscal dédié n'a pas semblé justifié pour ce socle. Point ouvert si un besoin réel
+  apparaît en recette.
+
+#### Procédure de recette — Étape 4
+
+À réaliser dans WordPress Local, sans écrire de code :
+
+1. Menu **Chevaux** > Ajouter : vérifier que le champ titre affiche l'espace réservé « Nom du
+   cheval », qu'aucun éditeur par blocs n'apparaît (écran classique avec meta boxes), et que les
+   sections **Identité**, **Commercialisation**, **Catégories de chevaux** et **Ordre
+   d'affichage** sont toutes présentes et lisibles.
+2. Renseigner Sexe (Hongre), Année de naissance (une année plausible, ex. `2018`) — vérifier que
+   l'âge approximatif calculé s'affiche à côté du champ. Renseigner Robe = Autre avec une
+   précision libre (ex. « Aubère truité »), Race/Stud-book = un stud-book de la liste, Taille
+   `168`, Éleveur et Propriétaire. Ajouter une image à la une : vérifier que son libellé affiche
+   bien « Photo principale » (pas le texte natif WordPress).
+3. Cocher deux catégories existantes (en créer au moins deux au préalable depuis
+   **Chevaux → Catégories** si besoin) : vérifier l'affichage en cases à cocher, l'absence de
+   toute affordance « + Ajouter une nouvelle catégorie » sur cette fiche, et que les deux
+   catégories sont bien conservées après enregistrement/rechargement.
+4. Statut commercial = « À vendre », Mode de prix = « Prix fixe », Prix `25000`. Publier,
+   recharger : vérifier la colonne Prix de la liste des Chevaux (« 25 000 € »), la colonne Statut
+   commercial, et la colonne Catégories.
+5. Modifier cette fiche : passer en Mode de prix « Fourchette » (`20000` → `30000`), enregistrer,
+   recharger — vérifier la restitution exacte des deux bornes et la colonne Prix.
+6. Passer en Mode de prix « Sur demande » : vérifier que le champ Libellé affiché apparaît
+   pré-rempli avec « Prix sur demande », le modifier en « Nous contacter », enregistrer,
+   recharger — la colonne Prix doit refléter le nouveau libellé. Le vider complètement : la
+   colonne Prix ne doit plus afficher aucun texte (tiret).
+7. Repasser le Statut commercial à « Non proposé » sans modifier le prix : vérifier que le prix
+   reste bien enregistré (rien n'est perdu) et que le texte d'aide sous le prix est visible.
+8. Renommer le cheval (changer le titre) et enregistrer : vérifier que rien d'autre (catégories,
+   commercialisation, identité) n'est affecté.
+9. **Global Horse ID** : sur un environnement de type `local` ou `development`
+   (`wp_get_environment_type()`), vérifier qu'une boîte « Identifiant technique » apparaît en
+   colonne latérale avec un identifiant au format UUID, en lecture seule. Enregistrer la fiche à
+   nouveau (sans rien changer) : vérifier que l'identifiant reste strictement identique. Renommer
+   le cheval une nouvelle fois : vérifier que l'identifiant ne change toujours pas. Vérifier
+   qu'aucune trace de cet identifiant n'apparaît dans une réponse de l'API REP WordPress
+   (`/wp-json/wp/v2/gwseq_cheval/<id>`) pour cette fiche.
+10. Créer un second cheval sans rien renseigner à part le nom : vérifier qu'aucune information
+    n'apparaît en trop dans les colonnes (tirets), et qu'un identifiant technique différent du
+    premier cheval lui est attribué dès son premier enregistrement.
+11. Vérifier la console navigateur sur l'écran Cheval : aucune erreur JavaScript ; le champ
+    « Préciser la robe »/« Préciser la race » n'apparaît que si « Autre » est sélectionné, et les
+    champs de prix changent bien selon le mode choisi.
+12. Vérifier qu'aucun asset du module (`cheval-admin.js`) n'est chargé sur un écran sans rapport
+    (Tableau de bord, Articles, une Prestation, un Groupe tarifaire).
+13. Désactiver puis réactiver le module (`config/modules.php`) : vérifier qu'aucun cheval, aucune
+    catégorie, aucun statut commercial ni aucun identifiant technique n'a été modifié ou recréé.
 
 ### Prestations et Groupes tarifaires (Étape 3)
 
@@ -227,28 +329,27 @@ ci-dessous ciblent explicitement les deux cas qui avaient échoué.
 - **Longueur des identifiants technique vérifiée** : WordPress limite un nom de post type à 20
   caractères. `gwseq_groupe` (et non `gwseq_groupe_tarifaire`, qui dépasserait cette limite) a
   été choisi pour cette raison — voir le test associé, qui verrouille cette contrainte.
-- La taxonomie `gwseq_categorie_cheval` utilise pour l'instant l'interface WordPress native
-  « étiquettes » (saisie libre). Le remplacement par une interface à cases à cocher (retenu dans
-  la conception validée pour un usage multi-valeurs) est différé à l'étape 4, avec le reste du
-  formulaire d'édition de la fiche cheval.
+- La taxonomie `gwseq_categorie_cheval` utilise désormais une interface à cases à cocher
+  (`meta_box_cb => 'post_categories_meta_box'`, Étape 4) — voir la section Cheval ci-dessus.
 
 ### Ce qui n'est délibérément PAS encore construit
 
-Conformément au périmètre strict fixé étape par étape : formulaire complet de Prestation,
-modèles de prestations préconfigurées, assistant de première configuration, glisser-déposer,
-moteur de tarification, formulaire complet de fiche cheval, indices/vidéos/blocs personnalisés
-**métier réels** (le composant répétable qui les portera existe depuis l'Étape 2, mais aucune de
-ces données métier n'est encore créée), pedigree/relations, duplication, export PDF, rendu front
-définitif. Ces éléments arrivent aux étapes 3 à 9 du plan de développement validé, chacune
-soumise à validation avant la suivante.
+Conformément au périmètre strict fixé étape par étape : assistant de première configuration,
+glisser-déposer, indices/vidéos/blocs personnalisés/galerie/résultats détaillés/origines
+éditoriales **métier réels** (le composant répétable qui les portera existe depuis l'Étape 2,
+mais aucune de ces données métier n'est encore créée), pedigree/relations (père/mère/ancêtres/
+produits/fratrie), duplication, fiche privée/token de partage, export PDF/QR/catalogue, Social
+Kit, Network, API publique, module Équipe (besoin identifié en recette de l'Étape 3, retenu pour
+la feuille de route sans placement précis encore décidé), rendu front définitif. Ces éléments
+arrivent aux étapes 5 à 9+ du plan de développement validé, chacune soumise à validation avant la
+suivante.
 
-### Point ouvert à trancher avant l'étape 4
+### Point tranché à l'Étape 4 : photo principale
 
-La photo de couverture d'un cheval pourrait réutiliser l'image à la une native de WordPress
-(déjà activée via `supports => array(..., 'thumbnail')`) plutôt qu'un champ `attachment_id`
-dédié comme envisagé dans la proposition de conception initiale — les deux mécanismes sont
-natifs et sans dépendance, mais l'image à la une évite un champ redondant. À arbitrer au moment
-de construire le formulaire d'identité du cheval (étape 4), pas avant.
+L'image à la une native de WordPress (déjà activée via `supports => array(..., 'thumbnail')`)
+est retenue comme unique source de vérité pour la « Photo principale » du cheval — aucun champ
+`attachment_id` dédié créé, seuls ses libellés admin sont ré-étiquetés. Voir la section Cheval
+ci-dessus.
 
 ## Activer ce module (pour tester cette étape)
 

@@ -26,6 +26,9 @@ add_action('add_meta_boxes_' . GWSEQ_CPT_PRESTATION, function () {
 add_action('add_meta_boxes_' . GWSEQ_CPT_GROUPE, function () {
   gwseq_rename_order_meta_box(GWSEQ_CPT_GROUPE);
 });
+add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, function () {
+  gwseq_rename_order_meta_box(GWSEQ_CPT_CHEVAL);
+});
 
 /**
  * Écran d'administration des Prestations et des Groupes tarifaires triés par ordre d'affichage
@@ -35,7 +38,7 @@ add_action('add_meta_boxes_' . GWSEQ_CPT_GROUPE, function () {
  */
 function gwseq_admin_default_order_by_menu_order($query) {
   if (!is_admin() || !$query->is_main_query()) return;
-  if (!in_array($query->get('post_type'), array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE), true)) return;
+  if (!in_array($query->get('post_type'), array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL), true)) return;
   if (!$query->get('orderby')) {
     $query->set('orderby', 'menu_order title');
     $query->set('order', 'ASC');

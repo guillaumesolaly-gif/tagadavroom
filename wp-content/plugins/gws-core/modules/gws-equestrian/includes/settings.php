@@ -58,6 +58,19 @@ function gwseq_currency_symbol($code) {
   return $symbols[$code] ?? $code;
 }
 
+/**
+ * Formatte un montant pour l'affichage : entier sans décimale, sinon deux décimales, virgule
+ * française. Helper de formatage partagé (prestations et chevaux) — volontairement ici plutôt
+ * que dans un fichier propre à un post type, pour rester réutilisable sans dépendance croisée.
+ */
+function gwseq_format_price_number($value) {
+  if ($value === '' || $value === null) return '';
+  $value = (float) $value;
+  return (abs($value - round($value)) < 0.001)
+    ? number_format($value, 0, ',', ' ')
+    : number_format($value, 2, ',', ' ');
+}
+
 function gwseq_settings_defaults() {
   return array('price_display_mode' => 'ttc', 'currency' => 'EUR');
 }

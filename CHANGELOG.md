@@ -1,5 +1,24 @@
 # Changelog — GWS Starter
 
+## 1.7.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 4 : Cheval — socle métier, catégories, commercialisation, Global
+  Horse ID.** Identité structurée (sexe/année de naissance/robe/race stud-book/taille/éleveur/
+  propriétaire/UELN/SIRE), aucune meta parallèle au natif (Nom = `post_title`, Photo principale =
+  image à la une native, Ordre = `menu_order`), catégories de chevaux enfin utilisables (interface
+  à cases à cocher native, affordance de création rapide masquée sur la fiche pour éviter les
+  doublons), commercialisation structurée et indépendante des catégories (statut/mode de prix/
+  libellé « sur demande »), et Global Horse ID (`_gwseq_global_id`, UUID v4 assigné une seule fois
+  au premier enregistrement réel, jamais régénéré, jamais exposé en REST, jamais un secret).
+  Éditeur par blocs désactivé pour ce post type, avec un arbitrage propre à Cheval expliqué dans
+  le CR (pas un copier-coller de celui de Prestation). Deux limitations documentées et assumées :
+  aucune mention HT/TTC pour le prix d'un cheval, et l'ambiguïté SIRE (France)/UELN
+  (international) en l'absence de réglage de pays/locale. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.4.0) pour le détail
+  complet. Étape 4 en attente de sa recette runtime — Étape 5 (Pedigree) non commencée.
+- 125 nouvelles assertions automatisées (`gws-equestrian-cheval-logic-test.php`), suite existante
+  toujours 100 % passante.
+
 ## 1.6.3 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 3, corrections post-recette runtime.** Corrige le bug bloquant des
