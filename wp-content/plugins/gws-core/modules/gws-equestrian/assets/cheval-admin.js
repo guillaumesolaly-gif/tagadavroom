@@ -92,5 +92,52 @@
         autreWrap.style.display = e.target.value === 'autre' ? '' : 'none';
       }
     });
+
+    // Mise à jour EN DIRECT des intitulés contextuels du pedigree (correctif post-recette : un
+    // premier essai sans JavaScript s'est révélé insuffisant — "Père de cet ascendant" restait
+    // affiché tant que la fiche n'était pas enregistrée, malgré un nom déjà saisi). Ce bloc ne lit
+    // ET n'écrit JAMAIS la valeur d'un champ Nom : il ne fait que recalculer le texte affiché
+    // ailleurs (le résumé de la divulgation progressive, les libellés Père/Mère du niveau suivant)
+    // à partir de sa valeur courante, jamais l'inverse. Les libellés traduits proviennent des
+    // attributs data-* du conteneur .gwseq-pedigree-i18n (voir includes/cheval-pedigree.php),
+    // jamais codés en dur ici, pour ne jamais désynchroniser cet affichage d'une traduction du
+    // plugin. La transformation "majuscules, sans accents" reproduit côté navigateur celle du
+    // serveur (gwseq_format_horse_name_display()) à titre de PRÉVISUALISATION uniquement : le
+    // rendu réellement autoritaire reste celui produit par le serveur à l'enregistrement suivant.
+    function gwseqPedigreeDisplayName(rawName) {
+      var trimmed = (rawName || '').trim();
+      if (trimmed === '') return '';
+      var withoutAccents = trimmed.normalize ? trimmed.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : trimmed;
+      return withoutAccents.toUpperCase();
+    }
+
+    document.addEventListener('input', function (e) {
+      if (!e.target.classList || !e.target.classList.contains('gwseq-external-name-input')) return;
+
+      var i18nContainer = document.querySelector('.gwseq-pedigree-i18n');
+      if (!i18nContainer) return;
+      var fatherPrefix = i18nContainer.getAttribute('data-father-prefix') || '';
+      var motherPrefix = i18nContainer.getAttribute('data-mother-prefix') || '';
+      var summaryPrefix = i18nContainer.getAttribute('data-summary-prefix') || '';
+      var fallbackName = i18nContainer.getAttribute('data-fallback-name') || '';
+
+      var nodeWrap = e.target.closest('.gwseq-ancestor-node');
+      if (!nodeWrap) return;
+
+      var displayName = gwseqPedigreeDisplayName(e.target.value) || fallbackName;
+
+      var summary = nodeWrap.querySelector(':scope > details > summary');
+      if (summary) summary.textContent = summaryPrefix + displayName;
+
+      var childNodes = nodeWrap.querySelectorAll(':scope > details > .gwseq-ancestor-node');
+      if (childNodes[0]) {
+        var fatherLabel = childNodes[0].querySelector(':scope > p > strong');
+        if (fatherLabel) fatherLabel.textContent = fatherPrefix + displayName;
+      }
+      if (childNodes[1]) {
+        var motherLabel = childNodes[1].querySelector(':scope > p > strong');
+        if (motherLabel) motherLabel.textContent = motherPrefix + displayName;
+      }
+    });
   });
 })();

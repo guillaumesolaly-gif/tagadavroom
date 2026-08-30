@@ -1,5 +1,26 @@
 # Changelog — GWS Starter
 
+## 1.10.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 5 : correctif BLOQUANT (corruption Unicode des noms accentués).** La
+  reprise de la recette sur le pedigree de Jamerose a révélé qu'un nom accentué (« Native de
+  Félines ») était corrompu en base après enregistrement (« Native de Fu00e9lines »). Cause
+  racine exacte : `wp_json_encode()` sans `JSON_UNESCAPED_UNICODE` échappait les caractères
+  accentués en séquences `\uXXXX`, qu'`update_post_meta()` corrompait ensuite via son appel
+  interne systématique à `wp_unslash()` (comportement natif de WordPress, indépendant de toute
+  logique métier) — un antislash légitime confondu avec un artefact des magic quotes. Corrigé en
+  ajoutant ce drapeau ; aucun rapport avec le helper de présentation des noms, qui n'était
+  qu'un témoin fidèle d'une donnée déjà corrompue en amont. Également corrigés dans cette
+  version : mise à jour EN DIRECT (JavaScript léger, sans jamais toucher la valeur saisie) des
+  intitulés contextuels du pedigree pendant la frappe (un premier essai sans JavaScript s'étant
+  révélé insuffisant en recette), et un nœud de génération 4 désormais strictement terminal
+  (plus de « Père : Non renseigné » laissant croire à tort à une génération 5 hors périmètre).
+  Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.7.0) pour le détail
+  complet, notamment l'analyse de cause racine complète et la découverte méthodologique sur la
+  fidélité des stubs de test.
+- 40 nouvelles assertions automatisées, suite existante toujours 100 % passante (603 assertions
+  au total) — aucune assertion affaiblie.
+
 ## 1.9.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 5 : corrections post-recette runtime.** La saisie réelle d'un pedigree

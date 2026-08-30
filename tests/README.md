@@ -145,6 +145,16 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   présentation des noms (`gwseq_format_horse_name_display()`) est testé dans
   `gws-equestrian-cheval-logic-test.php` (majuscules, sans accents, apostrophes/traits d'union/
   chiffres conservés, jamais utilisé dans la sanitation — la donnée source n'est jamais modifiée).
+  Correctif bloquant 0.7.0 (corruption Unicode des noms accentués) : reproduction exacte du bug
+  grâce à des stubs `wp_unslash()`/`update_post_meta()`/`wp_json_encode()` rendus fidèles au
+  comportement réel de WordPress (c'est leur infidélité, pas un manque de test, qui laissait
+  passer le bug), non-altération de la donnée source sur plusieurs enregistrements consécutifs et
+  à travers un changement de mode, vérification directe du JSON stocké (caractère littéral, jamais
+  une séquence échappée), séparation source/présentation vérifiée hors commentaires PHP, câblage
+  des attributs `data-*`/classes nécessaires à la mise à jour dynamique du contexte, et génération
+  terminale (une chaîne GWS ET une branche externe résolues à la génération 4 n'ont plus aucune
+  clé père/mère, ni même `null` — le rendu de vérification n'affiche donc plus de « Non renseigné »
+  laissant croire à tort à une génération 5 hors périmètre).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -165,7 +175,7 @@ un processus PHP séparé — il peut aussi être lancé seul.)
 - Comportement navigateur réel de la divulgation progressive du pedigree (élément `<details>`
   imbriqué sur plusieurs niveaux) : ouverture/fermeture au clic, accessibilité clavier, lisibilité
   visuelle d'un arbre externe profondément imbriqué.
-- Ressenti réel de l'absence de mise à jour en direct des intitulés contextuels du pedigree
-  pendant la frappe (choix assumé sans JavaScript, voir CHANGELOG 0.6.0) : à confirmer en recette
-  que le texte d'aide rappelant qu'un enregistrement rafraîchit ces intitulés est suffisamment
-  visible et compris sans irriter l'utilisateur.
+- Comportement navigateur réel de la mise à jour dynamique des intitulés contextuels du pedigree
+  (depuis 0.7.0) : réactivité perçue pendant la frappe, absence d'erreur JavaScript, confirmation
+  visuelle qu'un champ Nom garde exactement la valeur tapée (accents compris) quel que soit ce qui
+  s'affiche par ailleurs à l'écran.

@@ -19,7 +19,11 @@ function gws_test_assert($condition, $label) {
 }
 
 // --- Stubs WordPress minimaux ---
-function wp_unslash($value) { return is_array($value) ? array_map('wp_unslash', $value) : $value; }
+// wp_unslash() FIDÈLE au comportement réel (stripslashes_deep()) — CRUCIAL pour ce fichier :
+// c'est précisément parce qu'un stub précédent (ici et dans update_post_meta() ci-dessous)
+// faisait un simple passe-plat que le bug bloquant "é" -> "u00e9" n'avait jamais été détecté par
+// les 563 assertions déjà vertes avant cette correction. Voir le CR pour l'analyse complète.
+function wp_unslash($value) { return is_array($value) ? array_map('wp_unslash', $value) : stripslashes((string) $value); }
 function sanitize_text_field($value) { return trim(strip_tags((string) $value)); }
 function sanitize_textarea_field($value) { return trim((string) $value); }
 function sanitize_key($value) { return strtolower(preg_replace('/[^a-z0-9_\-]/', '', (string) $value)); }
@@ -32,7 +36,10 @@ function selected($a, $b) { return $a == $b ? ' selected' : ''; }
 function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
 function wp_nonce_field($action, $field) { echo '<input type="hidden" name="' . esc_attr($field) . '" value="stub-nonce">'; }
-function wp_json_encode($data) { return json_encode($data); }
+// Signature fidèle à wp_json_encode() (WordPress core) : le paramètre $options DOIT être
+// transmis à json_encode() — un stub à un seul paramètre ignorerait silencieusement
+// JSON_UNESCAPED_UNICODE et masquerait exactement le bug corrigé ici.
+function wp_json_encode($data, $options = 0, $depth = 512) { return json_encode($data, $options, $depth); }
 
 // --- remove_accents() : natif WordPress, stub couvrant les caractères utilisés par les tests
 // (suffisant pour valider le comportement, pas une table de translittération complète) ---
@@ -88,7 +95,11 @@ function get_the_title($post) {
 }
 function get_edit_post_link($post_id) { return 'https://example.test/wp-admin/post.php?post=' . (int) $post_id . '&action=edit'; }
 
-function update_post_meta($post_id, $key, $value) { $GLOBALS['__gwseq_test_meta'][$post_id][$key] = $value; return true; }
+// FIDÈLE au comportement réel de update_metadata() (WordPress core) : la valeur passe par
+// wp_unslash() AVANT stockage, quelle que soit son origine (pas seulement $_POST) — c'est ce
+// détail, absent des stubs précédents, qui a laissé passer le bug bloquant de corruption Unicode
+// (voir la remarque sur wp_unslash() ci-dessus et le CR de cette correction).
+function update_post_meta($post_id, $key, $value) { $GLOBALS['__gwseq_test_meta'][$post_id][$key] = wp_unslash($value); return true; }
 function get_post_meta($post_id, $key, $single = false) { return $GLOBALS['__gwseq_test_meta'][$post_id][$key] ?? ''; }
 function metadata_exists($type, $post_id, $key) {
   return array_key_exists($post_id, $GLOBALS['__gwseq_test_meta']) && array_key_exists($key, $GLOBALS['__gwseq_test_meta'][$post_id]);
@@ -258,6 +269,115 @@ gws_test_assert($tree['father']['name'] === "L'Étalon d'Or" && $tree['father'][
 // --- Donnée mal formée à un niveau imbriqué : repli sûr, jamais d'erreur ---
 $tree = gwseq_sanitize_external_ancestor_tree(array('name' => 'Kannan', 'father' => 'pas un tableau'), 3);
 gws_test_assert($tree['father'] === null, 'Sanitation récursive : une valeur mal formée à un niveau imbriqué (pas un tableau) -> aucun nœud, jamais d’erreur');
+
+// =====================================================================================
+// CORRECTIF BLOQUANT — corruption Unicode d'un nom accentué (bug constaté en recette réelle)
+//
+// CAUSE RACINE EXACTE : gwseq_set_horse_parent() encodait l'arbre externe avec
+// wp_json_encode($tree) SANS le drapeau JSON_UNESCAPED_UNICODE. json_encode() sans ce drapeau
+// échappe tout caractère non-ASCII en séquence littérale "\uXXXX" (ex. "é" -> les 6 caractères
+// \, u, 0, 0, e, 9). Cette chaîne JSON — qui contient donc un antislash réel — est ensuite passée
+// à update_post_meta(), lequel appelle EN INTERNE wp_unslash() sur la valeur avant stockage
+// (comportement natif de update_metadata() dans WordPress, totalement indépendant de ce module).
+// wp_unslash() ne sait pas distinguer "un antislash issu des magic quotes à retirer" d'"un
+// antislash faisant partie du contenu légitime" : il retire le antislash de "é", laissant le
+// texte littéral "u00e9" — une chaîne JSON syntaxiquement valide (donc json_decode() ne lève
+// jamais d'erreur), mais dont le contenu est désormais faux. Une fois ce nom corrompu relu et
+// réaffiché dans le champ Nom, un nouvel enregistrement le fige définitivement dans cet état :
+// la corruption devient permanente. AUCUN rapport avec gwseq_format_horse_name_display() (la
+// fonction de présentation) : elle se contente de mettre en majuscules une donnée déjà corrompue
+// en amont — "u00e9" en majuscules donne "U00E9", exactement le symptôme observé.
+//
+// CORRECTIF : wp_json_encode($tree, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES). Avec ce
+// drapeau, "é" est écrit tel quel (aucun antislash), donc rien que wp_unslash() puisse corrompre.
+//
+// Les stubs wp_unslash()/update_post_meta()/wp_json_encode() de ce fichier ont été rendus
+// fidèles au comportement réel de WordPress (stripslashes réel, options JSON réellement
+// transmises) précisément pour que ce bug soit reproductible — et donc vérifiable — sans
+// WordPress réel : un stub "passe-plat" est ce qui a laissé passer ce bug à travers 563
+// assertions déjà vertes avant cette correction.
+// =====================================================================================
+
+gws_test_make_post(950, GWSEQ_CPT_CHEVAL, 'A Un Ascendant Accentué');
+
+// --- La donnée source survit intacte à un enregistrement ---
+gwseq_set_horse_parent(950, 'father', array('mode' => 'external', 'external' => array('name' => 'Native de Félines')));
+$relation = gwseq_get_horse_parent(950, 'father');
+gws_test_assert($relation['external']['name'] === 'Native de Félines', 'Correctif Unicode : la donnée source ("Native de Félines") est restituée exactement après un enregistrement, aucune séquence "\uXXXX" échappée résiduelle');
+gws_test_assert(strpos($relation['external']['name'], 'u00e9') === false && strpos($relation['external']['name'], '\\u00e9') === false, 'Correctif Unicode : ni "u00e9" ni "\\u00e9" n’apparaît dans la donnée source relue');
+
+// --- Le JSON brut stocké contient bien le caractère accentué littéral, jamais une séquence
+// échappée (vérification directement sur la valeur telle qu'écrite en base) ---
+$raw_stored_json = $GLOBALS['__gwseq_test_meta'][950]['_gwseq_pere_externe'];
+gws_test_assert(strpos($raw_stored_json, 'é') !== false, 'Correctif Unicode : le JSON stocké en base contient le caractère "é" littéral (JSON_UNESCAPED_UNICODE), pas une séquence échappée');
+gws_test_assert(strpos($raw_stored_json, '\\u00e9') === false, 'Correctif Unicode : le JSON stocké en base ne contient aucune séquence "\\u00e9" échappée qui serait vulnérable à un futur wp_unslash()');
+
+// --- La donnée source survit intacte à PLUSIEURS enregistrements consécutifs (§6 de la demande :
+// "sauvegarde 1 / sauvegarde 2 / sauvegarde 3", noir sur blanc) ---
+for ($i = 1; $i <= 3; $i++) {
+  gwseq_set_horse_parent(950, 'father', array('mode' => 'external', 'external' => array('name' => 'Native de Félines')));
+  $relation = gwseq_get_horse_parent(950, 'father');
+  gws_test_assert($relation['external']['name'] === 'Native de Félines', "Correctif Unicode : la source reste \"Native de Félines\" après l’enregistrement n°$i (aucune corruption cumulative)");
+}
+
+// --- Non-altération à travers un changement de mode et une modification de branche (§2 de la
+// demande) : la donnée accentuée reste intacte même après avoir été rendue inactive puis
+// réactivée ---
+gwseq_set_horse_parent(950, 'father', array('mode' => 'gws', 'horse_id' => 10));
+gwseq_set_horse_parent(950, 'father', array('mode' => 'external', 'external' => array('name' => 'Native de Félines', 'race' => 'selle_francais')));
+$relation = gwseq_get_horse_parent(950, 'father');
+gws_test_assert($relation['external']['name'] === 'Native de Félines' && $relation['external']['race'] === 'selle_francais', 'Correctif Unicode : la source reste intacte après un changement de mode aller-retour (GWS -> externe) et l’ajout d’une race');
+
+// --- Un nom accentué imbriqué à une génération profonde (pas seulement au premier niveau) reste
+// intact lui aussi ---
+gws_test_make_post(951, GWSEQ_CPT_CHEVAL, 'A Un Pedigree Accentué Profond');
+gwseq_set_horse_parent(951, 'father', array('mode' => 'external', 'external' => array(
+  'name' => 'Étalon Racine',
+  'father' => array('name' => 'Père Accentué : Aimé', 'mother' => array('name' => 'Arrière-grand-mère : Bérénice')),
+)));
+$relation = gwseq_get_horse_parent(951, 'father');
+gws_test_assert(
+  $relation['external']['name'] === 'Étalon Racine'
+    && $relation['external']['father']['name'] === 'Père Accentué : Aimé'
+    && $relation['external']['father']['mother']['name'] === 'Arrière-grand-mère : Bérénice',
+  'Correctif Unicode : des noms accentués à plusieurs niveaux imbriqués (pas seulement le premier) restent tous intacts'
+);
+
+// --- Le helper de présentation reste correct sur un exemple élargi (§5 de la demande), et
+// n'altère jamais la donnée source qu'on continue de lire séparément ---
+foreach (array(
+  'Félines' => 'FELINES',
+  'Étoile' => 'ETOILE',
+  'Hélios' => 'HELIOS',
+  'À bientôt' => 'A BIENTOT',
+  'Crème Brûlée' => 'CREME BRULEE',
+  "L'Arc" => "L'ARC",
+  'Native de Félines' => 'NATIVE DE FELINES',
+) as $source => $expected_display) {
+  $display = gwseq_format_horse_name_display($source);
+  gws_test_assert($display === $expected_display, "Helper de présentation : \"$source\" -> \"$expected_display\"");
+  gws_test_assert(strpos($display, 'u00') === false, "Helper de présentation : le résultat pour \"$source\" ne contient aucune séquence Unicode échappée résiduelle");
+}
+
+// --- Le helper n'est jamais APPELÉ dans la sanitation/persistance de la branche externe (§4 de
+// la demande) : vérifié directement sur le code source, commentaires PHP retirés au préalable
+// pour ne pas confondre un appel réel avec sa simple mention dans une explication en commentaire
+// (le code source documente délibérément, en commentaire, que ce helper n'est PAS en cause dans
+// le bug — cette mention ne doit pas faire échouer le test) ---
+function gws_test_strip_php_comments($source) {
+  $tokens = token_get_all('<?php ' . $source);
+  $stripped = '';
+  foreach ($tokens as $token) {
+    if (is_array($token) && in_array($token[0], array(T_COMMENT, T_DOC_COMMENT), true)) continue;
+    $stripped .= is_array($token) ? $token[1] : $token;
+  }
+  return $stripped;
+}
+$set_horse_parent_block = gws_test_strip_php_comments(substr($cheval_pedigree_source, strpos($cheval_pedigree_source, 'function gwseq_set_horse_parent'), strpos($cheval_pedigree_source, 'function gwseq_get_horse_parent') - strpos($cheval_pedigree_source, 'function gwseq_set_horse_parent')));
+$sanitize_tree_block = gws_test_strip_php_comments(substr($cheval_pedigree_source, strpos($cheval_pedigree_source, 'function gwseq_sanitize_external_ancestor_tree'), strpos($cheval_pedigree_source, 'function gwseq_set_horse_parent') - strpos($cheval_pedigree_source, 'function gwseq_sanitize_external_ancestor_tree')));
+gws_test_assert(strpos($set_horse_parent_block, 'gwseq_format_horse_name_display') === false, 'Séparation source/présentation : gwseq_set_horse_parent() n’appelle jamais le helper de présentation (hors commentaires)');
+gws_test_assert(strpos($sanitize_tree_block, 'gwseq_format_horse_name_display') === false, 'Séparation source/présentation : gwseq_sanitize_external_ancestor_tree() n’appelle jamais le helper de présentation (hors commentaires)');
+gws_test_assert(strpos($cheval_pedigree_source, 'JSON_UNESCAPED_UNICODE') !== false, 'Correctif Unicode : le drapeau JSON_UNESCAPED_UNICODE est bien présent dans le code source (vérification directe, pas seulement comportementale)');
 
 // =====================================================================================
 // gwseq_set_horse_parent() / gwseq_get_horse_parent() : persistance, conservation non
@@ -455,7 +575,7 @@ gwseq_set_horse_parent(140, 'father', array('mode' => 'external', 'external' => 
 $node = gwseq_resolve_horse_pedigree(140, 4);
 $gen4 = $node['father']['father']['father']['father'];
 gws_test_assert($gen4['type'] === 'external' && $gen4['name'] === 'Gen4', 'Resolver : profondeur maximale (4) -> la 4e génération d’une branche externe est bien résolue en entier');
-gws_test_assert($gen4['father'] === null, 'Resolver : au-delà de la 4e génération, une branche externe n’a de toute façon plus rien de stocké (déjà tronquée à la sauvegarde) -> null, jamais une 5e génération');
+gws_test_assert(!array_key_exists('father', $gen4) && !array_key_exists('mother', $gen4), 'Génération terminale (correctif complémentaire) : un nœud de génération 4 n’a AUCUNE clé father/mother, ni même null — jamais une 5e génération représentée, même sous forme d’absence de donnée');
 
 // --- Mélange branche GWS + branche externe À L'INTÉRIEUR d'une chaîne GWS (§12 du correctif) ---
 gws_test_make_post(150, GWSEQ_CPT_CHEVAL, 'Poulain Mixte');
@@ -501,10 +621,48 @@ $depth_reached = 0;
 $cursor = $node['father'];
 while (is_array($cursor) && ($cursor['type'] ?? '') === 'external') {
   $depth_reached++;
-  $cursor = $cursor['father'];
+  $cursor = $cursor['father'] ?? null;
 }
 gws_test_assert($depth_reached === 4, 'Resolver : une structure corrompue en base sur 10 niveaux est strictement bornée à 4 générations, quelle que soit la profondeur réelle des données stockées');
-gws_test_assert($cursor === null || ($cursor['type'] ?? '') !== 'external', 'Resolver : au-delà de la limite, plus aucune génération "external" supplémentaire n’apparaît (jamais de contournement de la borne serveur)');
+gws_test_assert($cursor === null, 'Resolver : au-delà de la limite, plus aucune génération "external" supplémentaire n’apparaît (jamais de contournement de la borne serveur)');
+
+// --- Complément de recette : un arbre demandé à profondeur 4 ne contient AUCUN enfant de
+// profondeur 5, ni sous forme de nœud, ni même sous forme de clé father/mother valant null ---
+$gen4_from_corrupted = $node['father']['father']['father']['father'];
+gws_test_assert(
+  $gen4_from_corrupted['type'] === 'external' && !array_key_exists('father', $gen4_from_corrupted) && !array_key_exists('mother', $gen4_from_corrupted),
+  'Complément : même à partir d’une donnée corrompue sur 10 niveaux, le nœud de génération 4 reste strictement terminal (aucune clé father/mother, aucune 5e génération représentée)'
+);
+
+// --- Même règle pour une chaîne GWS (pas seulement une branche externe) : un cheval GWS résolu
+// à la génération 4 est lui aussi strictement terminal, même si son PROPRE pedigree continue
+// réellement en base au-delà (génération 5, hors périmètre, jamais interrogée ni représentée).
+// Numérotation ci-dessous relative à la racine résolue (185, génération 0). ---
+gws_test_make_post(180, GWSEQ_CPT_CHEVAL, 'GWS Génération 5 (hors périmètre)');
+gws_test_make_post(181, GWSEQ_CPT_CHEVAL, 'GWS Génération 4');
+gws_test_make_post(182, GWSEQ_CPT_CHEVAL, 'GWS Génération 3');
+gws_test_make_post(183, GWSEQ_CPT_CHEVAL, 'GWS Génération 2');
+gws_test_make_post(184, GWSEQ_CPT_CHEVAL, 'GWS Génération 1');
+gws_test_make_post(185, GWSEQ_CPT_CHEVAL, 'GWS Racine (génération 0)');
+gwseq_set_horse_parent(181, 'father', array('mode' => 'gws', 'horse_id' => 180)); // gen4 -> gen5 (réel en base)
+gwseq_set_horse_parent(182, 'father', array('mode' => 'gws', 'horse_id' => 181)); // gen3 -> gen4
+gwseq_set_horse_parent(183, 'father', array('mode' => 'gws', 'horse_id' => 182)); // gen2 -> gen3
+gwseq_set_horse_parent(184, 'father', array('mode' => 'gws', 'horse_id' => 183)); // gen1 -> gen2
+gwseq_set_horse_parent(185, 'father', array('mode' => 'gws', 'horse_id' => 184)); // gen0 -> gen1
+$node = gwseq_resolve_horse_pedigree(185);
+$gws_gen4 = $node['father']['father']['father']['father'];
+gws_test_assert($gws_gen4['type'] === 'gws_horse' && $gws_gen4['name'] === 'GWS Génération 4', 'Chaîne GWS : la génération 4 est bien résolue en entier (nom, identité)');
+gws_test_assert(
+  !array_key_exists('father', $gws_gen4) && !array_key_exists('mother', $gws_gen4),
+  'Chaîne GWS : un nœud GWS de génération 4 est également strictement terminal (aucune clé father/mother), alors même que "GWS Génération 4" a réellement un père enregistré en base ("GWS Génération 5") — cette 5e génération n’est jamais interrogée ni représentée'
+);
+
+// --- Le rendu de vérification admin/développement ne produit plus "Père : Non renseigné"/
+// "Mère : Non renseigné" sous un nœud terminal (bug constaté en recette : laissait croire à tort
+// qu'une 5e génération existerait dans le modèle) ---
+$terminal_preview_html = gwseq_render_pedigree_node_preview($gws_gen4);
+gws_test_assert(strpos($terminal_preview_html, 'Non renseigné') === false, 'Aperçu resolver : aucun "Non renseigné" sous un nœud de génération 4 (terminal), qui n’a structurellement aucune ligne Père/Mère');
+gws_test_assert(strpos($terminal_preview_html, '<ul') === false, 'Aperçu resolver : aucune liste Père/Mère n’est même rendue pour un nœud terminal');
 
 // --- Cycle direct (données incohérentes forcées, en défense en profondeur du contrôle déjà fait
 // à la sauvegarde) : le resolver ne boucle jamais indéfiniment ---
@@ -717,6 +875,24 @@ foreach (array('_gwseq_pere_mode', '_gwseq_pere_id', '_gwseq_pere_externe[name]'
 }
 gws_test_assert(strpos($pedigree_box_html, 'name="_gwseq_pere_externe[father][name]"') !== false, 'Meta box Pedigree : les champs de la génération suivante (père du père externe) sont bien rendus, jusqu’à la profondeur autorisée');
 gws_test_assert(strpos($pedigree_box_html, '<details') !== false, 'Meta box Pedigree : la divulgation progressive (§5) utilise l’élément natif <details>, sans JavaScript nécessaire pour se déplier');
+
+// --- Câblage nécessaire à la mise à jour dynamique du contexte (§9-10 de la demande de
+// correction) : les données traduites sont fournies au script via des attributs data-*, jamais
+// codées en dur côté JavaScript ; les classes utilisées par l'écoute déléguée sont bien présentes ---
+gws_test_assert(strpos($pedigree_box_html, 'class="gwseq-pedigree-i18n"') !== false, 'Contexte dynamique : le conteneur porteur des libellés traduits pour le JavaScript est bien rendu');
+gws_test_assert(strpos($pedigree_box_html, 'data-father-prefix="Père de "') !== false, 'Contexte dynamique : le préfixe "Père de " traduit est fourni en attribut data-*');
+gws_test_assert(strpos($pedigree_box_html, 'data-mother-prefix="Mère de "') !== false, 'Contexte dynamique : le préfixe "Mère de " traduit est fourni en attribut data-*');
+gws_test_assert(strpos($pedigree_box_html, 'data-summary-prefix="+ Renseigner les origines de "') !== false, 'Contexte dynamique : le préfixe du résumé de divulgation progressive est fourni en attribut data-*');
+gws_test_assert(strpos($pedigree_box_html, 'data-fallback-name="cet ascendant"') !== false, 'Contexte dynamique : le repli traduit ("cet ascendant") est fourni en attribut data-*');
+gws_test_assert(substr_count($pedigree_box_html, 'class="gwseq-ancestor-node"') >= 2, 'Contexte dynamique : chaque nœud d’ascendant externe porte la classe utilisée par l’écoute déléguée du script (au moins le premier niveau côté Père et côté Mère)');
+gws_test_assert(strpos($pedigree_box_html, 'gwseq-external-name-input') !== false, 'Contexte dynamique : le champ Nom porte la classe utilisée par l’écoute déléguée du script');
+
+// --- Le JavaScript ne doit jamais être décrit comme modifiant la donnée : vérification déclarative
+// directe sur le fichier (aucune assignation à .value dans le bloc de mise à jour du contexte) ---
+$cheval_admin_js_source = file_get_contents($module_dir . 'assets/cheval-admin.js');
+$context_update_js_block = substr($cheval_admin_js_source, strpos($cheval_admin_js_source, 'gwseqPedigreeDisplayName'));
+gws_test_assert(strpos($context_update_js_block, '.value =') === false, 'Contexte dynamique : le script ne réaffecte jamais la propriété .value d’un champ (aucune normalisation de la saisie)');
+gws_test_assert(strpos($context_update_js_block, 'e.target.value') !== false, 'Contexte dynamique : le script LIT bien la valeur courante du champ Nom (sans jamais l’écrire)');
 
 // =====================================================================================
 // Contexte de saisie (§3-11 de la demande de correction) : jamais un Père/Mère nu, toujours le

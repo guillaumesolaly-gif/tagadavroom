@@ -231,7 +231,18 @@ function gwseq_set_horse_parent($cheval_id, $role, $raw_args) {
   if ($mode === 'external') {
     $tree = gwseq_sanitize_external_ancestor_tree($raw_args['external'] ?? array(), GWSEQ_PEDIGREE_MAX_DEPTH - 1);
     update_post_meta($cheval_id, $prefix . 'mode', $tree !== null ? 'external' : '');
-    if ($tree !== null) update_post_meta($cheval_id, $prefix . 'externe', wp_json_encode($tree));
+    // JSON_UNESCAPED_UNICODE (+ JSON_UNESCAPED_SLASHES) — CORRECTIF BLOQUANT post-recette : sans ce
+    // drapeau, json_encode() échappe tout caractère non-ASCII en séquence "\uXXXX" (ex. "é" ->
+    // "é"). update_post_meta()/update_metadata() appelle en interne wp_unslash() sur la
+    // valeur avant stockage (comportement natif de WordPress, indépendant de ce module) : ce
+    // wp_unslash() traite alors le antislash de "é" comme un artefact des magic quotes et le
+    // retire, corrompant silencieusement la chaîne stockée en "u00e9" (json_decode() reste
+    // syntaxiquement valide ensuite, donc AUCUNE erreur ne remonte — juste une valeur devenue
+    // fausse). Avec JSON_UNESCAPED_UNICODE, "é" est écrit tel quel (aucun antislash), donc rien
+    // que wp_unslash() puisse corrompre. N'a rien à voir avec gwseq_format_horse_name_display()
+    // (fonction de présentation) : celle-ci ne fait qu'afficher fidèlement une donnée déjà
+    // corrompue en amont — elle n'est jamais appelée ici, ni dans aucune fonction de sanitation.
+    if ($tree !== null) update_post_meta($cheval_id, $prefix . 'externe', wp_json_encode($tree, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     return true; // _id volontairement non touché
   }
 
@@ -336,23 +347,32 @@ function gwseq_pedigree_display_name($raw_name) {
 function gwseq_render_cheval_pedigree_box($post) {
   wp_nonce_field(GWSEQ_CHEVAL_NONCE_ACTION, GWSEQ_CHEVAL_NONCE_FIELD);
   $cheval_name = gwseq_pedigree_display_name(get_the_title($post));
+  ?>
+  <div class="gwseq-pedigree-i18n"
+    data-father-prefix="<?php echo esc_attr__('Père de ', 'gws-core'); ?>"
+    data-mother-prefix="<?php echo esc_attr__('Mère de ', 'gws-core'); ?>"
+    data-summary-prefix="<?php echo esc_attr__('+ Renseigner les origines de ', 'gws-core'); ?>"
+    data-fallback-name="<?php echo esc_attr__('cet ascendant', 'gws-core'); ?>">
+    <?php
+    echo '<p><strong>' . esc_html(sprintf(
+      /* translators: %s: nom du cheval, en présentation GWS (majuscules, sans accents) */
+      __('Origines de %s', 'gws-core'),
+      $cheval_name
+    )) . '</strong></p>';
+    echo '<p class="description">' . esc_html__('Les intitulés « Père de… »/« Mère de… » se mettent à jour automatiquement pendant la saisie du nom d’un ascendant, sans jamais modifier ce que vous avez tapé dans le champ Nom.', 'gws-core') . '</p>';
 
-  echo '<p><strong>' . esc_html(sprintf(
-    /* translators: %s: nom du cheval, en présentation GWS (majuscules, sans accents) */
-    __('Origines de %s', 'gws-core'),
-    $cheval_name
-  )) . '</strong></p>';
-  echo '<p class="description">' . esc_html__('Les intitulés « Père de… »/« Mère de… » ci-dessous se basent sur le nom déjà enregistré de chaque ascendant. Après avoir saisi le nom d’un nouvel ascendant, enregistrez la fiche pour que ces intitulés se mettent à jour aux niveaux suivants.', 'gws-core') . '</p>';
-
-  gwseq_render_cheval_parent_fields($post, 'father', sprintf(
-    /* translators: %s: nom du cheval, en présentation GWS */
-    __('Père de %s', 'gws-core'), $cheval_name
-  ));
-  echo '<hr>';
-  gwseq_render_cheval_parent_fields($post, 'mother', sprintf(
-    /* translators: %s: nom du cheval, en présentation GWS */
-    __('Mère de %s', 'gws-core'), $cheval_name
-  ));
+    gwseq_render_cheval_parent_fields($post, 'father', sprintf(
+      /* translators: %s: nom du cheval, en présentation GWS */
+      __('Père de %s', 'gws-core'), $cheval_name
+    ));
+    echo '<hr>';
+    gwseq_render_cheval_parent_fields($post, 'mother', sprintf(
+      /* translators: %s: nom du cheval, en présentation GWS */
+      __('Mère de %s', 'gws-core'), $cheval_name
+    ));
+    ?>
+  </div>
+  <?php
 }
 
 /**
@@ -400,20 +420,31 @@ function gwseq_render_cheval_parent_fields($post, $role, $label) {
 }
 
 /**
- * Rendu récursif d'un nœud d'ascendant externe — progressive disclosure contextuelle (§3-11 de
- * la demande de correction) :
+ * Rendu récursif d'un nœud d'ascendant externe — progressive disclosure contextuelle :
  * - $context_label est l'intitulé déjà résolu pour CE nœud (« Père de UNTOUCHABLE 27 » au premier
  *   niveau, vide pour ce premier niveau puisque le bloc appelant l'affiche déjà juste au-dessus —
  *   voir gwseq_render_cheval_parent_fields()) ;
- * - un compteur « Génération N sur 4 » accompagne chaque niveau (§9), calculé depuis
- *   $depth_remaining (générique, ne dépend d'aucune valeur codée en dur) ;
- * - à la dernière génération autorisée (§11), AUCUN contrôle « + Renseigner ses origines » n'est
+ * - un compteur « Génération N sur 4 » accompagne chaque niveau, calculé depuis $depth_remaining
+ *   (générique, ne dépend d'aucune valeur codée en dur) ;
+ * - à la dernière génération autorisée, AUCUN contrôle « + Renseigner ses origines » n'est
  *   proposé — arrêt visuel strict, la limite serveur restant de toute façon la garantie réelle ;
- * - le bouton de divulgation progressive (`<details>` natif, §6) porte un intitulé contextualisé
- *   avec le nom DÉJÀ enregistré de l'ascendant en cours (jamais un Père/Mère nu), avec un repli
- *   explicite tant que ce nom n'est pas renseigné (§7) — aucun JavaScript requis, aucune mise à
- *   jour en direct pendant la frappe (solution jugée suffisante, voir l'en-tête du fichier).
- * - Race/Stud-book réutilise le référentiel de la fiche Cheval (§1), avec le même mécanisme
+ * - le bouton de divulgation progressive (`<details>` natif) porte un intitulé contextualisé avec
+ *   le nom DÉJÀ enregistré de l'ascendant en cours (jamais un Père/Mère nu), avec un repli
+ *   explicite tant que ce nom n'est pas renseigné.
+ * - CORRECTIF post-recette (bug bloquant) : les intitulés contextuels sont désormais mis à jour
+ *   EN DIRECT pendant la frappe par `assets/cheval-admin.js` (écoute déléguée sur la classe
+ *   `gwseq-external-name-input`, mise à jour du `<summary>` et des `<strong>` des blocs
+ *   père/mère enfants via la classe `gwseq-ancestor-node`) — un premier essai sans JavaScript
+ *   s'est révélé insuffisant en recette réelle (l'utilisateur ne voyait le contexte se mettre à
+ *   jour qu'après un enregistrement complet). Ce JavaScript ne lit et n'écrit JAMAIS la valeur du
+ *   champ Nom lui-même : il ne fait que recalculer le texte affiché ailleurs (résumé, libellés
+ *   Père/Mère du niveau suivant) à partir de sa valeur COURANTE, jamais l'inverse — le serveur
+ *   reste seul autoritaire sur ce qui est réellement enregistré. Les libellés traduits
+ *   (« Père de », « Mère de », « + Renseigner les origines de », le repli « cet ascendant ») sont
+ *   fournis au script via les attributs `data-*` du conteneur `.gwseq-pedigree-i18n` (voir
+ *   gwseq_render_cheval_pedigree_box()), jamais codés en dur côté JavaScript — le texte de départ
+ *   à l'affichage (avant toute frappe) reste toujours celui rendu par PHP.
+ * - Race/Stud-book réutilise le référentiel de la fiche Cheval, avec le même mécanisme
  *   "Autre + précision" ; $field_name porte la notation par crochets, $_POST reconstruit
  *   nativement l'arbre complet.
  */
@@ -433,14 +464,14 @@ function gwseq_render_external_ancestor_fields($field_name, $node, $depth_remain
         $generation, GWSEQ_PEDIGREE_MAX_DEPTH
       );
   ?>
-  <div style="margin-left:1em; border-left:2px solid #ddd; padding-left:1em; margin-top:0.5em;">
+  <div class="gwseq-ancestor-node" style="margin-left:1em; border-left:2px solid #ddd; padding-left:1em; margin-top:0.5em;">
     <p>
       <?php if ($context_label !== '') : ?><strong><?php echo esc_html($context_label); ?></strong> <?php endif; ?>
       <span class="description"><?php echo $context_label !== '' ? '— ' : ''; ?><?php echo esc_html($generation_note); ?></span>
     </p>
     <p>
       <label><?php esc_html_e('Nom', 'gws-core'); ?></label><br>
-      <input type="text" class="regular-text" name="<?php echo esc_attr($field_name); ?>[name]" value="<?php echo esc_attr($node['name'] ?? ''); ?>">
+      <input type="text" class="regular-text gwseq-external-name-input" name="<?php echo esc_attr($field_name); ?>[name]" value="<?php echo esc_attr($node['name'] ?? ''); ?>">
     </p>
     <p>
       <label><?php esc_html_e('Race / Stud-book', 'gws-core'); ?></label><br>

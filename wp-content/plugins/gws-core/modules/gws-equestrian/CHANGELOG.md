@@ -5,6 +5,78 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.7.0 — Étape 5 : correctif BLOQUANT (corruption Unicode), contexte dynamique, génération terminale
+
+Correctif urgent suite à la reprise de la recette runtime sur le pedigree de Jamerose. Trois
+problèmes distincts, chacun corrigé sans toucher au modèle validé (arbre externe récursif,
+relation GWS/externe, resolver, conservation non destructive, limite serveur, production,
+API programmatique).
+
+- **Bug bloquant : corruption des noms accentués** (« Native de Félines » devenait
+  « Native de Fu00e9lines » après enregistrement). **Cause racine exacte** :
+  `gwseq_set_horse_parent()` encodait l'arbre externe avec `wp_json_encode($tree)` sans le
+  drapeau `JSON_UNESCAPED_UNICODE`. Sans ce drapeau, `json_encode()` échappe tout caractère
+  non-ASCII en séquence littérale `\uXXXX` (« é » → les six caractères `\`, `u`, `0`, `0`, `e`,
+  `9`). Cette chaîne — qui contient donc un antislash réel — passe ensuite à
+  `update_post_meta()`, laquelle appelle EN INTERNE `wp_unslash()` sur la valeur avant stockage
+  (comportement natif de `update_metadata()` dans WordPress, totalement indépendant de ce
+  module et de toute logique métier). `wp_unslash()` ne distingue pas un antislash « magic
+  quotes » d'un antislash faisant partie du contenu légitime : il retire celui de `é`,
+  laissant le texte littéral `u00e9` — une chaîne JSON toujours syntaxiquement valide (donc
+  `json_decode()` ne remonte jamais d'erreur), mais dont le contenu est désormais faux. Une fois
+  ce nom corrompu réaffiché puis réenregistré, la corruption devient permanente. **Aucun rapport
+  avec `gwseq_format_horse_name_display()`** (la fonction de présentation) : elle se contente
+  d'afficher fidèlement une donnée déjà corrompue en amont (« u00e9 » en majuscules donne
+  « U00E9 », exactement le symptôme observé) ; elle n'est appelée dans aucune fonction de
+  sanitation ou de persistance (vérifié directement dans le code source, hors commentaires).
+  **Correctif** : `wp_json_encode($tree, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)` — les
+  caractères accentués sont désormais écrits tels quels (aucun antislash), donc rien que
+  `wp_unslash()` puisse corrompre. **Découverte méthodologique importante** : les stubs de test
+  `wp_unslash()`/`update_post_meta()`/`wp_json_encode()` du fichier de tests Pedigree étaient de
+  simples passe-plats, non fidèles au comportement réel de WordPress sur ce point précis — c'est
+  cette infidélité, et non un manque de couverture, qui a laissé ce bug traverser 563 assertions
+  déjà vertes. Les trois stubs ont été rendus fidèles (vrai `stripslashes()`, options JSON
+  réellement transmises), rendant le bug reproductible — et donc vérifiable — sans WordPress
+  réel. **Aucune migration automatique** des données déjà corrompues (ex. la fiche Jamerose de
+  recette) : correction manuelle ponctuelle par re-saisie, une reconstruction automatique du
+  type `u00e9 → é` étant jugée insuffisamment sûre pour être tentée à l'aveugle.
+- **Contexte de saisie désormais mis à jour EN DIRECT** (`assets/cheval-admin.js`) : un premier
+  essai sans JavaScript (version 0.6.0) s'est révélé insuffisant en recette réelle — après avoir
+  saisi le nom d'un nouvel ascendant, l'intitulé restait « Père de cet ascendant » tant que la
+  fiche n'était pas enregistrée. Une écoute déléguée légère et strictement scopée à l'écran
+  Cheval met désormais à jour le résumé de divulgation progressive et les libellés Père/Mère du
+  niveau suivant à chaque frappe dans un champ Nom — sans jamais lire ni modifier la valeur de ce
+  champ (aucune normalisation de casse, aucune suppression d'accent appliquée à la donnée
+  envoyée au serveur). Les libellés traduits sont fournis au script via des attributs `data-*`
+  d'un conteneur dédié (`.gwseq-pedigree-i18n`), jamais codés en dur côté JavaScript.
+- **Génération terminale — un nœud de génération 4 n'a plus AUCUNE clé père/mère** (ni même
+  `null`). La recette a révélé que le rendu de vérification admin/développement affichait, sous
+  un ascendant de génération 4, « Père : Non renseigné »/« Mère : Non renseigné » — laissant
+  croire à tort qu'une génération 5 existerait dans le modèle, alors qu'elle est hors périmètre
+  du pedigree V1, jamais saisissable ni stockée. Le resolver (`pedigree-resolver.php`) ne tente
+  plus de lire les relations père/mère d'un nœud à profondeur restante nulle, que la branche
+  soit GWS ou externe ; ses clés `father`/`mother` sont absentes plutôt que `null`. Le type de
+  nœud `depth_limit` (première version de l'Étape 5) est retiré en conséquence — il ne
+  correspondait qu'à ce même cas, désormais traité en amont. Le rendu de vérification
+  (`gwseq_render_pedigree_node_preview()`) n'affiche plus aucune ligne Père/Mère pour un nœud
+  sans ces clés. Principe conservé pour un futur rendu public (Étape 8) : une donnée
+  généalogique absente ne doit jamais être remplacée par un texte « Non renseigné », sauf besoin
+  explicite futur.
+- Fichiers modifiés : `includes/cheval-pedigree.php` (drapeau JSON, conteneur de libellés
+  traduits pour le JavaScript, classes `gwseq-ancestor-node`/`gwseq-external-name-input`),
+  `includes/pedigree-resolver.php` (génération terminale, retrait du type `depth_limit`, rendu
+  de vérification corrigé), `assets/cheval-admin.js` (mise à jour dynamique du contexte).
+- 40 nouvelles assertions dans `tests/gws-equestrian-pedigree-logic-test.php` (reproduction
+  exacte du bug via des stubs désormais fidèles au comportement réel de WordPress, non-altération
+  de la source sur plusieurs enregistrements consécutifs et à travers un changement de mode,
+  non-altération à plusieurs niveaux imbriqués, JSON stocké contenant le caractère littéral,
+  helper de présentation élargi — Félines/Hélios/À bientôt/Crème Brûlée —, séparation
+  source/présentation vérifiée hors commentaires, câblage des attributs `data-*` et classes pour
+  le JavaScript, génération terminale pour une chaîne GWS ET une branche externe, absence de
+  « Non renseigné » dans le rendu de vérification). Suite complète 100 % passante (603
+  assertions) — aucune assertion existante affaiblie, plusieurs ont été renforcées ou corrigées
+  pour refléter fidèlement le nouveau comportement de génération terminale.
+
 ## 0.6.0 — Étape 5 : corrections post-recette runtime (Race/Stud-book, contexte de saisie, présentation)
 
 La recette runtime de l'Étape 5 (saisie réelle du pedigree de Jamerose) a validé le modèle

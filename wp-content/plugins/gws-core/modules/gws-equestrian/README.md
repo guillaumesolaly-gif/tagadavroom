@@ -15,9 +15,11 @@ Equestrian 0.4.1. L'Étape 5 construit les relations de pedigree (Père/Mère, c
 ascendant externe récursif, resolver, production). Une première recette runtime (saisie réelle du
 pedigree de Jamerose) a validé le modèle fonctionnel mais révélé des problèmes UX importants,
 corrigés en 0.6.0 (Race/Stud-book harmonisé, contexte de saisie, compteur de génération,
-convention de présentation des noms — voir plus bas) ; en attente de la reprise de cette recette.
-Voir `CHANGELOG.md` de ce dossier pour l'historique détaillé par étape, et la proposition de
-conception validée pour le contexte d'ensemble.
+convention de présentation des noms). La reprise de cette recette a ensuite révélé un **bug
+bloquant** (corruption des noms accentués à l'enregistrement) ainsi que deux défauts
+complémentaires, corrigés en 0.7.0 (voir plus bas) ; en attente d'une nouvelle recette. Voir
+`CHANGELOG.md` de ce dossier pour l'historique détaillé par étape, et la proposition de conception
+validée pour le contexte d'ensemble.
 
 ### Pedigree (Étape 5)
 
@@ -52,10 +54,14 @@ répété à chaque niveau fait rapidement perdre le fil (erreur de saisie const
 affiche désormais un intitulé construit à partir du nom déjà enregistré du cheval concerné
 (« Père de UNTOUCHABLE 27 », puis en développant : « Père de HORS LA LOI II »...) — jamais une
 nomenclature généalogique complexe (« grand-père paternel »...), toujours le nom comme repère. Un
-repli explicite (« cet ascendant ») s'applique tant que le nom n'est pas encore saisi.
-Volontairement aucun JavaScript ne met ces intitulés à jour en direct pendant la frappe (un texte
-d'aide rappelle qu'un enregistrement de la fiche les rafraîchit) : solution jugée suffisante,
-plus légère qu'un mécanisme de mise à jour dynamique. Un compteur discret (« Génération N sur 4 »,
+repli explicite (« cet ascendant ») s'applique tant que le nom n'est pas encore saisi. **Correction
+0.7.0** : un premier essai sans JavaScript (0.6.0) s'est révélé insuffisant en recette réelle — un
+nom fraîchement saisi ne se reflétait dans ces intitulés qu'après enregistrement de la fiche. Une
+écoute déléguée légère (`assets/cheval-admin.js`), strictement scopée à cet écran, met désormais
+ces intitulés à jour EN DIRECT pendant la frappe — sans jamais lire ni modifier la valeur du champ
+Nom lui-même (aucune normalisation de casse, aucune suppression d'accent appliquée à la donnée
+envoyée au serveur ; la transformation visuelle est une prévisualisation, le rendu réellement
+autoritaire restant celui produit par le serveur). Un compteur discret (« Génération N sur 4 »,
 « Génération 4 sur 4 — dernière génération ») accompagne chaque niveau — la recette a aussi
 montré que l'utilisateur ne savait pas jusqu'où remonter alors que GWS connaît parfaitement cette
 limite. À la génération 4, plus aucun contrôle « + Renseigner ses origines » n'est proposé (arrêt
@@ -70,6 +76,42 @@ et le nom d'un ascendant externe restent enregistrés exactement tels que saisis
 à l'enregistrement. Ne s'applique jamais à Race/Stud-book, qui reste une valeur structurée via
 référentiel. Réutilisable plus tard par le front, un export PDF, l'impression, un catalogue, ou le
 Social Kit.
+
+#### Correctif BLOQUANT 0.7.0 — corruption des noms accentués
+
+La reprise de la recette a révélé qu'un nom accentué (« Native de Félines ») était corrompu en
+base après enregistrement (« Native de Fu00e9lines »). **Cause racine exacte**, sans rapport avec
+le helper de présentation ci-dessus : `gwseq_set_horse_parent()` encodait l'arbre externe avec
+`wp_json_encode($tree)` sans le drapeau `JSON_UNESCAPED_UNICODE`. Sans ce drapeau, `json_encode()`
+échappe tout caractère non-ASCII en séquence littérale `\uXXXX` (« é » → les six caractères `\`,
+`u`, `0`, `0`, `e`, `9` — un antislash réel dans la chaîne). Cette chaîne passe ensuite à
+`update_post_meta()`, laquelle appelle EN INTERNE `wp_unslash()` sur la valeur avant stockage
+(comportement natif de `update_metadata()` dans WordPress, totalement indépendant de ce module) :
+`wp_unslash()` ne distingue pas un antislash « magic quotes » d'un antislash faisant partie du
+contenu légitime, et retire celui de `é`, laissant le texte littéral `u00e9` — une chaîne JSON
+toujours syntaxiquement valide (`json_decode()` ne remonte donc jamais d'erreur), mais dont le
+contenu est désormais faux. Une fois ce nom corrompu réaffiché puis réenregistré, la corruption
+devient permanente. Le helper de présentation n'était en rien en cause : il ne fait qu'afficher
+fidèlement une donnée déjà corrompue en amont (« u00e9 » en majuscules donne « U00E9 »,
+exactement le symptôme observé) et n'est appelé dans aucune fonction de sanitation ou de
+persistance.
+
+**Correctif** : `wp_json_encode($tree, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)` — les
+caractères accentués sont désormais écrits tels quels (aucun antislash), donc rien que
+`wp_unslash()` puisse corrompre.
+
+**Découverte méthodologique** : les stubs de test `wp_unslash()`/`update_post_meta()`/
+`wp_json_encode()` du fichier de tests Pedigree étaient de simples passe-plats, non fidèles au
+comportement réel de WordPress sur ce point précis — c'est cette infidélité, et non un manque de
+couverture, qui a laissé ce bug traverser 563 assertions déjà vertes. Les trois stubs ont été
+rendus fidèles (vrai `stripslashes()`, options JSON réellement transmises), rendant le bug
+reproductible — et donc vérifiable — sans WordPress réel.
+
+**Compatibilité** : aucune migration automatique des données déjà corrompues (une reconstruction
+du type `u00e9 → é` étant jugée insuffisamment sûre pour être tentée à l'aveugle sur l'ensemble
+des pedigrees) — la fiche Jamerose de recette sera corrigée manuellement par re-saisie après
+déploiement de ce correctif. Une donnée correcte ne peut en revanche plus être corrompue après
+cette version.
 
 **Une seule source active, jamais de mélange, aucune destruction accidentelle** : passer d'un
 mode à l'autre (GWS ⇄ externe) sur une même relation ne supprime jamais l'autre branche — elle
@@ -95,7 +137,12 @@ peut donc mélanger naturellement une fiche GWS dont un ascendant intermédiaire
 parent externe, sans aucune ambiguïté de profondeur (voir « Modèle de données » ci-dessous pour
 le détail). Protégé contre les cycles (directs, déjà rejetés à la sauvegarde pour une relation
 GWS ; indirects, détectables seulement à la résolution) et contre un parent supprimé
-définitivement (dégradation propre, jamais d'erreur fatale).
+définitivement (dégradation propre, jamais d'erreur fatale). **Correction 0.7.0** : un nœud de la
+génération 4 (la dernière autorisée) est désormais strictement terminal — ses clés `father`/
+`mother` sont absentes, pas seulement `null`. La recette avait révélé qu'un nœud de génération 4
+affichait, dans la boîte de vérification, « Père : Non renseigné »/« Mère : Non renseigné »,
+laissant croire à tort qu'une génération 5 existerait dans le modèle alors qu'elle est hors
+périmètre du pedigree V1, jamais saisissable ni stockée.
 
 **Production** : les chevaux référençant une fiche comme père ou mère GWS sont retrouvés par
 requête inverse, jamais stockés sur la fiche du parent — seules de vraies relations entre deux
@@ -146,31 +193,36 @@ Arrière-grands-parents = génération 3           (8 nœuds max)
 Arrière-arrière-grands-parents = génération 4   (16 nœuds max)
 ```
 
-Soit 30 nœuds d'ascendants au maximum. Au-delà, une relation qui existerait réellement (GWS ou
-externe) n'est jamais résolue plus loin : un nœud sentinelle `{type: "depth_limit"}` la
-remplace — jamais confondu avec une absence de donnée (`null`), qui signifie toujours « jamais
-renseigné ».
+Soit 30 nœuds d'ascendants au maximum. **Correction 0.7.0** : un nœud de la génération 4 (la
+dernière autorisée) est strictement terminal — ses clés `father`/`mother` sont totalement
+ABSENTES du tableau, pas seulement `null`. Avant cette correction, un nœud sentinelle
+`{type: "depth_limit"}` occupait ces clés ; la recette avait révélé que cela laissait croire, dans
+la boîte de vérification, qu'une génération 5 existerait dans le modèle (affichage « Père : Non
+renseigné »/« Mère : Non renseigné ») — alors qu'elle est hors périmètre du pedigree V1, jamais
+saisissable ni stockée. Le type de nœud `depth_limit` n'existe donc plus du tout depuis 0.7.0.
 
 **Structure produite par le resolver** (`gwseq_resolve_horse_pedigree($cheval_id)`), à titre
-d'exemple :
+d'exemple (ici avec seulement 2 générations pour rester lisible ; en génération 4, `father` et
+`mother` seraient simplement absents de `Voltaire` et de `Belle`) :
 
 ```
 {
   type: "gws_horse", id: 123, global_id: "…", name: "Jamerose", breed: "Selle Français",
   father: {
     type: "external", name: "Kannan", breed: "KWPN",
-    father: { type: "external", name: "Voltaire", breed: "Hanovrien", father: null, mother: null },
+    father: { type: "external", name: "Voltaire", breed: "Hanovrien" },
     mother: null
   },
-  mother: { type: "gws_horse", id: 45, global_id: "…", name: "Belle", breed: "AQPS", father: null, mother: null }
+  mother: { type: "gws_horse", id: 45, global_id: "…", name: "Belle", breed: "AQPS" }
 }
 ```
 
 Autres types de nœud possibles : `unavailable` (parent GWS supprimé définitivement),
-`cycle_detected` (cycle indirect détecté), `depth_limit` (relation réelle au-delà de la
-profondeur demandée). Une relation jamais renseignée reste `null`. Aucune donnée privée
-(statut commercial, prix, éleveur, propriétaire, UELN/SIRE, catégories) n'apparaît jamais dans
-cette structure — seuls id/global_id (fiche GWS uniquement)/nom/race/filiation sont exposés.
+`cycle_detected` (cycle indirect détecté). Une relation jamais renseignée reste `null` ; une
+génération au-delà de la profondeur autorisée n'est, elle, ni `null` ni un type dédié — c'est
+simplement l'absence de la clé `father`/`mother` elle-même sur le nœud terminal. Aucune donnée
+privée (statut commercial, prix, éleveur, propriétaire, UELN/SIRE, catégories) n'apparaît jamais
+dans cette structure — seuls id/global_id (fiche GWS uniquement)/nom/race/filiation sont exposés.
 
 #### Compatibilité import/programmatique (Étape 5)
 
@@ -201,15 +253,19 @@ l'état des lieux sur Prestation/Cheval-identité/Commercialisation).
   séparément (A → père B, puis B → père A) n'est détecté qu'à la résolution, jamais empêché à la
   sauvegarde (cela nécessiterait de parcourir tout le graphe existant à chaque enregistrement,
   hors de proportion pour ce socle).
-- **Aucune mise à jour en direct des intitulés contextuels pendant la frappe** (choix assumé,
-  0.6.0) : après avoir saisi le nom d'un nouvel ascendant, il faut enregistrer la fiche pour que
-  « Père de… »/« Mère de… » se mettent à jour au niveau suivant — pas de JavaScript de rafraîchissement
-  en direct, un texte d'aide le rappelle à l'écran.
 - **Reconnaissance d'ancienne race limitée aux correspondances exactes** (0.6.0) : une ancienne
   valeur texte est reconnue si elle correspond, après normalisation, à un code ou un libellé du
   référentiel — une abréviation non standard (ex. « SF ») n'est pas devinée automatiquement et
   reste sous « Autre », ce qui est le comportement voulu (jamais d'invention arbitraire) mais peut
   nécessiter une correction manuelle ponctuelle par l'utilisateur s'il souhaite la valeur canonique.
+- **Aucune migration automatique des données déjà corrompues par le bug Unicode antérieur à
+  0.7.0** : une valeur déjà altérée en base avant cette correction (ex. « Native de Fu00e9lines »
+  au lieu de « Native de Félines ») n'est jamais réécrite automatiquement — un correctif global
+  par expression régulière sur toute la base a été jugé insuffisamment sûr (risque de faux
+  positifs sur une valeur légitimement proche). Une telle valeur reste donc visiblement incorrecte
+  tant qu'un utilisateur ne la corrige pas manuellement en resaisissant le nom concerné (une fois
+  corrigée et resauvegardée avec le correctif 0.7.0 en place, elle ne peut plus se corrompre à
+  nouveau). La fiche de recette Jamerose sera corrigée manuellement après déploiement.
 
 #### Pistes futures actées en roadmap (aucun développement à ce stade)
 
@@ -270,6 +326,28 @@ saisi de Jamerose, un test à la fois :
     dans la console navigateur.
 12. Désactiver puis réactiver le module (`config/modules.php`) : vérifier qu'aucune relation de
     pedigree, aucun cheval, aucune donnée n'a été modifiée ou recréée.
+
+**Étapes ajoutées pour le correctif bloquant 0.7.0** (corruption Unicode + contexte dynamique) :
+
+13. Saisir un nom d'ascendant contenant des accents (ex. « Native de Félines », « Crème Brûlée »,
+    « Uriél de Félines ») : enregistrer, recharger la fiche, et vérifier au bon endroit dans le
+    champ Nom que la valeur affichée est EXACTEMENT celle saisie (accents compris, aucune séquence
+    du type « u00e9 » ne doit jamais apparaître). Enregistrer une deuxième puis une troisième fois
+    sans rien modifier : vérifier à chaque fois que la valeur reste identique (pas de dégradation
+    progressive).
+14. Taper le nom d'un nouvel ascendant externe pas encore enregistré (ex. « Uriel ») : vérifier que
+    le bouton « + Renseigner les origines de… », ainsi que les intitulés « Père de… »/« Mère de… »
+    du niveau suivant une fois développé, se mettent à jour EN DIRECT (sans recharger ni enregistrer
+    la fiche), en majuscules sans accent (« URIEL »). Vérifier que tant que le champ Nom est vide,
+    le texte de repli « cet ascendant » reste affiché.
+15. Avec le même essai, taper un nom accentué (ex. « Uriél de Félines ») et vérifier que le champ
+    Nom lui-même ne change jamais de contenu (ni casse, ni accents retirés) alors même que les
+    intitulés contextuels affichent la version normalisée (« URIEL DE FELINES ») — le JavaScript ne
+    doit jamais réécrire ce que l'utilisateur a tapé.
+16. Sur un pedigree comportant une branche allant jusqu'à la génération 4, vérifier dans la boîte
+    « Pedigree résolu » que le nœud de génération 4 ne présente plus aucune ligne « Père : Non
+    renseigné »/« Mère : Non renseigné » — la génération 4 doit apparaître comme terminale, sans
+    laisser croire qu'une génération 5 existerait.
 
 ### Cheval (Étape 4)
 
