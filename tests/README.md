@@ -74,7 +74,11 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   défaut, au moins une autre devise testée, absence de symbole `€` codé en dur vérifiée
   directement dans le code source de la fonction de résumé), unités supplémentaires
   (récolte/colis/étalon) et presets de reproduction corrigés (congélation → paillette,
-  réfrigération → récolte, expédition → colis, spermogramme → étalon).
+  réfrigération → récolte, expédition → colis, spermogramme → étalon). Complété à nouveau pour le
+  mode « Sur demande » (ex-« Sur devis », valeur technique `devis` inchangée) : libellé affiché
+  par défaut/personnalisé/volontairement vide (distinction « jamais initialisé » vs « vidé
+  explicitement » via `metadata_exists()`), compatibilité avec les prestations déjà créées en
+  1.6.1, absence de prix obligatoire, indépendance vis-à-vis du réglage global « Prix masqués ».
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

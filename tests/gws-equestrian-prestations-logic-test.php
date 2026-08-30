@@ -112,10 +112,12 @@ $t = gwseq_sanitize_prestation_tarification_input(array(
 gws_test_assert($t['mode'] === 'cheval_poney', 'Cheval/Poney : mode conservé');
 gws_test_assert($t['prix_cheval'] === 45.0 && $t['prix_poney'] === 35.0, 'Cheval/Poney : les deux prix sont distincts et corrects');
 
-// --- Sur devis : aucun prix requis, 0 n'est jamais utilisé pour signifier "sur devis" ---
-$t = gwseq_sanitize_prestation_tarification_input(array('_gwseq_tarif_mode' => 'devis'));
-gws_test_assert($t['mode'] === 'devis', 'Sur devis : mode conservé');
-gws_test_assert($t['prix'] === '', 'Sur devis : aucun prix numérique inventé (chaîne vide, jamais 0)');
+// --- Sur demande (valeur technique 'devis' conservée) : aucun prix requis, 0 n'est jamais
+// utilisé pour signifier l'absence de prix, et le libellé est sanitizé comme un texte ordinaire ---
+$t = gwseq_sanitize_prestation_tarification_input(array('_gwseq_tarif_mode' => 'devis', '_gwseq_tarif_demande_libelle' => 'Nous contacter'));
+gws_test_assert($t['mode'] === 'devis', 'Sur demande : mode (valeur technique historique "devis") conservé');
+gws_test_assert($t['prix'] === '', 'Sur demande : aucun prix numérique inventé (chaîne vide, jamais 0)');
+gws_test_assert($t['demande_libelle'] === 'Nous contacter', 'Sur demande : libellé personnalisé sanitizé et conservé');
 
 // --- Mode invalide envoyé (formulaire trafiqué) : repli sûr sur "unique" ---
 $t = gwseq_sanitize_prestation_tarification_input(array('_gwseq_tarif_mode' => 'gratuit-illimite'));
@@ -166,7 +168,7 @@ gws_test_assert(get_the_title($groupe_id) === 'Nos pensions', 'Après renommage 
 // =====================================================================================
 // Résumé de prix (fonction pure, réutilisable admin/front/API) — §28 : jamais de HTML
 // =====================================================================================
-gws_test_assert(gwseq_prestation_price_summary(array('mode' => 'devis'), 'ttc') === 'Sur devis', 'Résumé : mode devis -> "Sur devis"');
+gws_test_assert(gwseq_prestation_price_summary(array('mode' => 'devis', 'demande_libelle' => 'Sur demande'), 'ttc') === 'Sur demande', 'Résumé : mode "Sur demande" avec libellé résolu -> affiché tel quel');
 
 $tarif = array('mode' => 'unique', 'prix' => 45.0, 'unite' => 'seance', 'unite_autre' => '', 'prix_public' => '1');
 gws_test_assert(gwseq_prestation_price_summary($tarif, 'ttc') === '45 € TTC / Séance', 'Résumé : prix unique affiché avec unité et suffixe TTC');
@@ -211,8 +213,65 @@ $tarif_individuel_masque = array('mode' => 'unique', 'prix' => 45.0, 'unite' => 
 gws_test_assert(gwseq_prestation_price_summary($tarif_individuel_masque, 'ttc') === 'Tarif non affiché publiquement', 'Masque individuel seul (réglage global TTC) : cette prestation ne montre pas son tarif');
 gws_test_assert(gwseq_prestation_price_summary($tarif_normal, 'hidden') === gwseq_prestation_price_summary($tarif_individuel_masque, 'hidden'), 'Masque global : le résultat est identique que la case individuelle soit cochée ou non');
 
-// --- "Sur devis" reste inchangé par le réglage global, y compris en mode masqué ---
-gws_test_assert(gwseq_prestation_price_summary(array('mode' => 'devis'), 'hidden') === 'Sur devis', 'Sur devis : jamais affecté par le réglage global d’affichage des prix');
+// --- "Sur demande" reste inchangé par le réglage global, y compris en mode masqué ---
+gws_test_assert(gwseq_prestation_price_summary(array('mode' => 'devis', 'demande_libelle' => 'Sur demande'), 'hidden') === 'Sur demande', 'Sur demande : jamais affecté par le réglage global d’affichage des prix (montants chiffrés uniquement)');
+
+// =====================================================================================
+// Mode "Sur demande" — libellé par défaut / personnalisé / volontairement vide, compatibilité
+// avec la valeur technique historique 'devis', interaction avec le masque global des prix
+// =====================================================================================
+
+// --- Libellé par défaut : jamais initialisé (prestation neuve, ou prestation historique créée
+// avant ce champ en 1.6.1 avec mode 'devis' déjà enregistré) -> "Sur demande" sans migration ---
+$GLOBALS['__gwseq_test_meta'][60] = array('_gwseq_tarif_mode' => 'devis'); // simule une prestation 1.6.1 existante, sans le nouveau champ
+gws_test_assert(
+  gwseq_get_prestation_demande_libelle(60) === 'Sur demande',
+  'Compatibilité 1.6.1 : une prestation "devis" déjà existante sans libellé enregistré affiche "Sur demande" par défaut, sans migration'
+);
+gws_test_assert(
+  gwseq_get_prestation_tarif(60)['mode'] === 'devis',
+  'Compatibilité 1.6.1 : le mode technique "devis" d’une prestation déjà existante reste inchangé'
+);
+
+// --- Libellé personnalisé "Sur devis" (cas B de la demande) ---
+$GLOBALS['__gwseq_test_meta'][61] = array('_gwseq_tarif_mode' => 'devis', '_gwseq_tarif_demande_libelle' => 'Sur devis');
+gws_test_assert(gwseq_get_prestation_demande_libelle(61) === 'Sur devis', 'Libellé personnalisé "Sur devis" (cas B) : conservé et restitué tel quel');
+
+// --- Libellé personnalisé "Nous contacter" ---
+$GLOBALS['__gwseq_test_meta'][62] = array('_gwseq_tarif_mode' => 'devis', '_gwseq_tarif_demande_libelle' => 'Nous contacter');
+gws_test_assert(gwseq_get_prestation_demande_libelle(62) === 'Nous contacter', 'Libellé personnalisé "Nous contacter" : conservé et restitué tel quel');
+
+// --- Caractères spéciaux dans le libellé ---
+$t_libelle_special = gwseq_sanitize_prestation_tarification_input(array('_gwseq_tarif_mode' => 'devis', '_gwseq_tarif_demande_libelle' => "Nous contacter — devis sous 48h & sans engagement"));
+gws_test_assert($t_libelle_special['demande_libelle'] === "Nous contacter — devis sous 48h & sans engagement", 'Libellé "Sur demande" : caractères spéciaux (tiret cadratin, esperluette) conservés');
+
+// --- Libellé volontairement vide (cas C) : la meta existe (enregistrement explicite) mais est
+// vide -> aucun texte tarifaire, à distinguer de "jamais initialisé" (testé ci-dessus, id 60) ---
+$GLOBALS['__gwseq_test_meta'][63] = array('_gwseq_tarif_mode' => 'devis', '_gwseq_tarif_demande_libelle' => '');
+gws_test_assert(gwseq_get_prestation_demande_libelle(63) === '', 'Libellé volontairement vide (cas C) : distinct de "jamais initialisé", reste vide (jamais de fallback)');
+gws_test_assert(
+  gwseq_prestation_price_summary(gwseq_get_prestation_tarif(63), 'ttc') === '',
+  'Libellé volontairement vide : aucun texte tarifaire rendu pour cette prestation'
+);
+
+// --- Aucun prix numérique obligatoire en mode "Sur demande" ; 0 n'est jamais utilisé pour
+// représenter l'absence de prix (même vérification que pour "unique", appliquée à ce mode) ---
+$t_devis_sans_prix = gwseq_sanitize_prestation_tarification_input(array('_gwseq_tarif_mode' => 'devis'));
+gws_test_assert($t_devis_sans_prix['prix'] === '', 'Sur demande : aucun prix numérique requis (chaîne vide)');
+gws_test_assert($t_devis_sans_prix['prix'] !== 0 && $t_devis_sans_prix['prix'] !== '0', 'Sur demande : 0 n’est jamais utilisé pour représenter l’absence de prix');
+
+// --- Interaction avec "Prix masqués" : le libellé reste toujours disponible (montants chiffrés
+// uniquement concernés par ce réglage), sauf si volontairement vide ---
+$tarif_demande_avec_libelle = array('mode' => 'devis', 'demande_libelle' => 'Nous contacter');
+gws_test_assert(
+  gwseq_prestation_price_summary($tarif_demande_avec_libelle, 'hidden') === 'Nous contacter',
+  'Prix globaux masqués + Sur demande : le libellé "Nous contacter" reste rendu (exemple exact du CR)'
+);
+$tarif_demande_vide = array('mode' => 'devis', 'demande_libelle' => '');
+gws_test_assert(
+  gwseq_prestation_price_summary($tarif_demande_vide, 'hidden') === '',
+  'Prix globaux masqués + libellé volontairement vide : aucun texte tarifaire rendu'
+);
 
 // =====================================================================================
 // Devise : EUR par défaut, au moins une autre devise, aucun symbole codé en dur

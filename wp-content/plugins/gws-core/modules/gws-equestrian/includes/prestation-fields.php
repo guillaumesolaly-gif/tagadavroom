@@ -28,15 +28,22 @@ const GWSEQ_PRESTATION_NONCE_ACTION = 'gwseq_save_prestation_meta';
 const GWSEQ_PRESTATION_NONCE_FIELD = 'gwseq_save_prestation_meta_nonce';
 
 /**
- * Modes de tarification retenus (§6-7 de la demande) : un prix unique, deux prix distincts
- * (cheval/poney) pour une seule et même prestation, ou sur devis (aucun prix chiffré requis — 0
- * reste une vraie valeur numérique, jamais utilisé pour signifier "sur devis").
+ * Modes de tarification retenus (§6-7 de la demande initiale) : un prix unique, deux prix
+ * distincts (cheval/poney) pour une seule et même prestation, ou "Sur demande" (aucun prix
+ * chiffré requis — 0 reste une vraie valeur numérique, jamais utilisé pour signifier l'absence de
+ * prix).
+ *
+ * Valeur technique 'devis' conservée telle quelle (relecture post-1.6.1) pour éviter toute
+ * migration inutile — seul le libellé affiché change ("Sur demande" plutôt que "Sur devis") ;
+ * fonctionnellement, ce mode représente désormais "prix sur demande / non communiqué" au sens
+ * large (le professionnel choisit lui-même la formulation exacte via le champ Libellé affiché,
+ * voir gwseq_get_prestation_demande_libelle() plus bas), pas spécifiquement un devis.
  */
 function gwseq_prestation_tarif_mode_options() {
   return array(
     'unique' => 'Prix unique',
     'cheval_poney' => 'Cheval / Poney (deux tarifs)',
-    'devis' => 'Sur devis',
+    'devis' => 'Sur demande',
   );
 }
 
@@ -71,6 +78,7 @@ function gwseq_register_prestation_meta() {
     '_gwseq_tarif_unite',
     '_gwseq_tarif_unite_autre',
     '_gwseq_tarif_prix_public',
+    '_gwseq_tarif_demande_libelle',
   );
   foreach ($string_meta as $key) {
     register_post_meta(GWSEQ_CPT_PRESTATION, $key, array('single' => true, 'type' => 'string', 'show_in_rest' => false));
@@ -119,6 +127,7 @@ function gwseq_sanitize_prestation_tarification_input($raw) {
     'unite' => $unite,
     'unite_autre' => gws_core_field_sanitize('text', $raw['_gwseq_tarif_unite_autre'] ?? ''),
     'prix_public' => gws_core_field_sanitize('checkbox', $raw['_gwseq_tarif_prix_public'] ?? ''),
+    'demande_libelle' => gws_core_field_sanitize('text', $raw['_gwseq_tarif_demande_libelle'] ?? ''),
   );
 }
 
@@ -131,6 +140,31 @@ function gwseq_sanitize_prestation_tarification_input($raw) {
 function gwseq_prestation_is_prix_public($post_id) {
   if (!metadata_exists('post', $post_id, '_gwseq_tarif_prix_public')) return true;
   return get_post_meta($post_id, '_gwseq_tarif_prix_public', true) === '1';
+}
+
+/**
+ * Libellé par défaut proposé pour le mode "Sur demande" — appliqué uniquement tant que la
+ * prestation n'a jamais été enregistrée avec ce libellé (voir gwseq_get_prestation_demande_libelle()).
+ */
+function gwseq_prestation_demande_libelle_default() {
+  return 'Sur demande';
+}
+
+/**
+ * Distingue "jamais initialisé" de "volontairement enregistré vide" avec le même mécanisme déjà
+ * utilisé pour _gwseq_tarif_prix_public (metadata_exists()) : tant qu'aucun enregistrement n'a
+ * jamais écrit cette meta (prestation neuve, ou prestation créée avant l'introduction de ce champ
+ * — compatibilité avec la valeur historique 'devis' sans aucune migration), le libellé par défaut
+ * "Sur demande" s'applique. Dès le premier enregistrement du formulaire (le champ est toujours
+ * présent dans le formulaire, simplement masqué par CSS si un autre mode est sélectionné), la
+ * valeur réellement soumise fait foi — y compris une chaîne vide si l'utilisateur l'a
+ * volontairement effacée : aucun texte tarifaire n'est alors affiché pour cette prestation.
+ */
+function gwseq_get_prestation_demande_libelle($post_id) {
+  if (!metadata_exists('post', $post_id, '_gwseq_tarif_demande_libelle')) {
+    return gwseq_prestation_demande_libelle_default();
+  }
+  return get_post_meta($post_id, '_gwseq_tarif_demande_libelle', true);
 }
 
 /**
@@ -149,6 +183,7 @@ function gwseq_get_prestation_tarif($post_id) {
     'unite' => get_post_meta($post_id, '_gwseq_tarif_unite', true),
     'unite_autre' => get_post_meta($post_id, '_gwseq_tarif_unite_autre', true),
     'prix_public' => gwseq_prestation_is_prix_public($post_id) ? '1' : '',
+    'demande_libelle' => gwseq_get_prestation_demande_libelle($post_id),
   );
 }
 
@@ -177,19 +212,23 @@ function gwseq_prestation_unit_label($unite, $unite_autre) {
  * testable sans dépendre de get_option().
  *
  * Priorité d'affichage (mode global "Prix masqués" ajouté suite à la relecture de l'Étape 3) :
- * 1. "Sur devis" reste toujours affiché tel quel — ce n'est pas un prix masqué, c'est l'absence
- *    de tarif fixe : le réglage global d'affichage ne s'applique pas à ce cas.
- * 2. Prix masqués globalement (réglage du site) : aucun montant n'est jamais rendu, quelle que
- *    soit la case individuelle de la prestation.
+ * 1. Mode "Sur demande" : le libellé déjà résolu (voir gwseq_get_prestation_demande_libelle(),
+ *    qui gère le fallback "jamais initialisé" -> "Sur demande") est affiché tel quel, ou rien si
+ *    volontairement vide — dans les deux cas, INDÉPENDAMMENT du réglage global d'affichage des
+ *    prix : ce n'est pas un montant chiffré à masquer, c'est une mention éditoriale que le
+ *    professionnel contrôle lui-même (voir §5 de la demande : "Prix masqués" concerne les
+ *    montants chiffrés, jamais ce libellé).
+ * 2. Prix masqués globalement (réglage du site) : aucun montant chiffré n'est jamais rendu,
+ *    quelle que soit la case individuelle de la prestation.
  * 3. Sinon, case individuelle "Afficher ce tarif publiquement" décochée : cette seule prestation
  *    ne montre pas son tarif.
  * 4. Sinon, rendu normal HT/TTC selon le réglage global.
- * Aucun de ces cas ne modifie ni ne supprime les montants stockés : c'est uniquement une règle de
- * présentation, réversible à tout moment.
+ * Aucun de ces cas ne modifie ni ne supprime les montants/libellés stockés : c'est uniquement une
+ * règle de présentation, réversible à tout moment.
  */
 function gwseq_prestation_price_summary($tarif, $price_display_mode, $currency_code = 'EUR') {
   $mode = $tarif['mode'] ?? 'unique';
-  if ($mode === 'devis') return 'Sur devis';
+  if ($mode === 'devis') return $tarif['demande_libelle'] ?? '';
 
   if ($price_display_mode === 'hidden') return 'Tarif non affiché publiquement';
   if (($tarif['prix_public'] ?? '') !== '1') return 'Tarif non affiché publiquement';
@@ -280,6 +319,11 @@ function gwseq_render_prestation_tarification_box($post) {
     <label><input type="checkbox" id="gwseq-tarif-prix-public" name="_gwseq_tarif_prix_public" value="1" <?php checked($tarif['prix_public'], '1'); ?>> Afficher ce tarif publiquement</label><br>
     <span class="description">Si décoché, le montant reste enregistré pour votre usage interne mais n’apparaît pas sur le site (le visiteur voit alors « Nous consulter »).</span>
   </p>
+  <p data-gwseq-tarif-fields="devis" style="<?php echo $tarif['mode'] === 'devis' ? '' : 'display:none;'; ?>">
+    <label for="gwseq-tarif-demande-libelle"><strong>Libellé affiché</strong></label><br>
+    <input class="regular-text" type="text" id="gwseq-tarif-demande-libelle" name="_gwseq_tarif_demande_libelle" value="<?php echo esc_attr($tarif['demande_libelle']); ?>" placeholder="Ex. Sur demande, Sur devis, Nous contacter...">
+    <br><span class="description">Affiché tel quel à la place d’un prix chiffré. Laisser vide pour n’afficher aucune mention tarifaire pour cette prestation — ce champ n’est jamais concerné par le réglage global « Prix masqués », qui ne porte que sur les montants chiffrés.</span>
+  </p>
   <p>
     <label for="gwseq-tarif-unite"><strong>Unité</strong></label><br>
     <select class="widefat" id="gwseq-tarif-unite" name="_gwseq_tarif_unite">
@@ -312,6 +356,7 @@ function gwseq_save_prestation_meta($post_id) {
   update_post_meta($post_id, '_gwseq_tarif_unite', $tarif['unite']);
   update_post_meta($post_id, '_gwseq_tarif_unite_autre', $tarif['unite_autre']);
   update_post_meta($post_id, '_gwseq_tarif_prix_public', $tarif['prix_public']);
+  update_post_meta($post_id, '_gwseq_tarif_demande_libelle', $tarif['demande_libelle']);
 }
 add_action('save_post_' . GWSEQ_CPT_PRESTATION, 'gwseq_save_prestation_meta');
 

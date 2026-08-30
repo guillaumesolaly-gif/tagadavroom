@@ -25,10 +25,14 @@ meta custom, WordPress gère nativement la sauvegarde des trois champs.
 - **Groupe tarifaire** : sélecteur dans la colonne latérale, référence par ID de post (jamais par
   nom — renommer un groupe ne casse jamais les prestations qui lui sont rattachées).
 - **Tarification** (meta box dédiée) : mode Prix unique / Cheval-Poney (deux prix distincts) /
-  Sur devis, unité parmi une liste fermée (+ « Autre » avec libellé personnalisé), case « Afficher
-  ce tarif publiquement » pour un prix interne non diffusé sans multiplier les états incohérents.
-  Aucun prix formaté n'est stocké : chaque composant (montant, unité, visibilité) est une donnée
-  séparée, assemblée uniquement au moment du rendu (admin, puis web/API/PDF plus tard).
+  **Sur demande** (ex-« Sur devis », valeur technique `devis` inchangée — représente désormais
+  « prix sur demande / non communiqué » au sens large, avec un champ **Libellé affiché** propre
+  au professionnel : « Sur demande », « Sur devis », « Nous contacter »... ou vide pour n'afficher
+  aucune mention), unité parmi une liste fermée (+ « Autre » avec libellé personnalisé), case
+  « Afficher ce tarif publiquement » pour un prix interne non diffusé sans multiplier les états
+  incohérents. Aucun prix formaté n'est stocké : chaque composant (montant, unité, visibilité,
+  libellé) est une donnée séparée, assemblée uniquement au moment du rendu (admin, puis
+  web/API/PDF plus tard).
 - **Ordre d'affichage** : identique au Groupe (menu_order natif).
 - **Statut** : Brouillon/Publié natifs WordPress — aucun second système Actif/Inactif.
 - **Modèles de prestations** : bouton « Partir d'un modèle » sur l'écran d'ajout, organisé par
@@ -77,8 +81,13 @@ meta custom, WordPress gère nativement la sauvegarde des trois champs.
    et que le tarif affiché dans la liste combine les deux.
 5. Décocher « Afficher ce tarif publiquement », enregistrer : la colonne Tarif doit afficher
    « Tarif non affiché publiquement ».
-6. Créer une seconde prestation en mode « Sur devis » : vérifier qu'aucun champ de prix n'est
-   requis et que la colonne Tarif affiche « Sur devis ».
+6. Créer une seconde prestation en mode « Sur demande » : vérifier qu'aucun champ de prix n'est
+   requis, que le champ « Libellé affiché » apparaît pré-rempli avec « Sur demande », et que la
+   colonne Tarif affiche cette valeur. Le modifier en « Nous contacter », enregistrer, recharger :
+   la colonne Tarif doit refléter le nouveau libellé. Le vider complètement et enregistrer :
+   la colonne Tarif ne doit plus afficher aucun texte (tiret). Vérifier également que passer le
+   réglage global sur « Prix masqués » (Prestations > Réglages) n'affecte pas un libellé non vide
+   sur une prestation en mode « Sur demande ».
 7. Choisir l'unité « Autre » sur une prestation, vérifier que le champ « Préciser l'unité »
    apparaît, le remplir (ex. « par cycle »), enregistrer, recharger.
 8. Renommer le groupe « Pensions » en « Nos pensions » : vérifier que la prestation qui lui est

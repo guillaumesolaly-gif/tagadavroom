@@ -1,5 +1,16 @@
 # Changelog — GWS Starter
 
+## 1.6.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 3, dernier ajustement fonctionnel** : le mode de tarification `devis`
+  est désormais présenté comme « Sur demande » (valeur technique inchangée, sans migration),
+  avec un nouveau champ Libellé affiché permettant au professionnel de choisir sa formulation
+  (« Sur demande », « Sur devis », « Nous contacter »...) ou de ne rien afficher. Reste
+  indépendant du réglage global « Prix masqués ». Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.3.2). Étape 3 toujours en
+  attente de recette runtime.
+- 12 nouvelles assertions automatisées, suite existante toujours 100 % passante.
+
 ## 1.6.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 3, ajustements avant recette runtime** : réglage global d'affichage

@@ -5,6 +5,34 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.3.2 — Étape 3 : "Sur devis" devient fonctionnellement "Sur demande"
+
+Dernier ajustement fonctionnel avant recette runtime :
+
+- **Le mode `devis` est présenté à l'utilisateur comme « Sur demande »** (valeur technique
+  `devis` conservée telle quelle, aucune migration nécessaire) : ce mode représente désormais
+  « prix sur demande / non communiqué » au sens large, pas spécifiquement un devis. Nouveau
+  champ **Libellé affiché** (`_gwseq_tarif_demande_libelle`, texte simple sanitizé) permettant au
+  professionnel de choisir sa propre formulation (« Sur demande », « Sur devis », « Nous
+  contacter »...) ou de ne rien afficher.
+- **Distinction « jamais initialisé » vs « volontairement vide »** : même mécanisme que pour
+  `_gwseq_tarif_prix_public` (`metadata_exists()`). Tant qu'aucun enregistrement n'a jamais écrit
+  cette meta — prestation neuve, ou prestation créée avant ce champ (compatibilité 1.6.1 sans
+  aucune migration) — le libellé par défaut « Sur demande » s'applique. Dès le premier
+  enregistrement du formulaire, la valeur réellement soumise fait foi, y compris vide (aucun
+  texte tarifaire n'est alors affiché).
+- **Indépendant du réglage global « Prix masqués »** : ce libellé n'est jamais un montant chiffré
+  à masquer — il reste rendu (ou vide s'il a été volontairement effacé) quel que soit le réglage
+  global d'affichage des prix, conformément à l'arbitrage déjà posé en 1.6.1.
+- Aucun prix numérique requis pour ce mode, `0` jamais utilisé pour représenter l'absence de
+  prix — comportement inchangé, confirmé par test.
+- Aucun moteur de champs conditionnels ajouté : le nouveau champ réutilise exactement le même
+  mécanisme d'affichage conditionnel déjà en place (`data-gwseq-tarif-fields`), sans modification
+  du JavaScript existant.
+- Fichier modifié : `includes/prestation-fields.php` uniquement.
+- 12 nouvelles assertions dans `tests/gws-equestrian-prestations-logic-test.php` (86 au total
+  pour ce fichier).
+
 ## 0.3.1 — Étape 3 : ajustements avant recette runtime
 
 Trois corrections demandées après relecture du code, avant toute recette runtime :
