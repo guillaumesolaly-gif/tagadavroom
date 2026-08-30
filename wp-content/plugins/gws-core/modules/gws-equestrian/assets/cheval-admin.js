@@ -82,14 +82,19 @@
       applyParentSource();
     });
 
-    // Intégrité du pedigree (correctif complémentaire post-recette, 0.9.0) : un même cheval GWS ne
-    // doit jamais pouvoir être choisi à la fois comme père et comme mère. UX uniquement — la
-    // garantie réelle reste la validation serveur dans gwseq_set_horse_parent() (voir
-    // includes/cheval-pedigree.php), qui refuse l'enregistrement quel que soit l'état de ce
-    // script. Ce bloc se contente de désactiver, dans CHAQUE sélecteur, l'option correspondant au
-    // cheval déjà choisi dans l'AUTRE sélecteur — jamais de changement automatique d'une valeur
-    // déjà sélectionnée : désactiver une <option> ne désélectionne rien, elle empêche seulement un
-    // choix futur qui créerait l'incohérence.
+    // Intégrité du pedigree (correctifs complémentaires post-recette, 0.9.0 puis 0.10.0) : un même
+    // cheval GWS ne doit jamais pouvoir être choisi à la fois comme père et comme mère (0.9.0), et
+    // un candidat au sexe ou à l'année de naissance incompatible avec le rôle ne doit jamais être
+    // sélectionnable (0.10.0). UX uniquement — la garantie réelle reste la validation serveur dans
+    // gwseq_set_horse_parent() (voir includes/cheval-pedigree.php), qui refuse l'enregistrement
+    // quel que soit l'état de ce script. Ce bloc se contente de désactiver, dans CHAQUE sélecteur,
+    // l'option correspondant au cheval déjà choisi dans l'AUTRE sélecteur — jamais de changement
+    // automatique d'une valeur déjà sélectionnée : désactiver une <option> ne désélectionne rien,
+    // elle empêche seulement un choix futur qui créerait l'incohérence. Une option porteuse de
+    // l'attribut data-gwseq-locked-disabled (sexe/année incompatible, verrouillé côté rendu
+    // serveur — voir gwseq_render_cheval_parent_fields()) n'est JAMAIS réactivée par ce script : ce
+    // sont des propriétés fixes du candidat, indépendantes de la sélection courante de l'autre
+    // rôle, contrairement au conflit d'autre-parent qui peut légitimement disparaître.
     var gwsParentSelects = document.querySelectorAll('.gwseq-parent-gws-select');
     if (gwsParentSelects.length === 2) {
       var fatherGwsSelect = null;
@@ -102,6 +107,7 @@
       function excludeSelectedOption(sourceSelect, targetSelect) {
         var sourceValue = sourceSelect.value;
         Array.prototype.forEach.call(targetSelect.options, function (option) {
+          if (option.hasAttribute('data-gwseq-locked-disabled')) return;
           if (option.value === '' || option.value === '0') {
             option.disabled = false;
             return;

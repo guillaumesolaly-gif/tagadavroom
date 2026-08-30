@@ -1,5 +1,25 @@
 # Changelog — GWS Starter
 
+## 1.13.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 5 : correctif intégrité du pedigree — filtrage métier des parents GWS
+  (sexe, année).** Deux règles métier supplémentaires identifiées en recette, uniquement pour les
+  relations vers un cheval déjà enregistré dans GWS. Sexe : mâle/entier/hongre autorisés comme
+  père, seule une femelle autorisée comme mère, sexe inconnu toujours autorisé. Année de
+  naissance : un parent à l'année connue doit être né strictement avant son produit (aucun âge
+  minimum de reproduction) ; année inconnue (candidat ou produit) = aucun filtre. Une règle métier
+  unique et centrale (`gwseq_horse_parent_candidate_rejection_reason()`) combine désormais
+  auto-référence, sexe, année et conflit père/mère (0.9.0), réutilisée par le formulaire, la
+  validation serveur et le futur chemin d'import. UX admin : réutilise la désactivation d'options
+  déjà en place, avec une courte indication de la raison ; sexe/année sont verrouillés contre toute
+  réactivation par le script (propriétés fixes, contrairement au conflit avec l'autre rôle). Une
+  modification ultérieure des données (ex. un entier castré) ne déclenche jamais de suppression ou
+  modification automatique du pedigree — documenté comme piste future (audit d'intégrité). Les
+  ascendants externes ne sont pas affectés. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.10.0) pour le détail complet.
+- 34 nouvelles assertions automatisées, suite complète toujours 100 % passante (697 assertions au
+  total) — aucune assertion affaiblie.
+
 ## 1.12.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 5 : correctif intégrité du pedigree — même cheval GWS comme père et

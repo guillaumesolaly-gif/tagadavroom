@@ -174,7 +174,18 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   l'exclusion mutuelle des deux sélecteurs GWS (classe/attribut de rôle, option déjà rendue
   désactivée dès le serveur, script ne modifiant jamais automatiquement une valeur sélectionnée),
   et les deux corrections lexicales validées (« Cheval déjà enregistré », « Nouvel ascendant »,
-  texte de l'aperçu développeur).
+  texte de l'aperçu développeur). Correctif filtrage métier 0.10.0 (sexe et année de naissance,
+  uniquement pour une relation GWS) : femelle refusée comme père/acceptée comme mère, mâle/entier
+  accepté comme père/refusé comme mère, hongre accepté comme père/refusé comme mère, sexe inconnu
+  accepté dans les deux rôles, candidat né avant le produit accepté, même année ou année
+  postérieure refusée, année du candidat ou du produit inconnue sans filtre, combinaison sexe +
+  année (exemple exact de la demande), auto-parenté et conflit père/mère toujours protégés en
+  combinaison avec ces nouvelles règles, deux parents compatibles distincts acceptés, ascendants
+  externes jamais affectés (aucune comparaison par nom, aucun champ sexe ajouté), validation
+  identique par appel programmatique, aucune régression Production/resolver/changement de
+  mode/conservation des branches externes, câblage UX (option désactivée avec indication de la
+  raison, verrouillage `data-gwseq-locked-disabled` empêchant toute réactivation par le script pour
+  le sexe/l'année, contrairement au conflit père/mère qui reste resynchronisé en direct).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -206,3 +217,6 @@ un processus PHP séparé — il peut aussi être lancé seul.)
 - Comportement navigateur réel de l'exclusion mutuelle des sélecteurs Père/Mère GWS (depuis
   0.9.0) : apparence effective d'une `<option>` désactivée selon le navigateur/OS, réactivité
   perçue en changeant l'un puis l'autre sélecteur, absence d'erreur JavaScript.
+- Lisibilité réelle en conditions d'usage des indications de raison (« sexe incompatible », «
+  année incompatible », depuis 0.10.0) au sein du texte d'une `<option>` désactivée — rendu visuel
+  selon le navigateur/OS, longueur acceptable dans une liste avec de nombreux chevaux.

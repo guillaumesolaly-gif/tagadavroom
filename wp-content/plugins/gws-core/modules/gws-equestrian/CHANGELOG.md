@@ -5,6 +5,43 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.10.0 — Étape 5 : correctif intégrité du pedigree — filtrage métier des parents GWS (sexe, année)
+
+Correctif suite à deux règles métier supplémentaires identifiées en recette runtime, applicables
+uniquement aux relations vers un cheval déjà enregistré dans GWS (jamais aux ascendants externes).
+
+- **Filtrage selon le sexe** (`gwseq_horse_sexe_compatible_with_role()`) : mâle/entier et hongre
+  autorisés comme père (un cheval a pu reproduire avant sa castration), seule une femelle est
+  autorisée comme mère ; un sexe non renseigné reste toujours autorisé pour les deux rôles. Ni
+  déduit ni modifié automatiquement à partir de l'usage du cheval comme père ou mère.
+- **Filtrage selon l'année de naissance** (`gwseq_horse_birth_year_compatible()`) : un candidat à
+  l'année connue doit être né strictement avant le produit (même année ou plus tard = interdit,
+  volontairement AUCUN âge minimum de reproduction en V1) ; année du candidat ou du produit
+  inconnue = aucun filtre appliqué.
+- **Règle métier unique et centrale** (`gwseq_horse_parent_candidate_rejection_reason()`) :
+  combine désormais auto-référence, sexe, année de naissance et conflit avec l'autre rôle (0.9.0)
+  — le rendu du formulaire, `gwseq_set_horse_parent()` (validation serveur) et tout futur import
+  s'appuient tous sur cette même fonction, jamais une règle dupliquée ailleurs. En cas de rejet :
+  comportement déterministe (`false`), aucune écriture partielle, relation existante jamais
+  supprimée ni remplacée silencieusement.
+- **UX admin** : réutilise le mécanisme de désactivation d'options déjà en place pour le conflit
+  père/mère, avec une indication courte de la raison (« sexe incompatible », « année
+  incompatible »). Sexe et année étant des propriétés fixes du candidat (contrairement au conflit
+  avec l'autre rôle, qui dépend de la sélection courante), `assets/cheval-admin.js` ne les
+  reconsidère jamais en direct — un attribut `data-gwseq-locked-disabled` les verrouille
+  explicitement contre toute réactivation par ce script.
+- **Modification ultérieure des données** (cas documenté, non traité automatiquement) : une
+  relation valide à sa création restant valide après une modification ultérieure compatible (ex.
+  un entier castré devient Hongre — toujours autorisé comme père) n'est jamais affectée ; plus
+  généralement, aucun contrôle rétroactif n'est construit en V1 si une modification rendait une
+  relation existante réellement incohérente — piste actée pour une amélioration future
+  (audit/avertissement d'intégrité).
+- **Ascendants externes non affectés** : aucune comparaison par nom, aucun champ sexe ajouté,
+  aucune contrainte GWS appliquée, branches externes inactives toujours conservées telles quelles.
+- 34 nouvelles assertions dans le test Pedigree (276 au total). Suite complète rejouée : 10
+  fichiers, 697 assertions, 100 % vertes, zéro avertissement PHP.
+- Versions : GWS Core 1.12.0 → 1.13.0, GWS Equestrian 0.9.0 → 0.10.0.
+
 ## 0.9.0 — Étape 5 : correctif intégrité du pedigree — même cheval GWS comme père et mère
 
 Correctif suite à un nouveau défaut observé en recette runtime : il était possible de sélectionner

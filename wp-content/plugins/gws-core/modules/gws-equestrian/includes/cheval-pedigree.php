@@ -90,6 +90,33 @@
  *    « Ascendant hors GWS » → « Nouvel ascendant » (radios de mode), ainsi que le texte de l'aperçu
  *    développeur : « Aperçu du pedigree enregistré — actualisé après sauvegarde. ». Aucune
  *    migration automatique d'une éventuelle incohérence déjà enregistrée avant cette version.
+ * 18. Filtrage métier des parents GWS — sexe et année de naissance (correctif complémentaire
+ *    post-recette, 0.10.0), UNIQUEMENT pour une relation GWS (jamais un ascendant externe, §7 :
+ *    pas de champ sexe ajouté pour l'occasion, pas de comparaison par nom, pas des contraintes des
+ *    chevaux GWS). RÈGLE MÉTIER UNIQUE : gwseq_horse_parent_candidate_rejection_reason() ci-dessous
+ *    centralise DÉSORMAIS l'ensemble des contraintes (auto-référence, sexe, année de naissance,
+ *    conflit avec l'autre rôle) — le rendu du formulaire, gwseq_set_horse_parent() et tout futur
+ *    import s'appuient tous sur cette même fonction, jamais une règle dupliquée ailleurs. Sexe :
+ *    mâle/entier et hongre autorisés comme père (un cheval a pu reproduire avant sa castration),
+ *    seule une femelle est autorisée comme mère ; un sexe non renseigné reste toujours autorisé
+ *    pour les deux rôles. Année de naissance : un candidat à l'année connue doit être né
+ *    STRICTEMENT avant le produit (même année ou plus tard = interdit, volontairement AUCUN âge
+ *    minimum de reproduction en V1) ; année du candidat ou du produit inconnue = aucun filtre.
+ *    Ni le sexe ni l'année d'un cheval ne sont jamais déduits ou modifiés automatiquement à partir
+ *    de son usage comme père ou mère. Côté UX admin, les mêmes désactivations d'options que pour le
+ *    conflit père/mère (0.9.0) sont réutilisées, avec une indication courte de la raison (« sexe
+ *    incompatible », « année incompatible ») ; sexe/année étant des propriétés FIXES du candidat
+ *    (contrairement au conflit avec l'autre rôle, qui dépend de la sélection courante),
+ *    assets/cheval-admin.js ne les reconsidère JAMAIS en direct — un attribut
+ *    `data-gwseq-locked-disabled` les verrouille explicitement contre toute réactivation par ce
+ *    script. MODIFICATION ULTÉRIEURE DES DONNÉES (cas documenté, non traité automatiquement) : une
+ *    relation valide à sa création (ex. un entier enregistré comme père) qui deviendrait
+ *    incohérente suite à une modification ultérieure de la fiche parent ou produit (ex. l'entier
+ *    est castré, sa fiche passe à Hongre — la relation reste valide dans ce cas précis puisque
+ *    Hongre est autorisé comme père ; mais un changement de sexe ou d'année rendant réellement une
+ *    relation existante incohérente resterait, lui, en base) N'EST JAMAIS supprimée ni modifiée
+ *    automatiquement — aucun contrôle rétroactif construit en V1, piste actée pour une amélioration
+ *    future (audit/avertissement d'intégrité), volontairement pas de système complexe maintenant.
  *
  * STOCKAGE (inchangé dans son principe, JSON par branche externe plutôt que des dizaines de meta
  * à plat) : arbre récursif `{name, race, race_autre, father, mother}`, encodé en JSON dans une
@@ -171,6 +198,80 @@ function gwseq_horse_parent_other_role($role) {
 function gwseq_horse_parent_conflicts_with_other_role($cheval_id, $role, $horse_id) {
   $other_relation = gwseq_get_horse_parent($cheval_id, gwseq_horse_parent_other_role($role));
   return $other_relation['mode'] === 'gws' && $other_relation['horse_id'] === (int) $horse_id;
+}
+
+/**
+ * Filtrage métier selon le sexe (correctif complémentaire post-recette, 0.10.0), UNIQUEMENT pour une
+ * relation GWS (§7 : jamais appliqué à un ascendant externe, qui n'a pas de champ sexe et n'en
+ * reçoit jamais un rien que pour satisfaire cette règle). Un sexe non renseigné (`''`) reste
+ * TOUJOURS autorisé pour les deux rôles — l'absence de donnée n'est jamais une interdiction. Un
+ * hongre reste autorisé comme père (un cheval a pu reproduire avant sa castration) mais jamais
+ * comme mère.
+ */
+function gwseq_horse_sexe_compatible_with_role($sexe, $role) {
+  if ($sexe === '') return true;
+  return $role === 'father' ? in_array($sexe, array('male', 'gelding'), true) : $sexe === 'female';
+}
+
+/**
+ * Filtrage métier selon l'année de naissance (§2). Seule l'année est disponible (pas une date
+ * complète), d'où une règle volontairement simple, SANS âge minimum de reproduction en V1 : un
+ * parent dont l'année est connue doit être né STRICTEMENT avant son produit — la même année ou une
+ * année postérieure est interdite. Année du produit inconnue -> aucun filtre. Année du candidat
+ * inconnue -> toujours autorisé (l'absence de donnée n'est jamais une interdiction).
+ */
+function gwseq_horse_birth_year_compatible($candidate_annee_naissance, $child_annee_naissance) {
+  if ($child_annee_naissance === '' || $candidate_annee_naissance === '') return true;
+  return (int) $candidate_annee_naissance < (int) $child_annee_naissance;
+}
+
+/**
+ * RÈGLE MÉTIER UNIQUE ET CENTRALE (§3 et §5 de la demande) : la seule fonction qui décide si
+ * $candidate_id peut être utilisé comme $role de $cheval_id — chaîne vide si valide, sinon un code
+ * de raison stable (`'self'`, `'other_role'`, `'sexe'`, `'annee'`). Le rendu du formulaire
+ * (désactivation + indication de la raison), gwseq_set_horse_parent() (validation serveur) et tout
+ * futur import s'appuient tous sur cette MÊME fonction, jamais une règle dupliquée ailleurs.
+ * Combine, dans cet ordre, l'auto-référence, la compatibilité de sexe, la compatibilité d'année de
+ * naissance (les deux nouvelles règles, 0.10.0) puis le conflit avec l'autre rôle (0.9.0) — §3 : un
+ * candidat doit être compatible avec l'ENSEMBLE de ces contraintes. L'ordre place volontairement
+ * sexe/année AVANT le conflit avec l'autre rôle : sexe et année sont des propriétés FIXES du
+ * candidat (indépendantes de la sélection courante de l'autre rôle), alors que le conflit peut
+ * disparaître dès que l'utilisateur change l'autre sélecteur — assets/cheval-admin.js s'appuie sur
+ * cette distinction pour ne resynchroniser EN DIRECT que la désactivation liée au conflit, jamais
+ * celle liée au sexe/à l'année (verrouillée côté rendu serveur, voir plus bas). Ne s'applique
+ * jamais à un ascendant externe (voir §7 : uniquement des relations GWS, deux identifiants de
+ * fiche réels).
+ */
+function gwseq_horse_parent_candidate_rejection_reason($cheval_id, $role, $candidate_id) {
+  $cheval_id = (int) $cheval_id;
+  $candidate_id = (int) $candidate_id;
+  if (!$candidate_id) return '';
+  if ($candidate_id === $cheval_id) return 'self';
+
+  $candidate_identity = gwseq_get_cheval_identity($candidate_id);
+  if (!gwseq_horse_sexe_compatible_with_role($candidate_identity['sexe'], $role)) return 'sexe';
+
+  $child_annee_naissance = gwseq_get_cheval_identity($cheval_id)['annee_naissance'];
+  if (!gwseq_horse_birth_year_compatible($candidate_identity['annee_naissance'], $child_annee_naissance)) return 'annee';
+
+  if (gwseq_horse_parent_conflicts_with_other_role($cheval_id, $role, $candidate_id)) return 'other_role';
+
+  return '';
+}
+
+/**
+ * Libellé court affiché à côté d'un candidat désactivé dans le `<select>` (§4 : « une indication
+ * courte de la raison », sans système UX lourd). N'est qu'une aide à la compréhension — la
+ * désactivation elle-même (et surtout la validation serveur) reste la garantie réelle.
+ */
+function gwseq_horse_parent_rejection_reason_label($reason) {
+  switch ($reason) {
+    case 'self': return __('lui-même', 'gws-core');
+    case 'other_role': return __('déjà l’autre parent', 'gws-core');
+    case 'sexe': return __('sexe incompatible', 'gws-core');
+    case 'annee': return __('année incompatible', 'gws-core');
+    default: return '';
+  }
 }
 
 /**
@@ -283,17 +384,20 @@ function gwseq_migrate_external_ancestor_node($node) {
  * $raw_args = {mode, horse_id, external} (external = tableau shaped comme
  * gwseq_sanitize_external_ancestor_tree() l'attend, avec race/race_autre).
  *
- * VALEUR DE RETOUR (comportement déterministe, correctif complémentaire post-recette « intégrité
- * du pedigree », 0.9.0) : `false` si l'appel est malformé (cheval/rôle invalide) OU si la relation
- * "gws" demandée créerait une incohérence — le MÊME cheval GWS déjà actif comme PÈRE ET comme MÈRE
- * du cheval édité (voir gwseq_horse_parent_conflicts_with_other_role() ci-dessus ; l'auto-référence
- * directe reste rejetée séparément par gwseq_sanitize_horse_parent_gws_id()). Dans ce cas précis,
- * AUCUNE meta n'est modifiée pour ce rôle — la relation existante (le cas échéant) reste telle
- * quelle, jamais supprimée ni remplacée silencieusement par une valeur incohérente. `true` dans
- * tous les autres cas, y compris un identifiant GWS invalide/auto-référencé simplement ramené à
- * '' (comportement inchangé, déjà existant). Cette même fonction est le point d'entrée
- * programmatique (voir plus haut) : un futur importeur CSV/XLSX reçoit donc exactement la même
- * garantie qu'un enregistrement passé par le formulaire d'administration.
+ * VALEUR DE RETOUR (comportement déterministe, correctifs complémentaires post-recette « intégrité
+ * du pedigree ») : `false` si l'appel est malformé (cheval/rôle invalide) OU si la relation "gws"
+ * demandée est rejetée par gwseq_horse_parent_candidate_rejection_reason() — RÈGLE MÉTIER UNIQUE
+ * ci-dessus couvrant, dans l'ordre : l'auto-référence (déjà rejetée séparément et en amont par
+ * gwseq_sanitize_horse_parent_gws_id()), le conflit avec l'autre rôle (0.9.0 : le même cheval GWS
+ * déjà père ET mère), la compatibilité de sexe et la compatibilité d'année de naissance (0.10.0).
+ * Dans tous ces cas de rejet, AUCUNE meta n'est modifiée pour ce rôle — la relation existante (le
+ * cas échéant) reste telle quelle, jamais supprimée ni remplacée silencieusement par une valeur
+ * incohérente : ni écriture partielle, ni suppression implicite. `true` dans tous les autres cas,
+ * y compris un identifiant GWS invalide/auto-référencé simplement ramené à '' (comportement
+ * inchangé, déjà existant). Cette même fonction est le point d'entrée programmatique (voir plus
+ * haut) : un futur importeur CSV/XLSX ne peut donc jamais créer une relation que l'interface
+ * WordPress aurait refusée — exactement la même garantie qu'un enregistrement passé par le
+ * formulaire d'administration.
  */
 function gwseq_set_horse_parent($cheval_id, $role, $raw_args) {
   $cheval_id = (int) $cheval_id;
@@ -305,8 +409,8 @@ function gwseq_set_horse_parent($cheval_id, $role, $raw_args) {
 
   if ($mode === 'gws') {
     $horse_id = gwseq_sanitize_horse_parent_gws_id($raw_args['horse_id'] ?? 0, $cheval_id);
-    if ($horse_id && gwseq_horse_parent_conflicts_with_other_role($cheval_id, $role, $horse_id)) {
-      return false; // incohérence : le même cheval GWS est déjà l'autre parent — rien n'est modifié
+    if ($horse_id && gwseq_horse_parent_candidate_rejection_reason($cheval_id, $role, $horse_id) !== '') {
+      return false; // candidat rejeté (conflit, sexe ou année incompatible) — rien n'est modifié
     }
     update_post_meta($cheval_id, $prefix . 'mode', $horse_id ? 'gws' : '');
     if ($horse_id) update_post_meta($cheval_id, $prefix . 'id', $horse_id);
@@ -506,21 +610,27 @@ function gwseq_render_cheval_parent_fields($post, $role, $label) {
         <?php esc_html_e('Nouvel ascendant', 'gws-core'); ?>
       </label>
     </p>
-    <?php
-    // Intégrité du pedigree (correctif complémentaire, §1 UX admin) : le cheval déjà actif comme
-    // GWS pour L'AUTRE rôle (père/mère) est désactivé dans CE sélecteur — un même cheval ne peut
-    // jamais être à la fois père et mère (voir gwseq_horse_parent_conflicts_with_other_role() et
-    // la validation serveur correspondante dans gwseq_set_horse_parent(), seule garantie réelle).
-    // assets/cheval-admin.js resynchronise cette exclusion EN DIRECT si l'autre sélecteur change,
-    // sans jamais modifier automatiquement une valeur déjà sélectionnée dans CE sélecteur.
-    $other_relation = gwseq_get_horse_parent($post->ID, gwseq_horse_parent_other_role($role));
-    $other_active_gws_id = $other_relation['mode'] === 'gws' ? $other_relation['horse_id'] : 0;
-    ?>
     <p data-gwseq-parent-fields="<?php echo esc_attr($role); ?>-gws" style="<?php echo $relation['mode'] === 'gws' ? '' : 'display:none;'; ?>">
       <select class="gwseq-parent-gws-select" data-gwseq-parent-role="<?php echo esc_attr($role); ?>" name="<?php echo esc_attr($prefix); ?>id">
         <option value="0"><?php esc_html_e('— Choisir un cheval —', 'gws-core'); ?></option>
-        <?php foreach (gwseq_cheval_parent_candidates($post->ID) as $candidate) : ?>
-          <option value="<?php echo esc_attr($candidate->ID); ?>" <?php selected($relation['horse_id'], $candidate->ID); ?> <?php disabled($other_active_gws_id && $other_active_gws_id === $candidate->ID); ?>><?php echo esc_html(get_the_title($candidate)); ?></option>
+        <?php foreach (gwseq_cheval_parent_candidates($post->ID) as $candidate) :
+          // Filtrage métier des candidats (§1-3 UX admin) : chaque candidat est évalué avec
+          // gwseq_horse_parent_candidate_rejection_reason() — LA MÊME fonction que celle utilisée
+          // pour la validation serveur, jamais une règle dupliquée ici. Les chevaux incompatibles
+          // restent visibles mais désactivés, avec une indication courte de la raison — jamais
+          // retirés de la liste, jamais une sélection déjà faite modifiée automatiquement. Le
+          // conflit avec l'autre rôle (0.9.0) est la SEULE raison resynchronisée EN DIRECT par
+          // assets/cheval-admin.js si l'autre sélecteur change (marquée par l'absence de l'attribut
+          // ci-dessous) ; sexe et année sont des propriétés fixes du candidat, verrouillées côté
+          // serveur (`data-gwseq-locked-disabled`) — ce script ne les modifie jamais.
+          $rejection_reason = gwseq_horse_parent_candidate_rejection_reason($post->ID, $role, $candidate->ID);
+          $is_locked_reason = $rejection_reason !== '' && $rejection_reason !== 'other_role';
+          $option_label = get_the_title($candidate);
+          if ($rejection_reason !== '') {
+            $option_label .= ' — ' . gwseq_horse_parent_rejection_reason_label($rejection_reason);
+          }
+        ?>
+          <option value="<?php echo esc_attr($candidate->ID); ?>" <?php selected($relation['horse_id'], $candidate->ID); ?> <?php disabled($rejection_reason !== ''); ?> <?php echo $is_locked_reason ? 'data-gwseq-locked-disabled="1"' : ''; ?>><?php echo esc_html($option_label); ?></option>
         <?php endforeach; ?>
       </select>
     </p>

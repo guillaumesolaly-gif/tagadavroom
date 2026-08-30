@@ -19,8 +19,9 @@ convention de présentation des noms). La reprise de cette recette a ensuite ré
 bloquant** (corruption des noms accentués à l'enregistrement) ainsi que deux défauts
 complémentaires, corrigés en 0.7.0, puis un défaut (un ascendant externe vidé continuait d'exister
 en base), corrigé en 0.8.0, puis un défaut d'intégrité (un même cheval GWS pouvait être choisi
-comme père ET comme mère), corrigé en 0.9.0 (voir plus bas) ; en attente d'une nouvelle recette. Voir
-`CHANGELOG.md` de ce dossier pour l'historique détaillé par étape, et la proposition de conception
+comme père ET comme mère), corrigé en 0.9.0, puis deux règles métier supplémentaires (filtrage des
+parents GWS selon le sexe et l'année de naissance), ajoutées en 0.10.0 (voir plus bas) ; en attente
+d'une nouvelle recette. Voir `CHANGELOG.md` de ce dossier pour l'historique détaillé par étape, et la proposition de conception
 validée pour le contexte d'ensemble.
 
 ### Pedigree (Étape 5)
@@ -224,6 +225,50 @@ au-delà de cette contrainte.
 devient « Nouvel ascendant » (au lieu de « Ascendant hors GWS ») ; le texte de la boîte d'aperçu
 développeur devient « Aperçu du pedigree enregistré — actualisé après sauvegarde. ».
 
+#### Correctif filtrage métier 0.10.0 — sexe et année de naissance des parents GWS
+
+La recette a permis d'identifier deux règles métier supplémentaires, applicables UNIQUEMENT à une
+relation vers un cheval déjà enregistré dans GWS — jamais à un « Nouvel ascendant » saisi
+manuellement.
+
+**Filtrage selon le sexe** : mâle/entier et hongre sont autorisés comme père (un cheval a pu
+reproduire avant sa castration), seule une femelle est autorisée comme mère ; un sexe non
+renseigné reste toujours autorisé pour les deux rôles — l'absence de donnée n'est jamais une
+interdiction. Le sexe d'un cheval n'est jamais déduit ni modifié automatiquement à partir de son
+usage comme père ou mère.
+
+**Filtrage selon l'année de naissance** : seule l'année est disponible (pas une date complète),
+d'où une règle volontairement simple — un candidat à l'année connue doit être né STRICTEMENT avant
+son produit (la même année ou une année postérieure est interdite), sans aucun âge minimum de
+reproduction en V1. Année du candidat ou du produit inconnue : aucun filtre appliqué.
+
+**Règle métier unique et centrale** : `gwseq_horse_parent_candidate_rejection_reason()` combine
+désormais l'auto-référence, la compatibilité de sexe, la compatibilité d'année de naissance et le
+conflit avec l'autre rôle (0.9.0) — le rendu du formulaire, `gwseq_set_horse_parent()` (validation
+serveur) et tout futur import s'appuient tous sur cette même fonction, jamais une règle dupliquée
+ailleurs. En cas de rejet : comportement déterministe (`false`), aucune écriture partielle, la
+relation existante n'est jamais supprimée ni remplacée silencieusement.
+
+**UX admin** : réutilise le mécanisme de désactivation d'options déjà en place pour le conflit
+père/mère (0.9.0), avec une indication courte de la raison (« sexe incompatible », « année
+incompatible ») directement dans le libellé de l'option — pas de système UX plus lourd que
+nécessaire. Sexe et année étant des propriétés FIXES du candidat (contrairement au conflit avec
+l'autre rôle, qui dépend de la sélection courante de l'autre sélecteur), `assets/cheval-admin.js`
+ne les reconsidère JAMAIS en direct : un attribut `data-gwseq-locked-disabled`, posé côté serveur,
+verrouille explicitement ces options contre toute réactivation par le script.
+
+**Modification ultérieure des données** (cas documenté, non traité automatiquement) : une relation
+valide à sa création reste enregistrée telle quelle si les données du parent ou du produit changent
+ensuite — par exemple un entier enregistré comme père puis castré (sa fiche passe à Hongre) reste
+un père valide, puisque Hongre est autorisé comme père. Plus généralement, si une modification
+ultérieure du sexe ou de l'année de naissance rendait une relation existante réellement
+incohérente, elle ne serait ni supprimée ni modifiée automatiquement — aucun contrôle rétroactif
+n'est construit en V1 ; piste actée pour une amélioration future (audit/avertissement d'intégrité).
+
+**Ascendants externes non affectés** : aucune comparaison par nom, aucun champ sexe ajouté
+uniquement pour satisfaire cette validation, aucune contrainte des chevaux GWS appliquée, branches
+externes inactives conservées lors d'un changement de mode exactement comme avant.
+
 #### Modèle de données (Étape 5)
 
 Pour chaque cheval, deux relations indépendantes : Père et Mère. Chacune est stockée sur trois
@@ -353,6 +398,13 @@ l'état des lieux sur Prestation/Cheval-identité/Commercialisation).
   version resterait dans cet état tant qu'un utilisateur ne modifie pas explicitement l'un des deux
   côtés (la validation ne s'applique qu'aux NOUVELLES affectations soumises, jamais à une
   réécriture automatique d'une donnée déjà en base).
+- **Aucun contrôle rétroactif du filtrage sexe/année (0.10.0)** : une relation déjà enregistrée
+  reste valide même si une modification ultérieure de la fiche parent ou produit la rendait
+  biologiquement incohérente (ex. un changement de sexe erroné, une correction d'année de
+  naissance) — volontairement aucun système de contrôle rétroactif construit en V1 (piste actée
+  pour une amélioration future : audit/avertissement d'intégrité). De même, une fiche où le sexe ou
+  l'année étaient absents au moment de l'enregistrement d'une relation, puis renseignés après coup,
+  ne déclenche aucune revalidation automatique de cette relation.
 
 #### Pistes futures actées en roadmap (aucun développement à ce stade)
 
@@ -479,6 +531,36 @@ mère) :
 29. Relire les libellés des radios Père/Mère : « Cheval déjà enregistré » et « Nouvel ascendant » ;
     et le texte de la boîte d'aperçu développeur : « Aperçu du pedigree enregistré — actualisé
     après sauvegarde. ».
+
+**Étapes ajoutées pour le correctif filtrage métier 0.10.0** (sexe et année de naissance des
+parents GWS) :
+
+30. Sur le sélecteur Père d'un cheval, vérifier qu'une jument enregistrée apparaît désactivée avec
+    l'indication « sexe incompatible » ; vérifier symétriquement qu'un entier ou un hongre apparaît
+    désactivé avec la même indication dans le sélecteur Mère.
+31. Vérifier qu'un entier ou un hongre reste normalement sélectionnable comme Père, et qu'une
+    femelle reste normalement sélectionnable comme Mère.
+32. Vérifier qu'un cheval dont le sexe n'est pas renseigné reste sélectionnable dans les deux
+    sélecteurs (jamais désactivé pour ce motif).
+33. Sur un cheval dont l'année de naissance est renseignée, vérifier qu'un candidat né la même
+    année ou après apparaît désactivé avec l'indication « année incompatible », et qu'un candidat
+    né strictement avant reste sélectionnable.
+34. Vérifier qu'un candidat dont l'année de naissance n'est pas renseignée reste toujours
+    sélectionnable, quelle que soit l'année du cheval édité.
+35. Sur un cheval DONT l'année de naissance n'est PAS renseignée, vérifier qu'aucun candidat n'est
+    désactivé pour un motif d'année (seul le sexe et le conflit père/mère restent appliqués).
+36. Vérifier que les options désactivées pour sexe/année ne redeviennent JAMAIS sélectionnables en
+    changeant l'autre sélecteur (Père ou Mère) — contrairement au conflit père/mère (0.9.0) qui,
+    lui, se met à jour en direct.
+37. Tenter de forcer malgré tout l'enregistrement d'une relation incompatible (sexe ou année, via
+    une requête modifiée ou JavaScript désactivé) : vérifier que l'enregistrement est refusé et
+    qu'aucune relation existante n'est supprimée ni corrompue.
+38. Enregistrer un entier comme père, puis modifier sa fiche pour le passer en « Hongre » (post
+    castration) : vérifier que la relation de pedigree existante n'est ni supprimée ni modifiée par
+    ce changement.
+39. Vérifier qu'un pedigree avec un ascendant externe (« Nouvel ascendant ») portant potentiellement
+    le même sexe implicite qu'une contrainte de rôle n'est jamais concerné par ce filtrage (aucun
+    champ sexe sur un ascendant externe).
 
 ### Cheval (Étape 4)
 

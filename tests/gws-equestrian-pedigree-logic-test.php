@@ -295,6 +295,141 @@ $result_mother_reuse_old_father_id = gwseq_set_horse_parent(949, 'mother', array
 gws_test_assert($result_mother_reuse_old_father_id === true, 'Intégrité : un identifiant GWS redevient utilisable pour l’autre rôle dès que la relation qui l’utilisait n’est plus active en mode "gws" (la vérification porte sur l’état ACTIF, jamais sur l’historique)');
 
 // =====================================================================================
+// Filtrage métier des parents GWS — sexe et année de naissance (correctif complémentaire
+// post-recette, 0.10.0). Ne concerne QUE les relations GWS, jamais les ascendants externes.
+// =====================================================================================
+
+gws_test_make_post(960, GWSEQ_CPT_CHEVAL, 'Produit Filtrage 2020');
+$GLOBALS['__gwseq_test_meta'][960] = array('_gwseq_annee_naissance' => 2020);
+
+gws_test_make_post(961, GWSEQ_CPT_CHEVAL, 'Jument Filtrage');
+$GLOBALS['__gwseq_test_meta'][961] = array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2010);
+
+gws_test_make_post(962, GWSEQ_CPT_CHEVAL, 'Entier Filtrage');
+$GLOBALS['__gwseq_test_meta'][962] = array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2010);
+
+gws_test_make_post(963, GWSEQ_CPT_CHEVAL, 'Hongre Filtrage');
+$GLOBALS['__gwseq_test_meta'][963] = array('_gwseq_sexe' => 'gelding', '_gwseq_annee_naissance' => 2012);
+
+gws_test_make_post(964, GWSEQ_CPT_CHEVAL, 'Sexe Inconnu Filtrage');
+$GLOBALS['__gwseq_test_meta'][964] = array('_gwseq_annee_naissance' => 2015);
+
+// --- §1 : femelle refusée comme père, acceptée comme mère ---
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 961) === 'sexe', 'Filtrage sexe : une jument est refusée comme père');
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'mother', 961) === '', 'Filtrage sexe : une jument est acceptée comme mère');
+
+// --- §1 : mâle/entier accepté comme père, refusé comme mère ---
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 962) === '', 'Filtrage sexe : un entier est accepté comme père');
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'mother', 962) === 'sexe', 'Filtrage sexe : un entier est refusé comme mère');
+
+// --- §1 : hongre accepté comme père (a pu reproduire avant castration), refusé comme mère ---
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 963) === '', 'Filtrage sexe : un hongre est accepté comme père');
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'mother', 963) === 'sexe', 'Filtrage sexe : un hongre est refusé comme mère');
+
+// --- §1 : sexe inconnu accepté dans les deux rôles ---
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 964) === '', 'Filtrage sexe : un sexe non renseigné est accepté comme père');
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'mother', 964) === '', 'Filtrage sexe : un sexe non renseigné est accepté comme mère');
+
+// --- §2 : parent né avant le produit accepté ; même année refusée ; parent plus jeune refusé ---
+gws_test_make_post(965, GWSEQ_CPT_CHEVAL, 'Candidat Né Avant');
+$GLOBALS['__gwseq_test_meta'][965] = array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2010);
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 965) === '', 'Filtrage année : un candidat né strictement avant le produit (2010 < 2020) est accepté');
+
+gws_test_make_post(966, GWSEQ_CPT_CHEVAL, 'Candidat Même Année');
+$GLOBALS['__gwseq_test_meta'][966] = array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2020);
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 966) === 'annee', 'Filtrage année : un candidat né la MÊME année que le produit est refusé');
+
+gws_test_make_post(967, GWSEQ_CPT_CHEVAL, 'Candidat Né Après');
+$GLOBALS['__gwseq_test_meta'][967] = array('_gwseq_sexe' => 'gelding', '_gwseq_annee_naissance' => 2021);
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 967) === 'annee', 'Filtrage année : un candidat né APRÈS le produit (2021 > 2020) est refusé');
+
+// --- §2 : année du candidat inconnue -> toujours autorisé (l'absence de donnée n'est jamais une
+// interdiction), y compris pour un mâle dont l'année est inconnue (exemple exact de la demande) ---
+gws_test_make_post(968, GWSEQ_CPT_CHEVAL, 'Candidat Année Inconnue');
+$GLOBALS['__gwseq_test_meta'][968] = array('_gwseq_sexe' => 'male');
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 968) === '', 'Filtrage année : un candidat dont l’année de naissance n’est pas renseignée reste autorisé (ici un mâle, exemple exact de la demande)');
+
+// --- §2 : année du PRODUIT inconnue -> aucune restriction d'âge, quel que soit le candidat ---
+gws_test_make_post(969, GWSEQ_CPT_CHEVAL, 'Produit Année Inconnue');
+gws_test_make_post(970, GWSEQ_CPT_CHEVAL, 'Candidat Née Après Mais Produit Sans Année');
+$GLOBALS['__gwseq_test_meta'][970] = array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2099);
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(969, 'father', 970) === '', 'Filtrage année : le produit n’a pas d’année renseignée -> aucun filtre d’année appliqué, même pour un candidat né très tard');
+
+// --- §3 : combinaison sexe + année — exemple exact de la demande (produit né en 2020) ---
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 964) === '', 'Combinaison (exemple demande) : un cheval au sexe et à l’année inconnus est accepté comme père');
+gws_test_make_post(971, GWSEQ_CPT_CHEVAL, 'Sexe Et Année Inconnus');
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 971) === '', 'Combinaison (exemple demande) : un cheval dont sexe ET année sont inconnus est accepté');
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 961) !== '' , 'Combinaison : une jument reste refusée comme père même si son année est compatible (2010 < 2020)');
+
+// --- §3 : la combinaison s'applique aussi via gwseq_set_horse_parent() (persistance réelle) ---
+gws_test_make_post(972, GWSEQ_CPT_CHEVAL, 'Cheval Persistance Filtrage');
+$GLOBALS['__gwseq_test_meta'][972] = array('_gwseq_annee_naissance' => 2020);
+$result_sexe_refused = gwseq_set_horse_parent(972, 'father', array('mode' => 'gws', 'horse_id' => 961));
+gws_test_assert($result_sexe_refused === false, 'Persistance : l’enregistrement d’une jument comme père est refusé (retour false)');
+gws_test_assert(gwseq_get_horse_parent(972, 'father')['mode'] === '', 'Persistance : aucune relation incohérente n’a été enregistrée pour le père');
+
+$result_annee_refused = gwseq_set_horse_parent(972, 'mother', array('mode' => 'gws', 'horse_id' => 966));
+gws_test_assert($result_annee_refused === false, 'Persistance : l’enregistrement d’un parent né la même année que le produit est refusé (retour false)');
+gws_test_assert(gwseq_get_horse_parent(972, 'mother')['mode'] === '', 'Persistance : aucune relation incohérente n’a été enregistrée pour la mère');
+
+// --- Aucune écriture partielle : une tentative refusée sur le sexe/l'année ne modifie ni ne
+// supprime une relation déjà valide existante ---
+gwseq_set_horse_parent(972, 'father', array('mode' => 'gws', 'horse_id' => 962)); // valide : entier né en 2010
+$result_overwrite_attempt = gwseq_set_horse_parent(972, 'father', array('mode' => 'gws', 'horse_id' => 961)); // jument : refusé
+gws_test_assert($result_overwrite_attempt === false, 'Persistance : la seconde tentative (jument) est bien refusée');
+$relation_972_father = gwseq_get_horse_parent(972, 'father');
+gws_test_assert($relation_972_father['mode'] === 'gws' && $relation_972_father['horse_id'] === 962, 'Persistance : la relation valide précédente (l’entier) n’est ni supprimée ni remplacée par la tentative refusée');
+
+// --- Auto-parenté et conflit père/mère toujours protégés, combinés avec les nouvelles règles ---
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(960, 'father', 960) === 'self', 'Combinaison : l’auto-parenté reste toujours impossible, filtrage sexe/année inclus');
+// 964 (sexe inconnu, née en 2015) est compatible en sexe ET en année pour les DEUX rôles de 972 —
+// seul le conflit "déjà l'autre parent" doit alors expliquer le refus, isolant bien cette règle
+// des règles de sexe/année :
+gwseq_set_horse_parent(972, 'mother', array('mode' => 'gws', 'horse_id' => 964)); // valide, distinct du père (962)
+gws_test_assert(gwseq_get_horse_parent(972, 'mother')['horse_id'] === 964, 'Combinaison : la mère (sexe/année inconnus, donc compatible) est bien enregistrée');
+gws_test_assert(gwseq_horse_parent_candidate_rejection_reason(972, 'father', 964) === 'other_role', 'Combinaison : le même cheval GWS reste impossible comme père ET mère, même compatible en sexe/année (964 est déjà mère)');
+
+// --- Deux parents différents, tous deux compatibles (sexe + année) : acceptés normalement ---
+gws_test_make_post(973, GWSEQ_CPT_CHEVAL, 'Cheval Deux Parents Compatibles');
+$GLOBALS['__gwseq_test_meta'][973] = array('_gwseq_annee_naissance' => 2020);
+$result_compatible_father = gwseq_set_horse_parent(973, 'father', array('mode' => 'gws', 'horse_id' => 962));
+$result_compatible_mother = gwseq_set_horse_parent(973, 'mother', array('mode' => 'gws', 'horse_id' => 961));
+gws_test_assert($result_compatible_father === true && $result_compatible_mother === true, 'Combinaison : un entier compatible comme père et une jument compatible comme mère sont tous deux acceptés');
+
+// --- §7 : les ascendants externes ne sont jamais concernés par ce filtrage (pas de champ sexe, pas
+// de comparaison par nom, pas des contraintes des chevaux GWS) ---
+gws_test_make_post(974, GWSEQ_CPT_CHEVAL, 'Cheval Externe Non Affecte');
+$GLOBALS['__gwseq_test_meta'][974] = array('_gwseq_annee_naissance' => 2020);
+$result_external_unaffected = gwseq_set_horse_parent(974, 'father', array('mode' => 'external', 'external' => array('name' => 'Jument Filtrage', 'race' => '')));
+gws_test_assert($result_external_unaffected === true, 'Externe : un ascendant externe portant le même nom qu’une jument GWS incompatible est accepté sans restriction (aucune comparaison par nom, aucune contrainte de sexe/année appliquée)');
+
+// --- §5 : validation identique via un appel programmatique direct, sans JavaScript ---
+gws_test_make_post(975, GWSEQ_CPT_CHEVAL, 'Cheval Import Filtrage');
+$GLOBALS['__gwseq_test_meta'][975] = array('_gwseq_annee_naissance' => 2020);
+$import_sexe_refused = gwseq_set_horse_parent(975, 'father', array('mode' => 'gws', 'horse_id' => 961));
+$import_annee_refused = gwseq_set_horse_parent(975, 'father', array('mode' => 'gws', 'horse_id' => 966));
+gws_test_assert($import_sexe_refused === false && $import_annee_refused === false, 'Programmatique : un futur importeur ne peut pas créer, via gwseq_set_horse_parent(), une relation que l’interface WordPress aurait refusée (sexe ou année incompatible)');
+
+// --- Aucune régression : Production, changement de mode et conservation des branches externes ---
+gws_test_assert(
+  in_array(973, array_map(function ($p) { return $p->ID; }, gwseq_get_horse_offspring(962)), true),
+  'Aucune régression : Production toujours calculée correctement malgré le nouveau filtrage sexe/année'
+);
+gwseq_set_horse_parent(973, 'father', array('mode' => 'external', 'external' => array('name' => 'Nouvel Ascendant Filtrage')));
+$relation_973_father_switched = gwseq_get_horse_parent(973, 'father');
+gws_test_assert($relation_973_father_switched['mode'] === 'external' && $relation_973_father_switched['horse_id'] === 962, 'Aucune régression : changement de mode GWS -> externe toujours fonctionnel, ancien ID GWS conservé inactif, malgré le nouveau filtrage');
+
+// --- Rendu admin : options désactivées avec indication de la raison, verrouillage sexe/année ---
+ob_start();
+gwseq_render_cheval_parent_fields(gws_test_make_post_object(960), 'father', 'Père');
+$father_select_html = ob_get_clean();
+gws_test_assert(preg_match('/<option value="961"[^>]*\bdisabled\b[^>]*>[^<]*sexe incompatible/u', $father_select_html) === 1, 'Rendu UX : la jument apparaît désactivée dans le sélecteur Père, avec l’indication "sexe incompatible"');
+gws_test_assert(preg_match('/<option value="961"[^>]*data-gwseq-locked-disabled="1"/', $father_select_html) === 1, 'Rendu UX : l’option désactivée pour sexe incompatible porte bien l’attribut de verrouillage (le script ne doit jamais la réactiver)');
+gws_test_assert(preg_match('/<option value="966"[^>]*\bdisabled\b[^>]*>[^<]*année incompatible/u', $father_select_html) === 1, 'Rendu UX : un candidat né la même année apparaît désactivé avec l’indication "année incompatible"');
+preg_match('/<option value="962"[^>]*>/', $father_select_html, $option_962_match);
+gws_test_assert(isset($option_962_match[0]) && strpos($option_962_match[0], 'disabled') === false, 'Rendu UX : un candidat compatible (entier né avant le produit) reste normalement sélectionnable, sans attribut disabled');
+
+// =====================================================================================
 // Sanitation récursive d'un arbre d'ascendants externes (§2-4, §11, §16 du correctif)
 // =====================================================================================
 
