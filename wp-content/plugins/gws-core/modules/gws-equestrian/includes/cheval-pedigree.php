@@ -4,66 +4,68 @@
  * Cheval déjà présente dans GWS ("mode gws"), soit un ascendant hors GWS structuré ("mode
  * external"). Ni père ni mère ne sont jamais requis (§25 : un pedigree incomplet est acceptable).
  *
- * CORRECTIF IMPORTANT (revient sur la première version de cette étape) : un ascendant externe
- * n'est PAS nécessairement une feuille terminale. Un marchand ou un cavalier professionnel dont
- * aucun ascendant n'est géré dans GWS doit pouvoir saisir un pedigree complet sur plusieurs
- * générations sans jamais créer une seule fiche `gwseq_cheval` artificielle pour un ancêtre qu'il
- * ne gère pas comme cheval du client (§6 de la demande). Un ascendant externe peut donc lui-même
- * avoir un père et une mère, eux-mêmes externes, et ainsi de suite jusqu'à la profondeur maximale
- * du pedigree (§2-4) — le tout restant facultatif à chaque niveau (l'utilisateur s'arrête où il
- * veut). AUCUNE création automatique de fiche pour ces ascendants, AUCUNE base globale
- * d'ancêtres, AUCUNE déduplication (un même "Kannan" externe peut être ressaisi dans plusieurs
- * pedigrees sans lien entre les saisies) — un futur Network ou référentiel équin pourra
- * éventuellement améliorer cela, pas cette étape (§7).
+ * Un ascendant externe n'est PAS nécessairement une feuille terminale : il peut lui-même avoir un
+ * père et une mère, eux-mêmes externes, jusqu'à la profondeur maximale du pedigree — un marchand
+ * ou un cavalier professionnel dont aucun ascendant n'est géré dans GWS peut ainsi saisir un
+ * pedigree complet sans jamais créer une seule fiche `gwseq_cheval` artificielle. AUCUNE création
+ * automatique de fiche, AUCUNE base globale d'ancêtres, AUCUNE déduplication.
  *
- * STOCKAGE DE LA BRANCHE EXTERNE (§11) : un arbre récursif {name, breed, father, mother} —
- * father/mother ayant la même forme, jusqu'à GWSEQ_PEDIGREE_MAX_DEPTH - 1 niveaux supplémentaires
- * — est encodé en JSON dans UNE seule meta (`_gwseq_pere_externe` / `_gwseq_mere_externe`), plutôt
- * que des dizaines de meta à plat du type `pere_pere_pere_nom`. Choix JSON plutôt que
- * `serialize()` PHP : représentation lisible, non opaque, indépendante du langage
- * d'implémentation — donc plus simple à valider, faire évoluer, importer (un futur import
- * CSV/XLSX peut construire directement ce même tableau PHP avant de l'encoder) et projeter vers
- * une future API/Network sans dépendre d'un détail d'implémentation PHP. "Versionable" (§11) :
- * couvert par le mécanisme de migration déjà existant de gws-core (includes/migration.php) si une
- * évolution de forme devenait un jour nécessaire — pas de balise de version ad-hoc ajoutée dans le
- * JSON lui-même, qui dupliquerait cette responsabilité déjà couverte ailleurs.
+ * CORRECTIONS SUITE À LA RECETTE RUNTIME (saisie réelle du pedigree de Jamerose) :
  *
- * RÈGLE ARCHITECTURALE (§15, décidée après l'Étape 4, appliquée au nouveau code uniquement) : une
- * donnée métier doit pouvoir être créée/modifiée programmatiquement sans dépendre du formulaire
- * admin. gwseq_sanitize_horse_parent_input()/gwseq_sanitize_external_ancestor_tree() sont des
- * fonctions pures (aucun accès à $_POST/nonce). gwseq_set_horse_parent($cheval_id, $role, $args)
- * est LA fonction métier qui persiste une relation, GWS ou externe (arbre complet) : elle ne lit
- * jamais $_POST, ne vérifie aucun nonce ni capability (au même titre que
- * update_post_meta()/wp_insert_post() eux-mêmes ne le font pas) — c'est au code appelant
- * (formulaire admin ci-dessous, ou un futur importeur CSV/XLSX, migration, WP-CLI...) d'assurer sa
- * propre autorisation dans son propre contexte. gwseq_save_cheval_pedigree_meta() n'est qu'UN
- * client de cette fonction parmi d'autres possibles.
+ * 1. Race/Stud-book d'un ascendant externe (§1 de la demande de correction) : c'était un champ
+ *    texte libre, source d'hétérogénéité constatée en usage réel (« SF »/« sf »/« Selle
+ *    Français »...). Utilise désormais EXACTEMENT le même référentiel que la fiche Cheval
+ *    (`gwseq_cheval_race_options()`/`gwseq_cheval_race_label()`, définis dans cheval-fields.php,
+ *    jamais dupliqués ici) : liste fermée + "Autre" avec précision libre, à chaque génération de
+ *    chaque branche externe. Stocké désormais en `race` (code technique stable) + `race_autre`
+ *    (texte, uniquement si `race === 'autre'`) plutôt qu'un champ `breed` texte libre.
+ * 2. Compatibilité ascendante (§2) : une fiche déjà enregistrée avec l'ancien format `breed` texte
+ *    libre n'est jamais perdue. gwseq_migrate_external_ancestor_node() reconnaît à la LECTURE
+ *    (jamais une réécriture automatique en base, jamais une migration destructive) une ancienne
+ *    valeur qui correspond à un code ou un libellé canonique du référentiel (comparaison
+ *    insensible à la casse et aux accents) ; sinon, elle est conservée intégralement via
+ *    `race = 'autre'` + `race_autre` = texte original. Le format en base n'est réécrit qu'au
+ *    prochain enregistrement volontaire de cette relation par un utilisateur.
+ * 3-11. Contexte de saisie (§3-11) : chaque niveau de la branche externe affiche désormais un
+ *    intitulé contextuel (« Père de UNTOUCHABLE 27 », « Mère de KANNAN »...) construit à partir du
+ *    nom déjà enregistré du cheval concerné — jamais une nomenclature généalogique complexe
+ *    (« grand-père paternel »...), jamais un Père/Mère nu sans contexte. Un repli explicite
+ *    (« cet ascendant ») s'applique tant que le nom n'est pas encore renseigné ; aucun JavaScript
+ *    n'est nécessaire à la validité des données, et volontairement aucun JavaScript ne recalcule
+ *    ces intitulés en direct pendant la frappe (solution sans JS jugée suffisante : un
+ *    enregistrement de la fiche suffit à les rafraîchir, un texte d'aide le rappelle à l'écran).
+ *    Un compteur « Génération N sur 4 » accompagne chaque niveau, et la génération 4 n'affiche
+ *    plus AUCUN contrôle « + Renseigner ses origines » (arrêt visuel strict) — la limite serveur
+ *    (gwseq_sanitize_external_ancestor_tree(), inchangée dans son principe) reste de toute façon
+ *    la garantie réelle, une requête manipulée ne peut pas la contourner.
+ * 12-15. Convention de présentation des noms (§12-15) : `post_title`/`name` restent enregistrés
+ *    exactement tels que saisis (aucune transformation destructive de la source) ; seule leur
+ *    PRÉSENTATION dans l'interface du pedigree passe par gwseq_format_horse_name_display()
+ *    (majuscules, sans accents — voir cheval-fields.php), jamais Race/Stud-book qui reste une
+ *    valeur structurée via référentiel, jamais une transformation de casse.
  *
- * SOURCE UNIQUE PAR RELATION GWS, JAMAIS DE DUPLICATION (§22, pour la branche GWS uniquement — la
- * branche externe EST elle-même la donnée, il n'y a rien d'autre à dédupliquer) : seule la
- * relation (mode + ID) est stockée pour un parent GWS. Nom, race, Global Horse ID ou pedigree du
- * parent GWS ne sont JAMAIS copiés ici — ils sont récupérés à la source par le resolver
- * (includes/pedigree-resolver.php) à chaque résolution (§24 : un parent modifié est vu
- * automatiquement par tous ses descendants, sans resynchronisation).
+ * STOCKAGE (inchangé dans son principe, JSON par branche externe plutôt que des dizaines de meta
+ * à plat) : arbre récursif `{name, race, race_autre, father, mother}`, encodé en JSON dans une
+ * seule meta (`_gwseq_pere_externe`/`_gwseq_mere_externe`) par relation.
  *
- * CHANGEMENT DE MODE (GWS <-> externe) — CONSERVATION NON DESTRUCTIVE (§8-9, corrige le
- * comportement "remplacement intégral" de la première version) : passer d'un mode à l'autre ne
- * touche JAMAIS les meta de l'autre branche — une branche externe précédemment saisie reste
- * stockée mais inactive si l'on bascule vers GWS, et réciproquement. Une seule branche est
- * active à la fois : `_gwseq_pere_mode`/`_gwseq_mere_mode` est l'unique source de vérité sur
- * laquelle des deux branches est active ; le resolver ne lit JAMAIS la branche inactive (voir
- * includes/pedigree-resolver.php). Aucune reconnaissance automatique par nom : le rattachement
- * d'un ascendant externe à une vraie fiche GWS est toujours une action explicite de
- * l'utilisateur (choix dans le `<select>`), jamais une correspondance devinée par le système
- * (§8).
+ * RÈGLE ARCHITECTURALE (décidée après l'Étape 4, appliquée au nouveau code) :
+ * gwseq_set_horse_parent($cheval_id, $role, $args) reste une fonction métier pure, jamais couplée
+ * à $_POST ni à un nonce/capability — réutilisable telle quelle par un futur importeur CSV/XLSX,
+ * une migration, WP-CLI, ou un futur connecteur IFCE/SIRE (voir §18-23 de la demande : GWS
+ * Equestrian reste entièrement fonctionnel sans IFCE, la saisie structurée manuelle est le
+ * fonctionnement nominal ; SI un connecteur existe un jour, il n'aurait qu'à mapper ses propres
+ * données vers la forme {mode, horse_id, external} déjà attendue ici, sans aucune modification de
+ * ce fichier — compatibilité déjà vérifiée, rien à changer maintenant).
  *
- * SUPPRESSION D'UN CHEVAL RÉFÉRENCÉ (§23) : ce fichier n'installe volontairement AUCUN hook sur la
- * suppression/mise à la corbeille d'une fiche Cheval pour "nettoyer" les relations qui la
- * référencent ailleurs — cela reviendrait à modifier automatiquement d'autres fiches suite à une
- * action sur celle-ci, ce que la demande interdit explicitement depuis l'Étape 4 (§34). Mettre un
- * parent à la corbeille ne supprime jamais ses produits (aucune cascade destructrice) : ses
- * propres données restent en base tant qu'il n'est pas supprimé définitivement, donc la
- * résolution continue de fonctionner normalement pour un parent simplement corbeillé.
+ * CONSERVATION NON DESTRUCTIVE (inchangée) : changer de mode (GWS <-> externe) ne touche jamais
+ * les meta de l'autre branche — restent stockées mais inactives. Le resolver ne lit jamais la
+ * branche inactive (voir includes/pedigree-resolver.php). Aucune reconnaissance automatique par
+ * nom entre un ascendant externe et une fiche GWS : toujours une action explicite de
+ * l'utilisateur.
+ *
+ * SUPPRESSION D'UN CHEVAL RÉFÉRENCÉ : aucun hook de nettoyage automatique sur la suppression
+ * d'une fiche Cheval (cela reviendrait à modifier automatiquement d'autres fiches, interdit
+ * depuis l'Étape 4). Mettre un parent à la corbeille ne supprime jamais ses produits.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -88,15 +90,14 @@ function gwseq_register_cheval_pedigree_meta() {
 add_action('init', 'gwseq_register_cheval_pedigree_meta');
 
 /* -------------------------------------------------------------------------------------------
- * Fonctions pures : sanitation et lecture.
+ * Fonctions pures : sanitation, compatibilité ascendante, lecture.
  * ----------------------------------------------------------------------------------------- */
 
 /**
  * Valide un identifiant de cheval GWS pour une relation parentale (§26) : ID numérique, post
  * existant, `post_type = gwseq_cheval`, jamais une auto-référence. $current_post_id sert
  * uniquement à rejeter l'auto-référence directe ; les cycles indirects (A -> B -> A) ne peuvent
- * être détectés qu'à la résolution (voir pedigree-resolver.php), car ils dépendent de l'état
- * d'une autre fiche non consultée ici.
+ * être détectés qu'à la résolution (voir pedigree-resolver.php).
  */
 function gwseq_sanitize_horse_parent_gws_id($raw_horse_id, $current_post_id = 0) {
   $horse_id = absint($raw_horse_id);
@@ -107,23 +108,27 @@ function gwseq_sanitize_horse_parent_gws_id($raw_horse_id, $current_post_id = 0)
 }
 
 /**
- * Sanitise récursivement un ascendant externe et ses propres ascendants (§2-4, §11) : {name,
- * breed, father, mother}, father/mother de la même forme. Un nœud sans nom n'est pas une donnée
- * exploitable et n'est jamais stocké (§25 : absence de donnée = absence, jamais un marqueur vide
- * ambigu) — y compris si son propre père/mère avait été renseigné : sans nom pour CE nœud, tout
- * son sous-arbre est écarté (rien à rattacher). La race reste facultative à tout niveau.
+ * Sanitise récursivement un ascendant externe et ses propres ascendants : {name, race,
+ * race_autre, father, mother}, father/mother de la même forme. Race/Stud-book réutilise
+ * EXACTEMENT le référentiel de la fiche Cheval (gwseq_cheval_race_options(), défini dans
+ * cheval-fields.php — jamais une seconde liste dupliquée ici) : un code inconnu est rejeté comme
+ * n'importe quel autre champ enum du module, jamais stocké tel quel.
  *
- * $depth_remaining borne strictement la récursion, quelle que soit la profondeur du tableau
- * fourni en entrée (§16 : une structure malformée ou excessivement profonde ne peut jamais
- * contourner la limite côté serveur — au-delà de la borne, les données fournies pour les
- * générations suivantes sont simplement ignorées, jamais stockées).
+ * Un nœud sans nom n'est pas une donnée exploitable et n'est jamais stocké (§25) — y compris son
+ * éventuel sous-arbre, qui n'a alors rien à quoi se rattacher. $depth_remaining borne strictement
+ * la récursion quelle que soit la profondeur du tableau fourni en entrée (§16 : une structure
+ * malformée ou excessivement profonde ne peut jamais contourner la limite côté serveur).
  */
 function gwseq_sanitize_external_ancestor_tree($raw, $depth_remaining) {
   $raw = is_array($raw) ? $raw : array();
   $name = gws_core_field_sanitize('text', $raw['name'] ?? '');
   if ($name === '') return null;
-  $breed = gws_core_field_sanitize('text', $raw['breed'] ?? '');
-  $node = array('name' => $name, 'breed' => $breed, 'father' => null, 'mother' => null);
+
+  $race = isset($raw['race']) ? sanitize_key(wp_unslash($raw['race'])) : '';
+  if ($race !== '' && !array_key_exists($race, gwseq_cheval_race_options())) $race = '';
+  $race_autre = gws_core_field_sanitize('text', $raw['race_autre'] ?? '');
+
+  $node = array('name' => $name, 'race' => $race, 'race_autre' => $race_autre, 'father' => null, 'mother' => null);
   if ($depth_remaining > 0) {
     $node['father'] = gwseq_sanitize_external_ancestor_tree($raw['father'] ?? array(), $depth_remaining - 1);
     $node['mother'] = gwseq_sanitize_external_ancestor_tree($raw['mother'] ?? array(), $depth_remaining - 1);
@@ -132,11 +137,81 @@ function gwseq_sanitize_external_ancestor_tree($raw, $depth_remaining) {
 }
 
 /**
- * Persiste une relation parentale — voir l'en-tête du fichier : fonction métier réutilisable,
- * jamais couplée à $_POST ni à un nonce. Ne touche QUE la branche correspondant au mode reçu ;
- * l'autre branche (GWS ou externe) reste strictement inchangée en base, conformément à la
- * conservation non destructive décidée en §8-9. Attend $raw_args = {mode, horse_id, external}
- * (external = tableau shaped comme gwseq_sanitize_external_ancestor_tree() l'attend).
+ * Normalise un texte pour comparaison (minuscules, sans accents, underscores/tirets traités comme
+ * des espaces, espaces multiples réduits) — uniquement pour reconnaître une ancienne valeur de
+ * race texte libre face au référentiel, jamais utilisé pour l'affichage ni pour Race/Stud-book
+ * d'une fiche Cheval (qui reste toujours une sélection dans le référentiel, jamais un texte
+ * deviné).
+ */
+function gwseq_normalize_race_text($text) {
+  $text = (string) $text;
+  if (function_exists('remove_accents')) $text = remove_accents($text);
+  $text = strtolower($text);
+  $text = str_replace(array('_', '-'), ' ', $text);
+  $text = trim(preg_replace('/\s+/', ' ', $text));
+  return $text;
+}
+
+/**
+ * Tente de reconnaître un ancien texte libre de race/stud-book comme une valeur canonique connue
+ * (§2 : « Si une ancienne valeur texte correspond à une valeur canonique connue, elle peut être
+ * reconnue proprement »). Comparaison exacte, après normalisation, contre le code technique OU le
+ * libellé de chaque entrée du référentiel — reconnaît donc "KWPN"/"kwpn" et "Selle
+ * Français"/"selle français", mais PAS une abréviation non canonique comme "SF" (qui reste alors
+ * récupérable via `race = 'autre'`, jamais perdue ni devinée arbitrairement — voir
+ * gwseq_migrate_external_ancestor_node()).
+ */
+function gwseq_match_race_to_canonical_code($text) {
+  $normalized = gwseq_normalize_race_text($text);
+  if ($normalized === '') return '';
+  foreach (gwseq_cheval_race_options() as $code => $label) {
+    if ($code === 'autre') continue;
+    if (gwseq_normalize_race_text($code) === $normalized || gwseq_normalize_race_text($label) === $normalized) {
+      return $code;
+    }
+  }
+  return '';
+}
+
+/**
+ * Compatibilité ascendante (§2) : convertit à la LECTURE un nœud stocké à l'ancien format (champ
+ * `breed` texte libre, sans `race`/`race_autre`) vers le nouveau format, récursivement sur tout
+ * l'arbre — jamais une réécriture de la base, jamais une migration destructive. Un nœud déjà au
+ * nouveau format traverse cette fonction sans aucun changement.
+ */
+function gwseq_migrate_external_ancestor_node($node) {
+  if (!is_array($node)) return $node;
+
+  if (!array_key_exists('race', $node) && array_key_exists('breed', $node)) {
+    $old_text = trim((string) $node['breed']);
+    $matched_code = $old_text !== '' ? gwseq_match_race_to_canonical_code($old_text) : '';
+    if ($matched_code !== '') {
+      $node['race'] = $matched_code;
+      $node['race_autre'] = '';
+    } elseif ($old_text !== '') {
+      $node['race'] = 'autre';
+      $node['race_autre'] = $old_text; // texte d'origine conservé intégralement, jamais perdu
+    } else {
+      $node['race'] = '';
+      $node['race_autre'] = '';
+    }
+    unset($node['breed']);
+  }
+  if (!array_key_exists('race', $node)) $node['race'] = '';
+  if (!array_key_exists('race_autre', $node)) $node['race_autre'] = '';
+
+  $node['father'] = isset($node['father']) && is_array($node['father']) ? gwseq_migrate_external_ancestor_node($node['father']) : null;
+  $node['mother'] = isset($node['mother']) && is_array($node['mother']) ? gwseq_migrate_external_ancestor_node($node['mother']) : null;
+
+  return $node;
+}
+
+/**
+ * Persiste une relation parentale — fonction métier réutilisable, jamais couplée à $_POST ni à un
+ * nonce. Ne touche QUE la branche correspondant au mode reçu ; l'autre branche (GWS ou externe)
+ * reste strictement inchangée en base (conservation non destructive). Attend
+ * $raw_args = {mode, horse_id, external} (external = tableau shaped comme
+ * gwseq_sanitize_external_ancestor_tree() l'attend, avec race/race_autre).
  */
 function gwseq_set_horse_parent($cheval_id, $role, $raw_args) {
   $cheval_id = (int) $cheval_id;
@@ -150,14 +225,14 @@ function gwseq_set_horse_parent($cheval_id, $role, $raw_args) {
     $horse_id = gwseq_sanitize_horse_parent_gws_id($raw_args['horse_id'] ?? 0, $cheval_id);
     update_post_meta($cheval_id, $prefix . 'mode', $horse_id ? 'gws' : '');
     if ($horse_id) update_post_meta($cheval_id, $prefix . 'id', $horse_id);
-    return true; // _externe volontairement non touché (§9)
+    return true; // _externe volontairement non touché
   }
 
   if ($mode === 'external') {
     $tree = gwseq_sanitize_external_ancestor_tree($raw_args['external'] ?? array(), GWSEQ_PEDIGREE_MAX_DEPTH - 1);
     update_post_meta($cheval_id, $prefix . 'mode', $tree !== null ? 'external' : '');
     if ($tree !== null) update_post_meta($cheval_id, $prefix . 'externe', wp_json_encode($tree));
-    return true; // _id volontairement non touché (§9)
+    return true; // _id volontairement non touché
   }
 
   update_post_meta($cheval_id, $prefix . 'mode', '');
@@ -166,10 +241,10 @@ function gwseq_set_horse_parent($cheval_id, $role, $raw_args) {
 
 /**
  * Lecture brute d'une relation (mode '' = aucune branche active). Renvoie TOUJOURS la branche
- * externe décodée si elle existe en base, même si elle est actuellement inactive (mode = 'gws')
- * — c'est au code appelant (rendu du formulaire, qui doit pouvoir réafficher une saisie
- * précédente non perdue) de décider quoi en faire ; le resolver, lui, ne lit jamais la branche
- * qui ne correspond pas au mode actif (voir pedigree-resolver.php).
+ * externe décodée si elle existe en base (même inactive), déjà passée par
+ * gwseq_migrate_external_ancestor_node() pour une compatibilité transparente avec l'ancien
+ * format — le code appelant (rendu du formulaire, resolver) n'a jamais à se soucier du format de
+ * stockage historique.
  */
 function gwseq_get_horse_parent($cheval_id, $role) {
   $prefix = gwseq_horse_parent_meta_prefix($role);
@@ -180,7 +255,9 @@ function gwseq_get_horse_parent($cheval_id, $role) {
   $externe_tree = null;
   if ($externe_raw !== '') {
     $decoded = json_decode($externe_raw, true);
-    if (is_array($decoded) && ($decoded['name'] ?? '') !== '') $externe_tree = $decoded;
+    if (is_array($decoded) && ($decoded['name'] ?? '') !== '') {
+      $externe_tree = gwseq_migrate_external_ancestor_node($decoded);
+    }
   }
 
   return array(
@@ -191,11 +268,8 @@ function gwseq_get_horse_parent($cheval_id, $role) {
 }
 
 /**
- * Production (§13, inchangé par le correctif) : chevaux référençant $cheval_id comme père OU
- * mère GWS. Calculée à la volée par requête inverse (meta_query), jamais stockée sur la fiche du
- * parent. Seules les relations entre deux vraies fiches `gwseq_cheval` comptent — un même
- * ascendant externe (ex. "Kannan") ressaisi dans plusieurs pedigrees n'est jamais rapproché ni
- * dédupliqué (§7, §13).
+ * Production : chevaux référençant $cheval_id comme père OU mère GWS. Calculée à la volée,
+ * jamais stockée. Seules les relations entre deux vraies fiches `gwseq_cheval` comptent.
  */
 function gwseq_get_horse_offspring($cheval_id) {
   $cheval_id = (int) $cheval_id;
@@ -240,36 +314,55 @@ function gwseq_cheval_parent_candidates($exclude_post_id) {
 function gwseq_add_cheval_pedigree_meta_boxes($post) {
   add_meta_box('gwseq-cheval-pedigree', __('Pedigree', 'gws-core'), 'gwseq_render_cheval_pedigree_box', GWSEQ_CPT_CHEVAL, 'normal', 'default');
 
-  // "Production" (§13) : uniquement si au moins un descendant existe (§27 : absence de donnée =
-  // absence d'affichage, y compris pour une meta box entière plutôt que de l'afficher vide).
   if ($post && gwseq_get_horse_offspring($post->ID)) {
     add_meta_box('gwseq-cheval-production', __('Production', 'gws-core'), 'gwseq_render_cheval_offspring_box', GWSEQ_CPT_CHEVAL, 'side', 'default');
   }
 
-  // Aperçu de résolution du pedigree (§34 : rendu admin/développement minimal pour vérifier le
-  // resolver, jamais le futur rendu public de l'Étape 8) — même garde d'environnement que la
-  // boîte de vérification du Global Horse ID (Étape 4) : jamais enregistrée hors local/dev.
   if (function_exists('wp_get_environment_type') && in_array(wp_get_environment_type(), array('local', 'development'), true)) {
     add_meta_box('gwseq-cheval-pedigree-preview', __('Pedigree résolu (visible en local/développement uniquement)', 'gws-core'), 'gwseq_render_cheval_pedigree_preview_box', GWSEQ_CPT_CHEVAL, 'side', 'low');
   }
 }
 add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, 'gwseq_add_cheval_pedigree_meta_boxes');
 
+/**
+ * Fallback textuel tant qu'un nom n'est pas encore renseigné (§7) : jamais "Père de" suivi de
+ * rien, jamais "Origines de" suivi de rien.
+ */
+function gwseq_pedigree_display_name($raw_name) {
+  $display = gwseq_format_horse_name_display($raw_name);
+  return $display !== '' ? $display : __('cet ascendant', 'gws-core');
+}
+
 function gwseq_render_cheval_pedigree_box($post) {
   wp_nonce_field(GWSEQ_CHEVAL_NONCE_ACTION, GWSEQ_CHEVAL_NONCE_FIELD);
-  gwseq_render_cheval_parent_fields($post, 'father', __('Père', 'gws-core'));
+  $cheval_name = gwseq_pedigree_display_name(get_the_title($post));
+
+  echo '<p><strong>' . esc_html(sprintf(
+    /* translators: %s: nom du cheval, en présentation GWS (majuscules, sans accents) */
+    __('Origines de %s', 'gws-core'),
+    $cheval_name
+  )) . '</strong></p>';
+  echo '<p class="description">' . esc_html__('Les intitulés « Père de… »/« Mère de… » ci-dessous se basent sur le nom déjà enregistré de chaque ascendant. Après avoir saisi le nom d’un nouvel ascendant, enregistrez la fiche pour que ces intitulés se mettent à jour aux niveaux suivants.', 'gws-core') . '</p>';
+
+  gwseq_render_cheval_parent_fields($post, 'father', sprintf(
+    /* translators: %s: nom du cheval, en présentation GWS */
+    __('Père de %s', 'gws-core'), $cheval_name
+  ));
   echo '<hr>';
-  gwseq_render_cheval_parent_fields($post, 'mother', __('Mère', 'gws-core'));
+  gwseq_render_cheval_parent_fields($post, 'mother', sprintf(
+    /* translators: %s: nom du cheval, en présentation GWS */
+    __('Mère de %s', 'gws-core'), $cheval_name
+  ));
 }
 
 /**
- * Bloc Père ou Mère : source (§UX progressive disclosure) puis, selon le mode, soit le
- * `<select>` de chevaux GWS, soit l'arbre récursif d'ascendant externe. Les deux blocs de champs
- * restent toujours présents dans le DOM (l'un masqué par défaut selon le mode actif — voir
- * assets/cheval-admin.js) : c'est ce qui permet de retrouver une saisie précédente non perdue
- * après un changement de mode (§9), et garantit un formulaire fonctionnel même sans JavaScript
- * (les deux blocs restent alors simplement visibles ensemble — le serveur reste seul
- * autoritaire sur ce qui est réellement enregistré, voir gwseq_set_horse_parent()).
+ * Bloc Père ou Mère : source (GWS/externe), puis soit le `<select>` de chevaux GWS, soit l'arbre
+ * récursif d'ascendant externe. Les deux blocs de champs restent toujours présents dans le DOM
+ * (l'un masqué par défaut selon le mode actif — voir assets/cheval-admin.js) : c'est ce qui
+ * permet de retrouver une saisie précédente non perdue après un changement de mode, et garantit
+ * un formulaire fonctionnel même sans JavaScript (les deux blocs restent alors simplement
+ * visibles ensemble — le serveur reste seul autoritaire sur ce qui est réellement enregistré).
+ * $label est déjà l'intitulé contextuel complet (« Père de UNTOUCHABLE 27 »).
  */
 function gwseq_render_cheval_parent_fields($post, $role, $label) {
   $relation = gwseq_get_horse_parent($post->ID, $role);
@@ -300,42 +393,86 @@ function gwseq_render_cheval_parent_fields($post, $role, $label) {
       </select>
     </p>
     <div data-gwseq-parent-fields="<?php echo esc_attr($role); ?>-external" style="<?php echo $relation['mode'] === 'external' ? '' : 'display:none;'; ?>">
-      <?php gwseq_render_external_ancestor_fields($prefix . 'externe', $relation['external'] ?? array(), GWSEQ_PEDIGREE_MAX_DEPTH - 1); ?>
+      <?php gwseq_render_external_ancestor_fields($prefix . 'externe', $relation['external'] ?? array(), GWSEQ_PEDIGREE_MAX_DEPTH - 1, ''); ?>
     </div>
   </div>
   <?php
 }
 
 /**
- * Rendu récursif d'un nœud d'ascendant externe (§5, progressive disclosure) : Nom + Race
- * toujours visibles, puis — s'il reste de la profondeur disponible — un `<details>` natif
- * (aucun JavaScript nécessaire pour ce repli/dépli, accessible par construction) révélant Père/
- * Mère du même ascendant, eux-mêmes du même type. Ouvert automatiquement si des données existent
- * déjà dessous, pour ne jamais masquer une saisie existante. $field_name porte la notation par
- * crochets (`_gwseq_pere_externe[father][name]`...) : $_POST reconstruit nativement l'arbre
- * complet, sans indexation ni JavaScript de calcul d'index (contrairement au composant répétable
- * de l'Étape 2 — ici l'arbre est de forme et de profondeur fixes, jamais un nombre variable de
- * lignes).
+ * Rendu récursif d'un nœud d'ascendant externe — progressive disclosure contextuelle (§3-11 de
+ * la demande de correction) :
+ * - $context_label est l'intitulé déjà résolu pour CE nœud (« Père de UNTOUCHABLE 27 » au premier
+ *   niveau, vide pour ce premier niveau puisque le bloc appelant l'affiche déjà juste au-dessus —
+ *   voir gwseq_render_cheval_parent_fields()) ;
+ * - un compteur « Génération N sur 4 » accompagne chaque niveau (§9), calculé depuis
+ *   $depth_remaining (générique, ne dépend d'aucune valeur codée en dur) ;
+ * - à la dernière génération autorisée (§11), AUCUN contrôle « + Renseigner ses origines » n'est
+ *   proposé — arrêt visuel strict, la limite serveur restant de toute façon la garantie réelle ;
+ * - le bouton de divulgation progressive (`<details>` natif, §6) porte un intitulé contextualisé
+ *   avec le nom DÉJÀ enregistré de l'ascendant en cours (jamais un Père/Mère nu), avec un repli
+ *   explicite tant que ce nom n'est pas renseigné (§7) — aucun JavaScript requis, aucune mise à
+ *   jour en direct pendant la frappe (solution jugée suffisante, voir l'en-tête du fichier).
+ * - Race/Stud-book réutilise le référentiel de la fiche Cheval (§1), avec le même mécanisme
+ *   "Autre + précision" ; $field_name porte la notation par crochets, $_POST reconstruit
+ *   nativement l'arbre complet.
  */
-function gwseq_render_external_ancestor_fields($field_name, $node, $depth_remaining, $label = '') {
+function gwseq_render_external_ancestor_fields($field_name, $node, $depth_remaining, $context_label) {
   $node = is_array($node) ? $node : array();
+  $generation = GWSEQ_PEDIGREE_MAX_DEPTH - $depth_remaining;
+  $is_last_generation = $depth_remaining <= 0;
+  $generation_note = $is_last_generation
+    ? sprintf(
+        /* translators: %1$d: numéro de génération (toujours 4 ici), %2$d: profondeur maximale du pedigree */
+        __('Génération %1$d sur %2$d — dernière génération', 'gws-core'),
+        $generation, GWSEQ_PEDIGREE_MAX_DEPTH
+      )
+    : sprintf(
+        /* translators: %1$d: numéro de génération, %2$d: profondeur maximale du pedigree */
+        __('Génération %1$d sur %2$d', 'gws-core'),
+        $generation, GWSEQ_PEDIGREE_MAX_DEPTH
+      );
   ?>
   <div style="margin-left:1em; border-left:2px solid #ddd; padding-left:1em; margin-top:0.5em;">
-    <?php if ($label !== '') : ?><p><strong><?php echo esc_html($label); ?></strong></p><?php endif; ?>
+    <p>
+      <?php if ($context_label !== '') : ?><strong><?php echo esc_html($context_label); ?></strong> <?php endif; ?>
+      <span class="description"><?php echo $context_label !== '' ? '— ' : ''; ?><?php echo esc_html($generation_note); ?></span>
+    </p>
     <p>
       <label><?php esc_html_e('Nom', 'gws-core'); ?></label><br>
       <input type="text" class="regular-text" name="<?php echo esc_attr($field_name); ?>[name]" value="<?php echo esc_attr($node['name'] ?? ''); ?>">
     </p>
     <p>
-      <label><?php esc_html_e('Race / Stud-book (facultatif)', 'gws-core'); ?></label><br>
-      <input type="text" class="regular-text" name="<?php echo esc_attr($field_name); ?>[breed]" value="<?php echo esc_attr($node['breed'] ?? ''); ?>">
+      <label><?php esc_html_e('Race / Stud-book', 'gws-core'); ?></label><br>
+      <select class="gwseq-external-race-select" name="<?php echo esc_attr($field_name); ?>[race]">
+        <option value=""><?php esc_html_e('— Non renseignée —', 'gws-core'); ?></option>
+        <?php foreach (gwseq_cheval_race_options() as $key => $race_label) : ?>
+          <option value="<?php echo esc_attr($key); ?>" <?php selected($node['race'] ?? '', $key); ?>><?php echo esc_html($race_label); ?></option>
+        <?php endforeach; ?>
+      </select>
     </p>
-    <?php if ($depth_remaining > 0) : ?>
-      <details <?php echo (!empty($node['father']) || !empty($node['mother'])) ? 'open' : ''; ?>>
-        <summary><?php esc_html_e('+ Renseigner ses origines', 'gws-core'); ?></summary>
+    <p class="gwseq-external-race-autre-wrap" style="<?php echo ($node['race'] ?? '') === 'autre' ? '' : 'display:none;'; ?>">
+      <label><?php esc_html_e('Préciser la race / le stud-book', 'gws-core'); ?></label><br>
+      <input type="text" class="regular-text" name="<?php echo esc_attr($field_name); ?>[race_autre]" value="<?php echo esc_attr($node['race_autre'] ?? ''); ?>">
+    </p>
+    <?php if (!$is_last_generation) :
+      $node_display_name = gwseq_pedigree_display_name($node['name'] ?? '');
+      $has_children_data = !empty($node['father']) || !empty($node['mother']);
+    ?>
+      <details <?php echo $has_children_data ? 'open' : ''; ?>>
+        <summary><?php echo esc_html(sprintf(
+          /* translators: %s: nom de l'ascendant dont on va renseigner les origines, en présentation GWS, ou repli si pas encore saisi */
+          __('+ Renseigner les origines de %s', 'gws-core'), $node_display_name
+        )); ?></summary>
         <?php
-        gwseq_render_external_ancestor_fields($field_name . '[father]', $node['father'] ?? array(), $depth_remaining - 1, __('Père', 'gws-core'));
-        gwseq_render_external_ancestor_fields($field_name . '[mother]', $node['mother'] ?? array(), $depth_remaining - 1, __('Mère', 'gws-core'));
+        gwseq_render_external_ancestor_fields(
+          $field_name . '[father]', $node['father'] ?? array(), $depth_remaining - 1,
+          sprintf(/* translators: %s: nom de l'ascendant */ __('Père de %s', 'gws-core'), $node_display_name)
+        );
+        gwseq_render_external_ancestor_fields(
+          $field_name . '[mother]', $node['mother'] ?? array(), $depth_remaining - 1,
+          sprintf(/* translators: %s: nom de l'ascendant */ __('Mère de %s', 'gws-core'), $node_display_name)
+        );
         ?>
       </details>
     <?php endif; ?>
@@ -359,11 +496,11 @@ function gwseq_render_cheval_pedigree_preview_box($post) {
 }
 
 /**
- * Sauvegarde — un client parmi d'autres de gwseq_set_horse_parent() (voir l'en-tête du fichier) :
- * ne fait que sécuriser la requête de formulaire (nonce/capability/autosave/révision), puis
- * délègue entièrement la persistance à la fonction métier réutilisable. `_gwseq_pere_externe`/
- * `_gwseq_mere_externe` arrivent déjà comme des tableaux PHP imbriqués dans $_POST (notation par
- * crochets des champs HTML, reconstruite nativement) : aucune transformation nécessaire ici.
+ * Sauvegarde — un client parmi d'autres de gwseq_set_horse_parent() : ne fait que sécuriser la
+ * requête de formulaire (nonce/capability/autosave/révision), puis délègue entièrement la
+ * persistance à la fonction métier réutilisable. `_gwseq_pere_externe`/`_gwseq_mere_externe`
+ * arrivent déjà comme des tableaux PHP imbriqués dans $_POST (notation par crochets des champs
+ * HTML, reconstruite nativement).
  */
 function gwseq_save_cheval_pedigree_meta($post_id) {
   if (!isset($_POST[GWSEQ_CHEVAL_NONCE_FIELD]) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST[GWSEQ_CHEVAL_NONCE_FIELD])), GWSEQ_CHEVAL_NONCE_ACTION)) return;

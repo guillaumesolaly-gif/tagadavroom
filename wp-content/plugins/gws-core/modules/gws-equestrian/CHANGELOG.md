@@ -5,6 +5,74 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.6.0 — Étape 5 : corrections post-recette runtime (Race/Stud-book, contexte de saisie, présentation)
+
+La recette runtime de l'Étape 5 (saisie réelle du pedigree de Jamerose) a validé le modèle
+fonctionnel (relations GWS/externe, ascendants externes récursifs, conservation non destructive,
+resolver, limite à 4 générations, approche programmatique) mais a révélé des problèmes UX
+importants lors de la saisie réelle sur plusieurs générations, corrigés dans cette version.
+
+- **Race/Stud-book d'un ascendant externe harmonisé avec la fiche Cheval.** Était un champ texte
+  libre (source constatée d'hétérogénéité : « SF »/« sf »/« Selle Français »...). Réutilise
+  désormais EXACTEMENT le référentiel de `gwseq_cheval_race_options()` (défini dans
+  `cheval-fields.php`, jamais dupliqué) à chaque génération de chaque branche externe : liste
+  fermée + « Autre » avec précision libre. Stockage passé de `breed` (texte libre) à `race` (code
+  technique) + `race_autre` (texte, si `race === 'autre'`).
+- **Compatibilité ascendante sans perte de données.** Un pedigree déjà enregistré avec l'ancien
+  format `breed` n'est jamais perdu : `gwseq_migrate_external_ancestor_node()` reconnaît à la
+  LECTURE (jamais une réécriture automatique, jamais une migration destructive) une ancienne
+  valeur correspondant à un code ou un libellé canonique du référentiel (comparaison insensible à
+  la casse et aux accents) ; sinon elle est conservée intégralement via `race = 'autre'` +
+  `race_autre` = texte original (ex. une ancienne abréviation « SF » non reconnue reste
+  entièrement récupérable, jamais perdue ni devinée arbitrairement). Le format en base n'est
+  réécrit qu'au prochain enregistrement volontaire de cette relation.
+- **Contexte de saisie — correction du problème principal constaté en recette (perte de repère
+  lors de la saisie sur plusieurs générations).** Chaque niveau affiche désormais un intitulé
+  contextuel construit à partir du nom déjà enregistré (« Père de UNTOUCHABLE 27 », « Père de
+  HORS LA LOI II »...), jamais une nomenclature généalogique complexe (« grand-père paternel »...)
+  ni un Père/Mère nu sans contexte. Le bouton de divulgation progressive devient lui aussi
+  contextuel (« + Renseigner les origines de HORS LA LOI II »). Un repli explicite (« cet
+  ascendant ») s'applique tant que le nom n'est pas encore renseigné. Volontairement AUCUN
+  JavaScript ne met à jour ces intitulés en direct pendant la frappe (jugé suffisant : un
+  enregistrement de la fiche les rafraîchit ; un texte d'aide le rappelle à l'écran) — solution
+  plus légère qu'un composant de mise à jour dynamique, conformément à la préférence exprimée.
+- **Repère de progression — second problème constaté (l'utilisateur ne savait pas jusqu'où
+  remonter).** Chaque niveau affiche désormais « Génération N sur 4 », la génération 4 étant
+  explicitement identifiée comme « — dernière génération ». À cette génération, plus AUCUN
+  contrôle « + Renseigner ses origines » n'est proposé (arrêt visuel strict) — la limite serveur
+  déjà existante (`gwseq_sanitize_external_ancestor_tree()`, inchangée dans son principe) reste
+  évidemment la garantie réelle contre une requête manipulée.
+- **Convention de présentation des noms de chevaux** (nouveau helper partagé,
+  `gwseq_format_horse_name_display()` dans `cheval-fields.php`) : majuscules, sans accents, pour
+  l'affichage dans l'interface du pedigree (« Étoile du Lys » → « ETOILE DU LYS ») — apostrophes/
+  traits d'union/chiffres/espaces conservés. Jamais une transformation de la donnée source
+  (`post_title`/`name` d'un ascendant externe restent enregistrés exactement tels que saisis) ;
+  jamais utilisée pour Race/Stud-book, qui reste une valeur structurée via référentiel. Réutilisable
+  plus tard par le front, PDF, impression, catalogue, Social Kit — utilisée à cette étape
+  uniquement là où elle améliore l'interface Pedigree.
+- **Nouvelle piste future actée en roadmap, aucun développement** : connecteur IFCE/SIRE optionnel
+  (webservices SIRE de l'IFCE pour préremplir une fiche depuis un numéro SIRE/UELN) — GWS
+  Equestrian reste entièrement fonctionnel sans lui, la saisie structurée manuelle reste le
+  fonctionnement nominal. Compatibilité architecturale déjà vérifiée sans aucune modification :
+  un futur connecteur n'aurait qu'à mapper ses propres données vers la forme
+  `{mode, horse_id, external}` déjà attendue par `gwseq_set_horse_parent()`. Idem pour une
+  bibliothèque facultative d'étalons/ascendants comme aide à la saisie (aucun rapprochement
+  automatique par nom, aucune fiche GWS créée automatiquement). Aucun appel API, authentification,
+  clé, écran de configuration, cache ou dépendance ajoutés pour l'une ou l'autre de ces pistes.
+- Fichiers modifiés : `includes/cheval-pedigree.php` (référentiel Race/Stud-book, compatibilité
+  ascendante, contexte de saisie, générations, arrêt à la génération 4),
+  `includes/pedigree-resolver.php` (lecture de `race`/`race_autre` au lieu de `breed`, contrat de
+  sortie du resolver inchangé), `includes/cheval-fields.php` (nouveau helper
+  `gwseq_format_horse_name_display()`), `assets/cheval-admin.js` (bascule de la précision "Autre"
+  pour la race d'un ascendant externe, à n'importe quelle profondeur, via une écoute déléguée
+  unique).
+- 49 nouvelles assertions dans `tests/gws-equestrian-pedigree-logic-test.php` (référentiel
+  mutualisé, "Autre", compatibilité ascendante multi-générations façon Jamerose, contexte de
+  saisie reproduisant l'exemple exact de la demande, repli sans nom, compteur de génération,
+  arrêt strict à la génération 4 y compris si une donnée de génération 5 existe déjà en base) et
+  9 nouvelles assertions dans `tests/gws-equestrian-cheval-logic-test.php` (helper de présentation
+  des noms). Suite complète 100 % passante (563 assertions), aucune régression.
+
 ## 0.5.0 — Étape 5 : Pedigree — relations Père/Mère récursives, resolver, production
 
 En attente de sa propre recette runtime. Construit le socle de filiation de la fiche Cheval, sans

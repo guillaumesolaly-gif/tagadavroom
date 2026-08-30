@@ -152,18 +152,25 @@ function gwseq_resolve_horse_node($cheval_id, $depth_remaining, &$memo, $ancesto
 /**
  * Résout récursivement un ascendant externe et ses propres ascendants (également externes),
  * jusqu'à $depth_remaining niveaux supplémentaires. Aucune requête ici : la branche entière est
- * déjà chargée avec la fiche qui la référence (voir gwseq_get_horse_parent()) — la profondeur ne
- * sert qu'à décider jusqu'où descendre dans une structure déjà en mémoire, jamais à limiter des
- * requêtes (il n'y en a aucune). $tree_node = null ou un tableau sans "name" -> absence de
- * donnée, jamais un nœud fabriqué (§25).
+ * déjà chargée avec la fiche qui la référence (voir gwseq_get_horse_parent(), qui applique aussi
+ * la compatibilité ascendante d'un éventuel ancien format — ce fichier n'a donc jamais à s'en
+ * soucier) — la profondeur ne sert qu'à décider jusqu'où descendre dans une structure déjà en
+ * mémoire, jamais à limiter des requêtes (il n'y en a aucune). $tree_node = null ou un tableau
+ * sans "name" -> absence de donnée, jamais un nœud fabriqué (§25).
+ *
+ * "breed" dans le nœud produit reste un LIBELLÉ résolu (comme pour un cheval GWS, via
+ * gwseq_cheval_race_label() — même référentiel, jamais dupliqué), même si le stockage interne
+ * distingue désormais `race` (code technique) et `race_autre` (texte) : le contrat de sortie du
+ * resolver ne change pas pour ses consommateurs (front/PDF/catalogue/API futurs).
  */
 function gwseq_resolve_external_ancestor_node($tree_node, $depth_remaining) {
   if (!is_array($tree_node) || ($tree_node['name'] ?? '') === '') return null;
 
+  $breed_label = gwseq_cheval_race_label($tree_node['race'] ?? '', $tree_node['race_autre'] ?? '');
   $node = array(
     'type' => 'external',
     'name' => $tree_node['name'],
-    'breed' => ($tree_node['breed'] ?? '') !== '' ? $tree_node['breed'] : null,
+    'breed' => $breed_label !== '' ? $breed_label : null,
     'father' => null,
     'mother' => null,
   );

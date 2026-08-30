@@ -131,7 +131,20 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   de rapprochement entre ascendants externes identiques), sécurité de la sauvegarde (nonce,
   permissions, autosave, révision, sanitation serveur y compris sur une structure externe profonde
   soumise via un vrai `$_POST`), divulgation progressive de l'interface (élément natif `<details>`,
-  aucun JavaScript requis pour son repli/dépli), et internationalisation.
+  aucun JavaScript requis pour son repli/dépli), et internationalisation. Complété après la
+  recette runtime (correction 0.6.0) : Race/Stud-book d'un ascendant externe réutilisant le
+  référentiel mutualisé de la fiche Cheval (jamais une seconde liste codée en dur, vérifié
+  directement dans le code source) avec le mécanisme "Autre" à toutes les générations,
+  compatibilité ascendante avec l'ancien format texte libre (valeur canonique reconnue,
+  abréviation non reconnue jamais perdue et récupérable via "Autre", pedigree multi-générations
+  façon Jamerose converti sans perte, aucune réécriture automatique de la base à la lecture),
+  contexte de saisie reproduisant l'exemple exact de la demande (« Père de UNTOUCHABLE 27 », « Père
+  de HORS LA LOI II » après divulgation, absence de nomenclature généalogique complexe, repli
+  explicite tant qu'un nom n'est pas renseigné), compteur « Génération N sur 4 » et arrêt visuel
+  strict à la génération 4 même si une donnée de génération 5 existe déjà en base. Le helper de
+  présentation des noms (`gwseq_format_horse_name_display()`) est testé dans
+  `gws-equestrian-cheval-logic-test.php` (majuscules, sans accents, apostrophes/traits d'union/
+  chiffres conservés, jamais utilisé dans la sanitation — la donnée source n'est jamais modifiée).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -152,3 +165,7 @@ un processus PHP séparé — il peut aussi être lancé seul.)
 - Comportement navigateur réel de la divulgation progressive du pedigree (élément `<details>`
   imbriqué sur plusieurs niveaux) : ouverture/fermeture au clic, accessibilité clavier, lisibilité
   visuelle d'un arbre externe profondément imbriqué.
+- Ressenti réel de l'absence de mise à jour en direct des intitulés contextuels du pedigree
+  pendant la frappe (choix assumé sans JavaScript, voir CHANGELOG 0.6.0) : à confirmer en recette
+  que le texte d'aide rappelant qu'un enregistrement rafraîchit ces intitulés est suffisamment
+  visible et compris sans irriter l'utilisateur.

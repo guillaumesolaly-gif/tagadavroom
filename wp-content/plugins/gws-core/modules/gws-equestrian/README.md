@@ -12,9 +12,12 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
 Equestrian 0.4.1. L'Étape 5 construit les relations de pedigree (Père/Mère, cheval GWS ou
-ascendant externe récursif, resolver, production), en attente de sa propre recette runtime. Voir
-`CHANGELOG.md` de ce dossier pour l'historique détaillé par étape, et la proposition de conception
-validée pour le contexte d'ensemble.
+ascendant externe récursif, resolver, production). Une première recette runtime (saisie réelle du
+pedigree de Jamerose) a validé le modèle fonctionnel mais révélé des problèmes UX importants,
+corrigés en 0.6.0 (Race/Stud-book harmonisé, contexte de saisie, compteur de génération,
+convention de présentation des noms — voir plus bas) ; en attente de la reprise de cette recette.
+Voir `CHANGELOG.md` de ce dossier pour l'historique détaillé par étape, et la proposition de
+conception validée pour le contexte d'ensemble.
 
 ### Pedigree (Étape 5)
 
@@ -33,11 +36,40 @@ créer une seule fiche `gwseq_cheval` artificielle pour un ancêtre qui n'a aucu
 d'être géré comme un cheval du client. Chaque génération reste facultative : l'utilisateur
 s'arrête où il connaît son pedigree.
 
-**Interface en divulgation progressive** : Nom et Race d'un ascendant externe sont toujours
-visibles ; un bouton natif « + Renseigner ses origines » (élément HTML `<details>`, sans
-JavaScript nécessaire à son fonctionnement) révèle le père et la mère de cet ascendant, et ainsi
-de suite jusqu'à la profondeur autorisée. Personne n'est jamais confronté d'emblée à un immense
-formulaire listant tous les ascendants possibles.
+**Race/Stud-book d'un ascendant externe harmonisé avec la fiche Cheval** (correction post-recette,
+0.6.0) : ce champ était initialement un texte libre, source constatée d'hétérogénéité en usage
+réel (« SF »/« sf »/« Selle Français »...). Il réutilise désormais très exactement le référentiel
+de la fiche Cheval (`gwseq_cheval_race_options()`, jamais dupliqué) à chaque génération de chaque
+branche externe : liste fermée + « Autre » avec précision libre.
+
+**Interface en divulgation progressive, désormais contextuelle** : Nom et Race d'un ascendant
+externe sont toujours visibles ; un bouton natif « + Renseigner ses origines de KANNAN » (élément
+HTML `<details>`, sans JavaScript nécessaire à son fonctionnement) révèle le père et la mère de
+cet ascendant, et ainsi de suite jusqu'à la profondeur autorisée. Personne n'est jamais confronté
+d'emblée à un immense formulaire listant tous les ascendants possibles. **Correction post-recette
+(0.6.0)** : la recette réelle du pedigree de Jamerose a montré qu'un simple « Père »/« Mère »
+répété à chaque niveau fait rapidement perdre le fil (erreur de saisie constatée). Chaque niveau
+affiche désormais un intitulé construit à partir du nom déjà enregistré du cheval concerné
+(« Père de UNTOUCHABLE 27 », puis en développant : « Père de HORS LA LOI II »...) — jamais une
+nomenclature généalogique complexe (« grand-père paternel »...), toujours le nom comme repère. Un
+repli explicite (« cet ascendant ») s'applique tant que le nom n'est pas encore saisi.
+Volontairement aucun JavaScript ne met ces intitulés à jour en direct pendant la frappe (un texte
+d'aide rappelle qu'un enregistrement de la fiche les rafraîchit) : solution jugée suffisante,
+plus légère qu'un mécanisme de mise à jour dynamique. Un compteur discret (« Génération N sur 4 »,
+« Génération 4 sur 4 — dernière génération ») accompagne chaque niveau — la recette a aussi
+montré que l'utilisateur ne savait pas jusqu'où remonter alors que GWS connaît parfaitement cette
+limite. À la génération 4, plus aucun contrôle « + Renseigner ses origines » n'est proposé (arrêt
+visuel strict) ; la limite serveur, elle, reste inchangée et est la seule garantie réelle contre
+une requête manipulée.
+
+**Convention de présentation des noms de chevaux** (nouveau helper partagé,
+`gwseq_format_horse_name_display()` dans `cheval-fields.php`) : dans les intitulés contextuels du
+pedigree, un nom s'affiche en MAJUSCULES ET SANS ACCENTS (« Étoile du Lys » → « ETOILE DU LYS » ;
+apostrophes/traits d'union/chiffres/espaces conservés). Uniquement une présentation : `post_title`
+et le nom d'un ascendant externe restent enregistrés exactement tels que saisis, jamais transformés
+à l'enregistrement. Ne s'applique jamais à Race/Stud-book, qui reste une valeur structurée via
+référentiel. Réutilisable plus tard par le front, un export PDF, l'impression, un catalogue, ou le
+Social Kit.
 
 **Une seule source active, jamais de mélange, aucune destruction accidentelle** : passer d'un
 mode à l'autre (GWS ⇄ externe) sur une même relation ne supprime jamais l'autre branche — elle
@@ -79,17 +111,30 @@ meta (préfixe `_gwseq_pere_`/`_gwseq_mere_`) :
 |---|---|---|
 | `..._mode` | string enum | `''` (aucune relation) / `'gws'` / `'external'` — seule source de vérité sur la branche active |
 | `..._id` | integer | ID du cheval GWS référencé (branche GWS ; peut rester stocké même inactif) |
-| `..._externe` | string (JSON) | Arbre récursif `{name, breed, father, mother}` (branche externe ; peut rester stocké même inactif) |
+| `..._externe` | string (JSON) | Arbre récursif `{name, race, race_autre, father, mother}` (branche externe ; peut rester stocké même inactif) |
 
 L'arbre JSON de la branche externe a la même forme à chaque niveau : `name` (texte, obligatoire
-pour qu'un nœud existe), `breed` (texte, toujours facultatif), `father`/`mother` (même structure,
-récursivement, jusqu'à `GWSEQ_PEDIGREE_MAX_DEPTH - 1` = 3 niveaux sous le premier ascendant
-externe — soit 4 générations au total pour cette branche, cohérent avec la profondeur du
+pour qu'un nœud existe), `race` (code technique du référentiel `gwseq_cheval_race_options()`,
+toujours facultatif), `race_autre` (texte, uniquement si `race === 'autre'`), `father`/`mother`
+(même structure, récursivement, jusqu'à `GWSEQ_PEDIGREE_MAX_DEPTH - 1` = 3 niveaux sous le premier
+ascendant externe — soit 4 générations au total pour cette branche, cohérent avec la profondeur du
 resolver). Choix JSON plutôt que `serialize()` PHP : lisible, indépendant du langage
 d'implémentation, donc plus simple à valider, faire évoluer (le mécanisme de migration déjà
 existant de gws-core prendrait le relais si la forme devait un jour changer), importer (un futur
 import CSV/XLSX construit directement ce même tableau avant de l'encoder) et projeter vers une
 future API/Network.
+
+#### Compatibilité ascendante — ancien format `breed` texte libre (correction 0.6.0)
+
+Un pedigree déjà enregistré avant cette correction (`breed` texte libre plutôt que
+`race`/`race_autre`) n'est jamais perdu. À la LECTURE (jamais une réécriture automatique de la
+base, jamais une migration destructive), `gwseq_migrate_external_ancestor_node()` reconnaît une
+ancienne valeur qui correspond exactement (comparaison insensible à la casse et aux accents) à un
+code technique ou à un libellé du référentiel (« Selle Français », « kwpn »...) et la convertit
+proprement. Une valeur qui ne correspond à rien de connu (ex. une ancienne abréviation « SF ») est
+conservée intégralement via `race = 'autre'` + `race_autre` = texte original — jamais perdue, ni
+devinée arbitrairement. Le format en base n'est réécrit qu'au prochain enregistrement volontaire
+de cette relation par un utilisateur.
 
 **Définition exacte des « 4 générations »** (identique pour une branche GWS ou externe) :
 
@@ -156,42 +201,73 @@ l'état des lieux sur Prestation/Cheval-identité/Commercialisation).
   séparément (A → père B, puis B → père A) n'est détecté qu'à la résolution, jamais empêché à la
   sauvegarde (cela nécessiterait de parcourir tout le graphe existant à chaque enregistrement,
   hors de proportion pour ce socle).
+- **Aucune mise à jour en direct des intitulés contextuels pendant la frappe** (choix assumé,
+  0.6.0) : après avoir saisi le nom d'un nouvel ascendant, il faut enregistrer la fiche pour que
+  « Père de… »/« Mère de… » se mettent à jour au niveau suivant — pas de JavaScript de rafraîchissement
+  en direct, un texte d'aide le rappelle à l'écran.
+- **Reconnaissance d'ancienne race limitée aux correspondances exactes** (0.6.0) : une ancienne
+  valeur texte est reconnue si elle correspond, après normalisation, à un code ou un libellé du
+  référentiel — une abréviation non standard (ex. « SF ») n'est pas devinée automatiquement et
+  reste sous « Autre », ce qui est le comportement voulu (jamais d'invention arbitraire) mais peut
+  nécessiter une correction manuelle ponctuelle par l'utilisateur s'il souhaite la valeur canonique.
 
-#### Procédure de recette — Étape 5
+#### Pistes futures actées en roadmap (aucun développement à ce stade)
 
-À réaliser dans WordPress Local, sans écrire de code :
+- **Connecteur IFCE/SIRE optionnel** : les webservices SIRE de l'IFCE permettraient
+  potentiellement de préremplir une fiche (identité, généalogie...) à partir d'un numéro SIRE/
+  UELN. Purement optionnel et non garanti (accès contractuel, soumis à droits, potentiellement
+  payant) — GWS Equestrian reste entièrement fonctionnel sans lui, la saisie structurée manuelle
+  est le fonctionnement nominal et autonome. Si développé un jour, ce serait une couche
+  d'import/enrichissement AU-DESSUS du modèle GWS (SIRE/UELN → connecteur → mapping/validation →
+  modèle métier GWS Equestrian → web/PDF/catalogue/etc.), jamais une dépendance directe. Aucun
+  appel API, authentification, clé, écran de configuration, cache ou stockage particulier
+  n'existe à ce stade. **Compatibilité déjà vérifiée** : le chemin programmatique existant
+  (`gwseq_set_horse_parent()`) permettrait à un tel connecteur de fonctionner sans aucune
+  modification de ce fichier — il n'aurait qu'à mapper ses propres données vers la forme
+  `{mode, horse_id, external}` déjà attendue. Avant toute implémentation future, vérifier
+  impérativement les conditions contractuelles IFCE, droits d'accès, tarification, services
+  réellement disponibles, profondeur de généalogie accessible, droits de stockage/réutilisation/
+  affichage public, conditions de cache, obligations d'attribution, limites d'appels — rien de
+  tout cela n'est supposé dans le code actuel.
+- **Bibliothèque facultative d'étalons/ascendants** : une aide à la saisie qui proposerait par
+  exemple « KANNAN — KWPN » en préremplissage en tapant « Kannan ». Purement une aide, jamais
+  nécessaire au fonctionnement du pedigree. Aucun rapprochement automatique par nom, aucune fiche
+  externe ne deviendrait automatiquement une fiche GWS, aucun identifiant biologique universel
+  artificiel ne serait créé. Aucun développement à ce stade.
 
-1. Créer trois ou quatre chevaux de test (ex. « Poulain A », « Jument X », « Étalon A »).
-2. Sur « Poulain A », définir un Père externe (ex. « Kannan », race « KWPN ») : vérifier que Nom
-   et Race sont les seuls champs visibles par défaut, et que « + Renseigner ses origines » révèle
-   Père/Mère de Kannan lorsqu'on clique dessus.
-3. Définir la Mère de « Poulain A » comme une fiche GWS existante (« Jument X ») via le
-   `<select>`. Enregistrer, recharger : vérifier que les deux relations sont bien restituées.
-4. Changer le mode du Père de « externe » vers « Cheval déjà présent dans GWS », choisir
-   « Étalon A », enregistrer. Repasser ensuite en « Ascendant hors GWS » : vérifier que « Kannan »
-   et sa race sont toujours là, non perdus par l'aller-retour.
-5. Sur un nouveau cheval, saisir un pedigree entièrement externe sur plusieurs générations (père
-   et mère externes, chacun avec ses propres père/mère externes) : vérifier que chaque niveau
-   supplémentaire ne s'affiche qu'après avoir cliqué sur « + Renseigner ses origines », et que
-   tout est bien restitué après enregistrement/rechargement.
-6. Renommer « Jument X » (le parent GWS de l'étape 3) : recharger la fiche de « Poulain A » (ou
-   attendre un futur affichage du pedigree résolu) et vérifier que le nouveau nom est pris en
-   compte sans avoir rien modifié sur « Poulain A » lui-même.
-7. Sur « Jument X », vérifier qu'une meta box « Production » apparaît listant « Poulain A » (et
-   tout autre cheval qui la référence comme père ou mère GWS), avec un lien fonctionnel vers sa
-   fiche. Vérifier qu'elle n'apparaît pas du tout sur un cheval sans aucun produit.
-8. Tenter de définir un cheval comme son propre père via le `<select>` (ne devrait normalement
-   même pas être proposé, mais vérifier qu'un enregistrement malgré tout ne casse rien et que la
-   relation reste vide après rechargement).
-9. Mettre « Étalon A » à la corbeille : sur un environnement `local`/`development`, vérifier via
-   la boîte « Pedigree résolu » d'un de ses descendants que la résolution fonctionne toujours
-   normalement (les données ne sont pas perdues). Le supprimer ensuite définitivement : vérifier
-   que la boîte affiche un état dégradé propre (« Cheval introuvable »), jamais une erreur fatale
-   ni une page cassée.
-10. Recharger chaque fiche modifiée : vérifier que toutes les relations (GWS et externes, y
-    compris les branches inactives après un changement de mode) sont fidèlement restituées.
-11. Vérifier la console navigateur sur l'écran Cheval : aucune erreur JavaScript ; la source
-    Père/Mère (GWS/externe) bascule correctement l'affichage des bons champs.
+#### Procédure de recette — Étape 5 (reprise après corrections)
+
+À réaliser dans WordPress Local, sans écrire de code — reprend la recette sur le pedigree déjà
+saisi de Jamerose, un test à la fois :
+
+1. Ouvrir la fiche de Jamerose (ou toute fiche dont le pedigree a été saisi avant la correction) :
+   vérifier qu'aucune donnée déjà saisie n'a été perdue (noms, races, structure des générations).
+2. Vérifier que Race/Stud-book se présente désormais comme un menu déroulant (référentiel de la
+   fiche Cheval) à chaque génération, plutôt qu'un champ texte libre.
+3. Pour une ancienne race qui correspondait exactement à une valeur du référentiel (ex. « Selle
+   Français »), vérifier qu'elle apparaît déjà sélectionnée. Pour une ancienne valeur non reconnue
+   (ex. une abréviation), vérifier qu'elle apparaît sous « Autre » avec le texte original intact
+   dans le champ de précision.
+4. Vérifier la lisibilité du contexte : chaque bloc doit indiquer clairement « Père de… »/« Mère
+   de… » avec le nom du cheval concerné, jamais un Père/Mère nu.
+5. Développer les origines d'un ascendant externe déjà nommé (bouton « + Renseigner les origines
+   de… ») : vérifier que le nom de CET ascendant apparaît bien dans le bouton et dans les
+   intitulés du niveau suivant — pas celui du cheval racine.
+6. Vérifier que chaque génération affiche son compteur (« Génération 1 sur 4 »... « Génération 4
+   sur 4 — dernière génération »), et qu'aucun bouton de divulgation supplémentaire n'apparaît à
+   la génération 4.
+7. Modifier une branche existante (ajouter une génération supplémentaire, corriger un nom ou une
+   race) : enregistrer, recharger, vérifier la persistance exacte.
+8. Changer le mode d'une relation entre GWS et externe dans les deux sens : vérifier qu'aucune
+   donnée n'est perdue (l'ancienne branche reste récupérable) et qu'aucun mélange n'apparaît.
+9. Vérifier le fonctionnement du resolver : sur un environnement `local`/`development`, la boîte
+   « Pedigree résolu » reflète fidèlement la structure saisie, y compris sur plusieurs générations
+   et un pedigree mêlant GWS et externe.
+10. Vérifier la meta box « Production » sur un cheval GWS référencé comme parent par au moins un
+    autre cheval.
+11. Vérifier la sécurité/absence de régression : nonce, permissions, autosave, révision (déjà
+    couverts par les tests automatisés, à confirmer en conditions réelles), et l'absence d'erreur
+    dans la console navigateur.
 12. Désactiver puis réactiver le module (`config/modules.php`) : vérifier qu'aucune relation de
     pedigree, aucun cheval, aucune donnée n'a été modifiée ou recréée.
 

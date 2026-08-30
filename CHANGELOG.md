@@ -1,5 +1,22 @@
 # Changelog — GWS Starter
 
+## 1.9.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 5 : corrections post-recette runtime.** La saisie réelle d'un pedigree
+  complet a révélé des problèmes UX importants, corrigés dans cette version : Race/Stud-book d'un
+  ascendant externe harmonisé avec le référentiel de la fiche Cheval (fini le texte libre
+  hétérogène « SF »/« Selle Français »...), compatibilité ascendante garantie pour les pedigrees
+  déjà saisis (aucune perte, aucune migration destructive), intitulés contextuels à chaque niveau
+  (« Père de UNTOUCHABLE 27 », jamais un Père/Mère nu ni une nomenclature généalogique complexe),
+  compteur « Génération N sur 4 » avec arrêt visuel strict à la dernière génération, et une
+  nouvelle convention de présentation des noms de chevaux (majuscules, sans accents — jamais une
+  transformation de la donnée source). Deux pistes futures actées en roadmap sans aucun
+  développement : connecteur IFCE/SIRE optionnel et bibliothèque facultative d'étalons/ascendants.
+  Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.6.0) pour le détail
+  complet.
+- 58 nouvelles assertions automatisées, suite existante toujours 100 % passante (563 assertions
+  au total).
+
 ## 1.8.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 5 : Pedigree** (relations Père/Mère récursives, resolver, production),

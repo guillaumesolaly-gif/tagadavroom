@@ -333,6 +333,27 @@ function gwseq_cheval_race_label($race, $race_autre) {
 }
 
 /**
+ * Convention de présentation GWS Equestrian pour un nom de cheval (Étape 5, recette du pedigree) :
+ * majuscules, sans accents — jamais une transformation de la donnée source elle-même
+ * (`post_title`/nom d'ascendant externe restent enregistrés exactement tels que saisis). Cette
+ * fonction ne fait que calculer une représentation d'affichage, réutilisable partout où GWS
+ * Equestrian veut une présentation normalisée d'un nom (pedigree aujourd'hui ; front, PDF,
+ * impression, catalogue, Social Kit plus tard) — à ne PAS confondre avec Race/Stud-book, qui reste
+ * une valeur structurée/canonique via référentiel, jamais une simple transformation de casse
+ * (voir gwseq_cheval_race_label()).
+ *
+ * Caractères conservés : apostrophes, traits d'union, chiffres, espaces — seuls la casse et les
+ * accents sont affectés. S'appuie sur remove_accents() (natif WordPress, gère l'UTF-8) plutôt que
+ * de réinventer une table de translittération.
+ */
+function gwseq_format_horse_name_display($name) {
+  $name = (string) $name;
+  if ($name === '') return '';
+  if (function_exists('remove_accents')) $name = remove_accents($name);
+  return strtoupper($name);
+}
+
+/**
  * Résumé texte (jamais de HTML) du prix commercial, réutilisable admin/futur front/API — même
  * philosophie que gwseq_prestation_price_summary(). §14 de la demande : volontairement AUCUN
  * suffixe HT/TTC ici (voir la limitation documentée dans le CR) — seuls le montant et la devise

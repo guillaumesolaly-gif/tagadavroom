@@ -31,6 +31,28 @@ function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
 function wp_nonce_field($action, $field) { echo '<input type="hidden" name="' . esc_attr($field) . '" value="stub-nonce">'; }
 
+// --- remove_accents() : natif WordPress, stub couvrant les caractères utilisés par les tests
+// (suffisant pour valider le comportement, pas une table de translittération complète) ---
+function remove_accents($text) {
+  $map = array(
+    'à' => 'a', 'â' => 'a', 'ä' => 'a', 'á' => 'a', 'ã' => 'a', 'å' => 'a',
+    'À' => 'A', 'Â' => 'A', 'Ä' => 'A', 'Á' => 'A', 'Ã' => 'A', 'Å' => 'A',
+    'ç' => 'c', 'Ç' => 'C',
+    'è' => 'e', 'é' => 'e', 'ê' => 'e', 'ë' => 'e',
+    'È' => 'E', 'É' => 'E', 'Ê' => 'E', 'Ë' => 'E',
+    'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i',
+    'Ì' => 'I', 'Í' => 'I', 'Î' => 'I', 'Ï' => 'I',
+    'ñ' => 'n', 'Ñ' => 'N',
+    'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'ö' => 'o', 'õ' => 'o',
+    'Ò' => 'O', 'Ó' => 'O', 'Ô' => 'O', 'Ö' => 'O', 'Õ' => 'O',
+    'ù' => 'u', 'ú' => 'u', 'û' => 'u', 'ü' => 'u',
+    'Ù' => 'U', 'Ú' => 'U', 'Û' => 'U', 'Ü' => 'U',
+    'ý' => 'y', 'ÿ' => 'y', 'Ý' => 'Y',
+    'œ' => 'oe', 'Œ' => 'OE', 'æ' => 'ae', 'Æ' => 'AE',
+  );
+  return strtr($text, $map);
+}
+
 // i18n : chaîne telle quelle, mais on capture le text domain utilisé pour vérifier sa cohérence.
 $GLOBALS['__gwseq_test_domains_used'] = array();
 function __($text, $domain = 'default') { $GLOBALS['__gwseq_test_domains_used'][] = $domain; return $text; }
@@ -200,6 +222,27 @@ gws_test_assert($i['sire'] === '05123456A', 'SIRE : identifiant conservé tel qu
 // --- Données mal formées : jamais d’erreur, repli sûr ---
 $i = gwseq_sanitize_cheval_identity_input('pas un tableau');
 gws_test_assert($i['sexe'] === '' && $i['annee_naissance'] === '' && $i['eleveur'] === '', 'Identité : donnée mal formée (pas un tableau) -> repli sûr sur les valeurs par défaut');
+
+// =====================================================================================
+// Convention de présentation GWS Equestrian des noms de chevaux (correction post-recette de
+// l'Étape 5, §12-15/§29) : majuscules, sans accents — jamais une transformation de la source
+// =====================================================================================
+gws_test_assert(gwseq_format_horse_name_display('Jamerose') === 'JAMEROSE', 'Présentation du nom : "Jamerose" -> "JAMEROSE"');
+gws_test_assert(gwseq_format_horse_name_display('jamerose') === 'JAMEROSE', 'Présentation du nom : "jamerose" -> "JAMEROSE" (indifférent à la casse d’origine)');
+gws_test_assert(gwseq_format_horse_name_display('JAMEROSE') === 'JAMEROSE', 'Présentation du nom : "JAMEROSE" reste "JAMEROSE"');
+gws_test_assert(gwseq_format_horse_name_display('Étoile du Lys') === 'ETOILE DU LYS', 'Présentation du nom : accents supprimés et majuscules appliquées ("Étoile du Lys" -> "ETOILE DU LYS")');
+gws_test_assert(gwseq_format_horse_name_display('étoile-du-lys') === 'ETOILE-DU-LYS', 'Présentation du nom : le trait d’union est conservé');
+gws_test_assert(gwseq_format_horse_name_display("L'Arc de Triomphe") === "L'ARC DE TRIOMPHE", 'Présentation du nom : l’apostrophe est conservée');
+gws_test_assert(gwseq_format_horse_name_display('Untouchable 27') === 'UNTOUCHABLE 27', 'Présentation du nom : les chiffres et espaces sont conservés');
+gws_test_assert(gwseq_format_horse_name_display('') === '', 'Présentation du nom : chaîne vide -> chaîne vide, jamais d’erreur');
+
+// --- Jamais une transformation destructive de la source : la fonction ne fait que calculer une
+// représentation, post_title (et le nom d'un ascendant externe côté Pedigree) restent
+// enregistrés exactement tels que saisis — vérifié directement dans le code source : cette
+// fonction ne doit jamais être appelée par une fonction de sanitation ---
+$cheval_fields_source_full = file_get_contents($module_dir . 'includes/cheval-fields.php');
+$identity_sanitize_block = substr($cheval_fields_source_full, strpos($cheval_fields_source_full, 'function gwseq_sanitize_cheval_identity_input'), 2000);
+gws_test_assert(strpos($identity_sanitize_block, 'gwseq_format_horse_name_display') === false, 'Présentation du nom : jamais utilisée dans la sanitation de l’identité (post_title reste la source, jamais transformée à l’enregistrement)');
 
 // =====================================================================================
 // Source de vérité unique (§2-3) : ni Nom ni Photo principale ne créent de meta parallèle

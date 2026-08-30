@@ -78,5 +78,19 @@
       });
       applyParentSource();
     });
+
+    // Race/Stud-book d'un ascendant externe (correction post-recette) : jusqu'à 15 nœuds par
+    // branche (4 générations), chacun avec son propre sélecteur — une écoute déléguée unique sur
+    // le conteneur du pedigree évite d'attacher un gestionnaire par nœud. Le champ "Préciser la
+    // race" est toujours l'élément suivant immédiat dans le balisage (voir
+    // includes/cheval-pedigree.php), jamais recherché par identifiant.
+    document.addEventListener('change', function (e) {
+      if (!e.target.classList || !e.target.classList.contains('gwseq-external-race-select')) return;
+      var fieldWrap = e.target.closest('p');
+      var autreWrap = fieldWrap ? fieldWrap.nextElementSibling : null;
+      if (autreWrap && autreWrap.classList.contains('gwseq-external-race-autre-wrap')) {
+        autreWrap.style.display = e.target.value === 'autre' ? '' : 'none';
+      }
+    });
   });
 })();
