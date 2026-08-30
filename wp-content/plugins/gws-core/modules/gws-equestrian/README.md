@@ -7,14 +7,88 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 2 — Composant répétable (Étape 1 validée)
+## État actuel : Étape 3 — Prestations / Groupes tarifaires (Étapes 1 et 2 validées)
 
-L'Étape 1 (fondations) a été recettée en conditions réelles et validée. L'Étape 2 ajoute une
-brique technique interne — le composant répétable — sans toucher aux fondations ni construire
-encore de fonctionnalité métier. Voir `CHANGELOG.md` de ce dossier pour l'historique détaillé par
-étape, et la proposition de conception validée (modèle fonctionnel, interface, architecture,
-complexité, périmètre V1, arbitrages, plan de développement, stratégie de tests) pour le contexte
-d'ensemble.
+Les Étapes 1 (fondations) et 2 (composant répétable) ont été recettées en conditions réelles et
+validées. L'Étape 3 construit la gestion métier réelle des Prestations et des Groupes tarifaires,
+en attente de sa propre recette runtime. Voir `CHANGELOG.md` de ce dossier pour l'historique
+détaillé par étape, et la proposition de conception validée pour le contexte d'ensemble.
+
+### Prestations et Groupes tarifaires (Étape 3)
+
+**Groupe tarifaire** : Nom (titre natif), Ordre (menu_order natif, meta box « Ordre
+d'affichage »), Description courte (extrait natif, meta box « Description courte ») — aucune
+meta custom, WordPress gère nativement la sauvegarde des trois champs.
+
+**Prestation** : Nom (titre) et Description (éditeur natif) inchangés depuis l'Étape 1. Ajoutés
+à cette étape :
+- **Groupe tarifaire** : sélecteur dans la colonne latérale, référence par ID de post (jamais par
+  nom — renommer un groupe ne casse jamais les prestations qui lui sont rattachées).
+- **Tarification** (meta box dédiée) : mode Prix unique / Cheval-Poney (deux prix distincts) /
+  Sur devis, unité parmi une liste fermée (+ « Autre » avec libellé personnalisé), case « Afficher
+  ce tarif publiquement » pour un prix interne non diffusé sans multiplier les états incohérents.
+  Aucun prix formaté n'est stocké : chaque composant (montant, unité, visibilité) est une donnée
+  séparée, assemblée uniquement au moment du rendu (admin, puis web/API/PDF plus tard).
+- **Ordre d'affichage** : identique au Groupe (menu_order natif).
+- **Statut** : Brouillon/Publié natifs WordPress — aucun second système Actif/Inactif.
+- **Modèles de prestations** : bouton « Partir d'un modèle » sur l'écran d'ajout, organisé par
+  famille (Pension/Travail/Cours/Élevage/Reproduction/Autres). Un modèle ne fait que préremplir le
+  formulaire ; la prestation créée est immédiatement indépendante, modifiable et supprimable
+  librement, jamais réécrite par une évolution future de la liste de modèles.
+- **Réglage global HT/TTC** (Prestations > Réglages) : indique uniquement la nature des montants
+  déjà saisis, aucun calcul de TVA.
+
+### Arbitrages techniques de l'Étape 3
+
+- **Catégorie métier et groupe tarifaire restent fusionnés** (décision de l'Étape 1 confirmée) :
+  une Prestation n'appartient qu'à un seul `gwseq_groupe`.
+- **Pas de glisser-déposer** pour l'ordre des groupes/prestations en V1 : champ numérique natif
+  (`menu_order`) uniquement, listes d'administration triées par cet ordre par défaut. Priorité à
+  la robustesse plutôt qu'au confort visuel, conformément à la demande — pourra être ajouté plus
+  tard sans changement de modèle de données (l'ordre est déjà la seule donnée qui compte).
+  Aucune donnée créée automatiquement.
+- **Aucun QA dédié pour cette étape** : contrairement au composant répétable de l'Étape 2 (brique
+  technique neutre nécessitant un jeu de démonstration), Prestations et Groupes tarifaires sont
+  déjà les écrans métier réels — la recette utilise directement les menus **Prestations** et
+  **Groupes tarifaires**, sans CPT ni contenu de test superflu.
+- **Aucun risque de regroupement de lignes** (anomalie corrigée à l'Étape 2) : tous les nouveaux
+  champs sont des champs simples à nom HTML fixe, jamais indexés — ce risque ne concerne que les
+  structures répétables.
+
+### Procédure de recette — Étape 3
+
+À réaliser dans WordPress Local, sans écrire de code :
+
+1. Menu **Groupes tarifaires** > Ajouter : créer « Pensions » avec une description courte et
+   valider qu'il apparaît dans la liste avec son ordre. Créer un second groupe « Travail »,
+   modifier son ordre pour qu'il apparaisse avant ou après « Pensions » dans la liste.
+2. Menu **Prestations** > Ajouter une prestation : vérifier que le bloc « Partir d'un modèle »
+   apparaît, choisir un modèle de la famille Pension (ex. « Pension pré avec infrastructures ») et
+   cliquer sur « Préremplir depuis ce modèle » — le titre doit se remplir automatiquement.
+3. Choisir le groupe « Pensions », mode « Prix unique », prix `45.50`, unité « Séance ». Publier.
+   Vérifier dans la liste des Prestations que les colonnes Groupe tarifaire/Tarif/Ordre
+   affichent les bonnes valeurs (« 45,50 € TTC / Séance » avec le réglage par défaut).
+4. Modifier cette prestation : changer le mode en « Cheval / Poney », renseigner deux prix
+   distincts, enregistrer, recharger — vérifier que les deux prix sont bien restitués séparément
+   et que le tarif affiché dans la liste combine les deux.
+5. Décocher « Afficher ce tarif publiquement », enregistrer : la colonne Tarif doit afficher
+   « Tarif non affiché publiquement ».
+6. Créer une seconde prestation en mode « Sur devis » : vérifier qu'aucun champ de prix n'est
+   requis et que la colonne Tarif affiche « Sur devis ».
+7. Choisir l'unité « Autre » sur une prestation, vérifier que le champ « Préciser l'unité »
+   apparaît, le remplir (ex. « par cycle »), enregistrer, recharger.
+8. Renommer le groupe « Pensions » en « Nos pensions » : vérifier que la prestation qui lui est
+   rattachée continue d'afficher le bon groupe (donc que la relation n'a pas été cassée).
+9. Aller dans **Prestations > Réglages**, basculer sur HT, enregistrer, revenir à la liste des
+   Prestations : vérifier que les tarifs affichent désormais « HT » au lieu de « TTC ».
+10. Passer une prestation en Brouillon : vérifier qu'aucun deuxième champ « Actif/Inactif » n'est
+    présent, que le statut natif WordPress suffit.
+11. Vérifier la console navigateur sur les écrans Prestation : aucune erreur JavaScript ; les
+    champs de tarification s'affichent/masquent correctement selon le mode et l'unité choisis.
+12. Vérifier qu'aucun asset du module (`prestation-admin.js`, `presets-admin.js`) n'est chargé
+    sur un écran sans rapport (Tableau de bord, Articles, un Groupe tarifaire, un Cheval).
+13. Vérifier qu'aucune prestation ni aucun groupe n'a été créé automatiquement par la simple
+    activation ou mise à jour du module (liste vide sur un site qui n'en a pas créé lui-même).
 
 ### Composant répétable (Étape 2)
 

@@ -14,6 +14,7 @@ php tests/settings-helpers-logic-test.php
 php tests/schema-homepage-logic-test.php
 php tests/gws-equestrian-foundations-test.php
 php tests/gws-equestrian-repeater-logic-test.php
+php tests/gws-equestrian-prestations-logic-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -57,6 +58,17 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   `name`/`value`, passage par `parse_str()` — le mécanisme PHP réel de construction de `$_POST`
   — puis sanitation), incluant la caractérisation de l'ancien bug de regroupement des lignes et
   la vérification des attributs `step` par type (`number` accepte les décimales, `integer` non).
+- Prestations / Groupes tarifaires de `gws-equestrian`, Étape 3
+  (`gws-equestrian-prestations-logic-test.php`) : sanitation de la tarification (prix unique
+  entier/décimal, valeur `0` jamais confondue avec une absence de prix, mode Cheval/Poney à deux
+  prix distincts, mode Sur devis sans prix inventé, mode invalide rejeté, unité standard et unité
+  « Autre » avec libellé personnalisé, caractères spéciaux, visibilité publique du prix),
+  relation Prestation → Groupe par ID (jamais par nom, y compris après renommage du groupe),
+  résumé de prix (fonction pure texte, réutilisable admin/front/API), presets (identifiants
+  uniques, résolution depuis le paramètre d'URL, absence de toute création automatique de
+  contenu vérifiée directement dans le code source), et sécurité de la sauvegarde (nonce
+  invalide, permissions insuffisantes, autosave, révision — chacun testé isolément avec le
+  chemin réel `$_POST` → sanitation → meta).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

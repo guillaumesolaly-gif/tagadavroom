@@ -24,10 +24,15 @@ const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
 // Version propre au module (distincte de la version du plugin gws-core qui l'héberge) : suit
 // l'avancement des étapes du plan de développement, voir CHANGELOG.md de ce dossier. Atteindra
 // 1.0.0 au gel de la V1 (fin de l'étape 9).
-define('GWSEQ_MODULE_VERSION', '0.2.1');
+define('GWSEQ_MODULE_VERSION', '0.3.0');
 define('GWSEQ_MODULE_URL', GWS_CORE_URL . 'modules/gws-equestrian/');
 
 require_once __DIR__ . '/includes/post-types.php';
 require_once __DIR__ . '/includes/taxonomies.php';
 require_once __DIR__ . '/includes/repeater-field.php';
 require_once __DIR__ . '/includes/qa-repeater.php';
+require_once __DIR__ . '/includes/settings.php';
+require_once __DIR__ . '/includes/admin-ui.php';
+require_once __DIR__ . '/includes/groupe-admin.php';
+require_once __DIR__ . '/includes/prestation-fields.php';
+require_once __DIR__ . '/includes/presets.php';

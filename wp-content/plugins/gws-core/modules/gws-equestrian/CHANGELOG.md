@@ -5,6 +5,46 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.3.0 — Étape 3 : Prestations / Groupes tarifaires
+
+- **Groupe tarifaire réellement utilisable** : Nom (`post_title`), Ordre (`menu_order` natif via
+  le support `page-attributes`, meta box renommée « Ordre d'affichage »), Description courte
+  (`post_excerpt` natif via le support `excerpt`, meta box renommée « Description courte ») —
+  trois champs natifs WordPress réutilisés tels quels, aucune meta custom ni sauvegarde à écrire
+  pour ces trois champs. Liste d'administration enrichie de deux colonnes : nombre de prestations
+  rattachées, ordre.
+- **Relation Prestation → Groupe tarifaire** par référence stable (ID de post, jamais par nom) :
+  un groupe peut être renommé sans jamais casser les prestations qui lui sont rattachées.
+- **Tarification** : mode Prix unique / Cheval-Poney (deux prix distincts pour une même
+  prestation) / Sur devis (aucun prix chiffré requis, `0` n'est jamais utilisé pour signifier
+  « sur devis ») ; unité parmi une liste fermée (séance, heure, jour, semaine, mois, forfait,
+  chaleur, saison, dose, paillette, autre + libellé personnalisé) ; case « Afficher ce tarif
+  publiquement » (affichée/masquée par prestation, indépendante du mode) permettant un prix
+  interne non publié sans multiplier les états incohérents. Affichage conditionnel des champs
+  selon le mode/l'unité choisis (JavaScript natif local, pas de moteur de champs conditionnels).
+- **Réglage global HT/TTC** propre au module (`gwseq_settings`, indépendant des réglages
+  génériques de gws-core), écran dédié sous Prestations > Réglages. Aucun calcul de TVA : indique
+  uniquement la nature des montants déjà saisis.
+- **Statut de la prestation** : statuts natifs WordPress (Brouillon/Publié) uniquement — aucun
+  second système « Actif/Inactif » créé en parallèle.
+- **Modèles de prestations** (aide à la création, jamais une donnée persistante) : familles
+  Pension / Travail / Cours / Élevage / Reproduction / Autres, sélecteur sur l'écran « Ajouter une
+  prestation », préremplissage du titre (et de l'unité suggérée le cas échéant) au rendu
+  uniquement — aucune création automatique de contenu, aucune relation conservée après
+  l'enregistrement : une prestation créée depuis un modèle est immédiatement une prestation
+  ordinaire, modifiable et supprimable librement, jamais réécrite par une future mise à jour des
+  modèles.
+- Ordre par défaut des listes d'administration Prestations/Groupes basé sur `menu_order`. Choix
+  assumé : pas de glisser-déposer en V1 (champ numérique natif uniquement) — priorité à la
+  robustesse, conformément à la demande.
+- Fichiers ajoutés : `includes/admin-ui.php`, `includes/groupe-admin.php`,
+  `includes/prestation-fields.php`, `includes/presets.php`, `includes/settings.php`,
+  `assets/prestation-admin.js`, `assets/presets-admin.js`. `includes/post-types.php` complété
+  (supports `page-attributes`/`excerpt`), sans modification des post types/taxonomie eux-mêmes.
+- Tests ajoutés (`tests/gws-equestrian-prestations-logic-test.php`, 43 assertions) : sanitation de
+  la tarification depuis une forme `$_POST` réelle, relation par ID résistant au renommage,
+  résumé de prix, presets, sécurité de sauvegarde (nonce/capability/autosave/révision).
+
 ## 0.2.1 — Étape 2 : corrections suite à recette runtime
 
 Deux anomalies bloquantes révélées par la première recette réelle sous WordPress Local (Étape 2

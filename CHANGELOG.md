@@ -1,5 +1,16 @@
 # Changelog — GWS Starter
 
+## 1.6.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 3 : Prestations / Groupes tarifaires.** Gestion métier complète des
+  prestations (tarification à trois modes, unités, visibilité du prix, modèles de prestations
+  en aide à la création) et des groupes tarifaires (nom/ordre/description, tous natifs
+  WordPress). Réglage global d'affichage HT/TTC propre au module. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.3.0) pour le détail
+  complet. Étape 3 toujours en attente de recette runtime — non promue Étape 4.
+- 43 nouvelles assertions automatisées (`gws-equestrian-prestations-logic-test.php`), suite
+  existante toujours 100 % passante.
+
 ## 1.5.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correction de deux anomalies bloquantes du composant répétable `gws-equestrian`**, révélées

@@ -29,12 +29,18 @@ function register_taxonomy($taxonomy, $object_type, $args = array()) {
 }
 
 // Simule le hook 'init' en exécutant immédiatement le callback : suffisant pour les fonctions
-// d'enregistrement testées ici. Les autres hooks (ex. admin_enqueue_scripts, ajoutés depuis
-// l'Étape 2 pour la démonstration QA du composant répétable) ne sont pas déclenchés par ce stub
-// : hors du périmètre de ce test, qui ne porte que sur les fondations (post types/taxonomie).
+// d'enregistrement testées ici. Les autres hooks (ex. admin_enqueue_scripts, admin_menu,
+// ajoutés depuis les Étapes 2 et 3) ne sont pas déclenchés par ce stub : hors du périmètre de ce
+// test, qui ne porte que sur les fondations (post types/taxonomie).
 function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {
   if ($hook === 'init' && is_callable($callback)) call_user_func($callback);
 }
+// add_filter n'a besoin que d'exister (plusieurs fichiers de l'Étape 3 l'appellent au chargement
+// pour enregistrer des colonnes de liste d'administration) : jamais déclenché par ce test.
+function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
+// register_post_meta n'a besoin que d'exister : les fichiers de l'Étape 3 l'appellent sur 'init'
+// (donc réellement exécuté par ce stub) mais ce test ne porte pas sur les meta enregistrées.
+function register_post_meta($object_type, $meta_key, $args = array()) {}
 
 // Depuis l'Étape 2, module.php charge aussi le composant répétable et sa démonstration QA
 // (includes/repeater-field.php, includes/qa-repeater.php). Ce test ne porte que sur les
@@ -97,6 +103,11 @@ $module_files = array(
   $module_dir . 'includes/taxonomies.php',
   $module_dir . 'includes/repeater-field.php',
   $module_dir . 'includes/qa-repeater.php',
+  $module_dir . 'includes/settings.php',
+  $module_dir . 'includes/admin-ui.php',
+  $module_dir . 'includes/groupe-admin.php',
+  $module_dir . 'includes/prestation-fields.php',
+  $module_dir . 'includes/presets.php',
 );
 $prefix_violation_found = false;
 $non_gwseq_functions = array();
@@ -143,6 +154,21 @@ foreach (array(GWSEQ_CPT_PRESTATION => 'Prestation', GWSEQ_CPT_CHEVAL => 'Cheval
   gws_test_assert(($args['public'] ?? null) === true, "$label : public => true");
   gws_test_assert(($args['has_archive'] ?? null) === true, "$label : has_archive => true");
 }
+
+// --- Étape 3 : Ordre d'affichage natif (page-attributes) sur Prestation et Groupe, Description
+// courte native (excerpt) sur Groupe uniquement ---
+foreach (array(GWSEQ_CPT_PRESTATION => 'Prestation', GWSEQ_CPT_GROUPE => 'Groupe tarifaire') as $slug => $label) {
+  $supports = $post_types[$slug]['supports'] ?? array();
+  gws_test_assert(in_array('page-attributes', $supports, true), "$label : support 'page-attributes' présent (ordre natif menu_order)");
+}
+gws_test_assert(
+  in_array('excerpt', $post_types[GWSEQ_CPT_GROUPE]['supports'] ?? array(), true),
+  'Groupe tarifaire : support \'excerpt\' présent (description courte native)'
+);
+gws_test_assert(
+  !in_array('excerpt', $post_types[GWSEQ_CPT_PRESTATION]['supports'] ?? array(), true),
+  'Prestation : pas de support \'excerpt\' (la description passe par post_content, pas par un résumé)'
+);
 
 // --- Taxonomie catégorie de cheval : attachée au bon post type, multi-valeurs (non hiérarchique) ---
 $categorie = $taxonomies[GWSEQ_TAX_CATEGORIE_CHEVAL] ?? null;

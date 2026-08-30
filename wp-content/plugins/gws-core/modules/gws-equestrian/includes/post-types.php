@@ -9,6 +9,12 @@
  * Rappel de conception (voir la proposition validée) : le Groupe tarifaire est un objet
  * d'organisation interne, jamais une page publique — pas d'archive, pas de rewrite, pas de
  * résultat de recherche, pour ne pas polluer le front avec une URL sans contenu éditorial réel.
+ *
+ * Étape 3 : ajout du support natif 'page-attributes' (Prestation et Groupe) pour l'ordre
+ * d'affichage (champ menu_order déjà fourni par WordPress, aucune meta custom nécessaire) et
+ * 'excerpt' (Groupe uniquement) pour sa description courte — deux champs natifs réutilisés tels
+ * quels plutôt que des meta dédiées. Voir includes/admin-ui.php et includes/groupe-admin.php pour
+ * le renommage de leurs libellés en vocabulaire métier.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -27,7 +33,7 @@ function gwseq_register_post_types() {
     'has_archive' => true,
     'show_in_rest' => true,
     'menu_icon' => 'dashicons-cart',
-    'supports' => array('title', 'editor', 'thumbnail'),
+    'supports' => array('title', 'editor', 'thumbnail', 'page-attributes'),
     'rewrite' => array('slug' => 'prestations'),
   ));
 
@@ -49,7 +55,7 @@ function gwseq_register_post_types() {
     'show_in_menu' => true,
     'show_in_rest' => false,
     'menu_icon' => 'dashicons-category',
-    'supports' => array('title'),
+    'supports' => array('title', 'excerpt', 'page-attributes'),
     'rewrite' => false,
   ));
 
