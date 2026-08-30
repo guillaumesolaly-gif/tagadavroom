@@ -5,6 +5,67 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.11.0 — Étape 6 : indices, médias et contenu de présentation du cheval
+
+Enrichit la fiche Cheval (une seule entité, sans typologie rigide, tous les champs facultatifs)
+avec les données nécessaires à sa présentation et sa future commercialisation multicanale, sans
+toucher au socle de l'Étape 4 ni aux relations de pedigree de l'Étape 5.
+
+- **Indices sportifs** (ISO, ICC, IDR — `includes/cheval-indices.php`) : valeur et année stockées
+  séparément (jamais une chaîne unique du type "142 (2025)"), une seule valeur par indice et par
+  cheval (aucun historique annuel — chaque enregistrement remplace le précédent), les trois
+  indépendants et facultatifs. Année bornée à 1900..année en cours (jamais une année future,
+  contrairement à l'année de naissance qui autorise +1 pour un poulain attendu).
+- **Indices génétiques** (BSO, BCC, BDR) : valeur (signée, décimale) et coefficient de
+  détermination (CD) stockés séparément, jamais d'année. Le signe positif n'est jamais perdu au
+  stockage (nombre PHP positif natif) ; `gwseq_cheval_genetic_indice_label()` ajoute le "+"
+  explicite uniquement à l'affichage (ex. "+12 (0.9)"), jamais dans la donnée elle-même.
+- **Galerie photos** (`includes/cheval-media.php`) : jusqu'à 9 photos complémentaires à la photo
+  principale (qui reste exclusivement l'image à la une native, aucun second champ). Tableau
+  ORDONNÉ d'attachment IDs (jamais des URLs), sans doublon, sélection via la médiathèque native
+  (`wp.media()`, `assets/cheval-media-admin.js`) — aucun uploader parallèle, aucune suppression du
+  média WordPress lors d'un retrait de la galerie. Taille dérivée `gwseq_large` (1600px)
+  enregistrée pour un futur grand affichage, sans jamais toucher à l'original.
+- **Vidéos** : liste {URL, titre facultatif} ordonnée, jusqu'à 10, réutilisant le composant
+  répétable générique de l'Étape 2 (`includes/repeater-field.php`, dont l'en-tête anticipait déjà
+  ce cas d'usage) pour le rendu/JS, avec une sanitation dédiée (une ligne sans URL http/https
+  valide n'est jamais stockée, même avec un titre). Aucun upload de fichier vidéo.
+- **`repeater-field.php`/`.js`** : ajout d'un paramètre optionnel `$max_rows` à
+  `gwseq_render_repeater_field()` — désactive le bouton d'ajout une fois la limite atteinte (aide
+  UX uniquement, la garantie réelle reste la sanitation serveur propre à chaque appelant).
+  Comportement par défaut (sans limite) strictement inchangé.
+- **Présentation éditoriale** (`includes/cheval-editorial.php`) : Présentation, Points forts,
+  Potentiel, Résultats/Performances, Origines — commentaire, Production — commentaire, Conditions
+  de vente/élevage/reproduction, Conseils de croisement (disponible pour tous les chevaux, jamais
+  conditionné au sexe/à une catégorie) — tous facultatifs, texte libre sanitisé
+  (`sanitize_textarea_field`). Noms de meta explicites pour lever deux ambiguïtés : le commentaire
+  "Production" (`_gwseq_commentaire_production`) reste totalement distinct de la Production
+  CALCULÉE (relationnelle, Étape 5) ; le commentaire "Origines" (`_gwseq_origines_commentaire`)
+  reste totalement distinct du pedigree STRUCTURÉ — ni l'un ni l'autre ne sont jamais reconstruits
+  à partir du texte éditorial correspondant, dans un sens ou dans l'autre.
+- **Ostéo-articulaire** : champ texte libre unique, volontairement PAS un dossier vétérinaire
+  (aucun historique de soins, traitement, ordonnance, radio ni donnée médicale structurée).
+- **Organisation admin** (§9) : blocs cohérents (Indices ; Médias ; Présentation ; Informations
+  complémentaires) plutôt qu'une succession indifférenciée de champs — jamais de
+  masquage/désactivation conditionnelle selon le sexe, la catégorie ou le statut commercial : tous
+  les champs restent disponibles pour tous les chevaux.
+- **Architecture programmatique** (§11, même principe que le pedigree — Étape 5) : chaque nouvelle
+  donnée dispose d'une fonction `gwseq_set_cheval_*()` pure, jamais couplée à `$_POST` ni à un
+  nonce — réutilisable telle quelle par un futur import CSV/XLSX, une duplication de fiche, une API
+  ou une synchronisation GWS Network.
+- **Aucune migration destructive** : tous les nouveaux champs sont absents (donc vides) sur une
+  fiche créée avant cette version, sans erreur ni valeur par défaut inventée ; aucune suppression
+  de donnée n'est jamais déclenchée par une (dés)activation du module (vérifié explicitement par
+  les tests, aucun appel à `delete_post_meta()` dans les trois nouveaux fichiers).
+- **Hors périmètre, comme prévu** : aucun rendu public, PDF, QR code, catalogue ou Social Kit ;
+  aucun historique annuel des indices ; aucune base structurée exhaustive de résultats sportifs ;
+  aucun dossier vétérinaire ; aucune logique conditionnelle selon le type de cheval.
+- 3 nouveaux fichiers de tests (indices, médias, éditorial) + extension du test du composant
+  répétable : 250 nouvelles assertions (65 indices + 61 médias + 117 éditorial + 7 pour
+  `$max_rows`) ; suite complète rejouée : 13 fichiers, 950 assertions, 100 % vertes, zéro
+  avertissement PHP.
+- Versions : GWS Core 1.13.0 → 1.14.0, GWS Equestrian 0.10.0 → 0.11.0.
+
 ## 0.10.0 — Étape 5 : correctif intégrité du pedigree — filtrage métier des parents GWS (sexe, année)
 
 Correctif suite à deux règles métier supplémentaires identifiées en recette runtime, applicables

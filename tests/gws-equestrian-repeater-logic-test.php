@@ -26,6 +26,12 @@ function esc_textarea($value) { return htmlspecialchars((string) $value, ENT_QUO
 // i18n (Étape 3, relecture) : "Actions"/"+ Ajouter une ligne"/"Supprimer" passent désormais par
 // esc_html__() — ce test porte sur la structure du markup, pas sur la traduction.
 function esc_html__($text, $domain = 'default') { return esc_html($text); }
+// Étape 6 (GWS Equestrian) : gwseq_render_repeater_field() (limite optionnelle de lignes) utilise
+// désormais __()/sprintf() et wp_nonce_field() — stubs minimaux pour exercer ce chemin de rendu,
+// jusqu'ici jamais appelé par ce fichier de test (seules les fonctions pures l'étaient).
+function __($text, $domain = 'default') { return $text; }
+function wp_nonce_field($action, $field) { echo '<input type="hidden" name="' . esc_attr($field) . '" value="stub-nonce">'; }
+function get_post_meta($post_id, $key, $single = false) { return $GLOBALS['__gwseq_test_repeater_meta'][$post_id][$key] ?? ''; }
 
 define('ABSPATH', __DIR__ . '/');
 $repo_root = dirname(__DIR__);
@@ -251,6 +257,38 @@ gws_test_assert(strpos($row0_markup, 'step="1"') !== false, 'Type integer : attr
 
 $text_only_markup = gwseq_repeater_row_markup('_x', array('libelle' => array('label' => 'Libellé', 'type' => 'text')), array('libelle' => 'x'), 0);
 gws_test_assert(strpos($text_only_markup, 'step=') === false, 'Type text : aucun attribut step (non pertinent pour ce type)');
+
+// =====================================================================================
+// GWS Equestrian — Étape 6 : limite optionnelle de lignes ($max_rows) sur
+// gwseq_render_repeater_field(), ajoutée pour un besoin réel (10 vidéos maximum par cheval) sans
+// changer le comportement par défaut (aucune limite affichée si l'argument est omis).
+// =====================================================================================
+
+$GLOBALS['__gwseq_test_repeater_meta'] = array(42 => array('_x_videos' => array(
+  array('libelle' => 'Une'),
+  array('libelle' => 'Deux'),
+)));
+$video_schema = array('libelle' => array('label' => 'Libellé', 'type' => 'text'));
+$post_stub = (object) array('ID' => 42);
+
+ob_start();
+gwseq_render_repeater_field($post_stub, '_x_videos', $video_schema, 'x_nonce_action', 10);
+$repeater_with_max_html = ob_get_clean();
+gws_test_assert(strpos($repeater_with_max_html, 'data-gwseq-repeater-max="10"') !== false, 'Limite de lignes : l’attribut data-gwseq-repeater-max porte bien la valeur fournie');
+gws_test_assert(strpos($repeater_with_max_html, '(maximum 10)') !== false, 'Limite de lignes : une indication textuelle du maximum est affichée à côté du bouton d’ajout');
+
+ob_start();
+gwseq_render_repeater_field($post_stub, '_x_videos', $video_schema, 'x_nonce_action');
+$repeater_without_max_html = ob_get_clean();
+gws_test_assert(strpos($repeater_without_max_html, 'data-gwseq-repeater-max') === false, 'Limite de lignes : comportement par défaut inchangé (aucun attribut de limite) quand $max_rows est omis');
+gws_test_assert(strpos($repeater_without_max_html, 'maximum') === false, 'Limite de lignes : aucune indication de maximum affichée quand $max_rows est omis');
+
+// --- Le script ne fait que désactiver le bouton d'ajout, jamais supprimer/modifier une ligne
+// existante : vérification déclarative directe sur le fichier source ---
+$repeater_js_source = file_get_contents($repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/assets/repeater-field.js');
+gws_test_assert(strpos($repeater_js_source, 'data-gwseq-repeater-max') !== false, 'Limite de lignes (JS) : le script lit bien l’attribut data-gwseq-repeater-max');
+gws_test_assert(strpos($repeater_js_source, '.disabled = ') !== false, 'Limite de lignes (JS) : le bouton d’ajout est désactivé (jamais retiré du DOM) une fois la limite atteinte');
+gws_test_assert(strpos($repeater_js_source, 'removeChild') !== false, 'Limite de lignes (JS) : la suppression d’une ligne reste un simple retrait DOM, jamais un appel serveur');
 
 echo ($failures === 0 ? 'Tous les tests sont passés.' : "$failures test(s) en échec.") . "\n";
 exit($failures === 0 ? 0 : 1);

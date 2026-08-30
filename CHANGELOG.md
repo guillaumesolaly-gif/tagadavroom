@@ -1,5 +1,25 @@
 # Changelog — GWS Starter
 
+## 1.14.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 6 : indices, médias et contenu de présentation du cheval.** Enrichit la
+  fiche Cheval (une seule entité, tous les champs facultatifs) sans toucher au socle de l'Étape 4
+  ni au pedigree de l'Étape 5. Indices sportifs ISO/ICC/IDR (valeur + année, séparés, une seule
+  valeur par indice, aucun historique) et indices génétiques BSO/BCC/BDR (valeur signée décimale +
+  coefficient de détermination, jamais d'année, signe positif ajouté uniquement à l'affichage).
+  Galerie photos (jusqu'à 9 attachment IDs ordonnés en plus de la photo principale native,
+  sélection via la médiathèque WordPress, aucune suppression de média) et vidéos (URL + titre
+  facultatif, jusqu'à 10, réutilisant le composant répétable de l'Étape 2). Présentation
+  éditoriale (Présentation, Points forts, Potentiel, Résultats, Origines — commentaire, Production
+  — commentaire, Conditions de vente, Conseils de croisement) et Ostéo-articulaire (texte libre,
+  jamais un dossier vétérinaire) — avec des noms de meta explicites pour ne jamais confondre le
+  commentaire "Production"/"Origines" avec la Production calculée ou le pedigree structuré. Chaque
+  nouvelle donnée dispose d'une fonction métier pure réutilisable hors formulaire (futur import,
+  duplication, API). Aucune migration destructive, aucun rendu public développé à ce stade. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.11.0) pour le détail complet.
+- 250 nouvelles assertions automatisées (3 nouveaux fichiers de tests + extension du test du
+  composant répétable), suite complète toujours 100 % passante (950 assertions au total).
+
 ## 1.13.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 5 : correctif intégrité du pedigree — filtrage métier des parents GWS

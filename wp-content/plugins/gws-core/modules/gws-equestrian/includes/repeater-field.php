@@ -178,14 +178,22 @@ function gwseq_register_repeater_field($post_type, $meta_key, $schema, $box_titl
  * Rendu de la meta box : lignes déjà enregistrées + un gabarit HTML natif <template> (une ligne
  * vide) que le JS clone pour ajouter une ligne, sans dupliquer la logique de rendu des champs
  * entre PHP et JS.
+ *
+ * $max_rows (optionnel, ajouté pour GWS Equestrian Étape 6 — ex. 10 vidéos maximum par cheval) :
+ * UNIQUEMENT une aide UX côté JS (désactive le bouton "+ Ajouter une ligne" une fois la limite
+ * atteinte, voir assets/repeater-field.js) — n'est PAS la garantie réelle contre un nombre de
+ * lignes excessif, qui reste la responsabilité de la fonction de sanitation appelée à la
+ * sauvegarde (chaque appelant applique sa propre borne, ce fichier générique n'impose aucune
+ * limite par lui-même). `null` (défaut, comportement inchangé) = aucune limite affichée.
  */
-function gwseq_render_repeater_field($post, $meta_key, $schema, $nonce_action) {
+function gwseq_render_repeater_field($post, $meta_key, $schema, $nonce_action, $max_rows = null) {
   wp_nonce_field($nonce_action, $nonce_action . '_nonce');
 
   $rows = get_post_meta($post->ID, $meta_key, true);
   if (!is_array($rows)) $rows = array();
 
-  echo '<div class="gwseq-repeater" data-gwseq-repeater="' . esc_attr($meta_key) . '" data-gwseq-next-index="' . esc_attr((string) count($rows)) . '">';
+  $max_attr = $max_rows !== null ? ' data-gwseq-repeater-max="' . esc_attr((string) (int) $max_rows) . '"' : '';
+  echo '<div class="gwseq-repeater" data-gwseq-repeater="' . esc_attr($meta_key) . '" data-gwseq-next-index="' . esc_attr((string) count($rows)) . '"' . $max_attr . '>';
   echo '<table class="widefat gwseq-repeater__table"><thead><tr>';
   foreach ($schema as $column) {
     echo '<th>' . esc_html($column['label']) . '</th>';
@@ -196,7 +204,15 @@ function gwseq_render_repeater_field($post, $meta_key, $schema, $nonce_action) {
     echo gwseq_repeater_row_markup($meta_key, $schema, is_array($row) ? $row : array(), $index);
   }
   echo '</tbody></table>';
-  echo '<p><button type="button" class="button gwseq-repeater__add">' . esc_html__('+ Ajouter une ligne', 'gws-core') . '</button></p>';
+  echo '<p><button type="button" class="button gwseq-repeater__add">' . esc_html__('+ Ajouter une ligne', 'gws-core') . '</button>';
+  if ($max_rows !== null) {
+    echo ' <span class="description">' . esc_html(sprintf(
+      /* translators: %d: nombre maximum de lignes autorisées */
+      __('(maximum %d)', 'gws-core'),
+      (int) $max_rows
+    )) . '</span>';
+  }
+  echo '</p>';
   echo '<template class="gwseq-repeater__template">' . gwseq_repeater_row_markup($meta_key, $schema, array(), '__INDEX__') . '</template>';
   echo '</div>';
 }

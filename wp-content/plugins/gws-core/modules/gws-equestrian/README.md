@@ -7,22 +7,194 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 5 — Pedigree (Étapes 1 à 4 validées)
+## État actuel : Étape 6 — Indices, médias et présentation (Étape 5 — Pedigree validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
-Equestrian 0.4.1. L'Étape 5 construit les relations de pedigree (Père/Mère, cheval GWS ou
-ascendant externe récursif, resolver, production). Une première recette runtime (saisie réelle du
-pedigree de Jamerose) a validé le modèle fonctionnel mais révélé des problèmes UX importants,
-corrigés en 0.6.0 (Race/Stud-book harmonisé, contexte de saisie, compteur de génération,
-convention de présentation des noms). La reprise de cette recette a ensuite révélé un **bug
-bloquant** (corruption des noms accentués à l'enregistrement) ainsi que deux défauts
-complémentaires, corrigés en 0.7.0, puis un défaut (un ascendant externe vidé continuait d'exister
-en base), corrigé en 0.8.0, puis un défaut d'intégrité (un même cheval GWS pouvait être choisi
-comme père ET comme mère), corrigé en 0.9.0, puis deux règles métier supplémentaires (filtrage des
-parents GWS selon le sexe et l'année de naissance), ajoutées en 0.10.0 (voir plus bas) ; en attente
-d'une nouvelle recette. Voir `CHANGELOG.md` de ce dossier pour l'historique détaillé par étape, et la proposition de conception
-validée pour le contexte d'ensemble.
+Equestrian 0.4.1. L'Étape 5 (relations de pedigree — Père/Mère, cheval GWS ou ascendant externe
+récursif, resolver, production) a traversé plusieurs allers-retours de recette runtime (Race/
+Stud-book harmonisé, contexte de saisie, correctif bloquant de corruption Unicode, suppression
+effective d'un ascendant externe vidé, intégrité père/mère, filtrage sexe/année) et est désormais
+**validée** — voir `CHANGELOG.md` de ce dossier pour le détail complet de ces corrections (0.5.0 à
+0.10.0). L'Étape 6 enrichit la fiche Cheval avec des indices sportifs/génétiques, une galerie
+photos et des vidéos, et du contenu éditorial de présentation — sans toucher au socle des Étapes 4
+et 5 (voir plus bas) ; en attente de sa première recette runtime.
+
+### Indices, médias et présentation (Étape 6)
+
+**Un seul principe, aucune typologie rigide** : tous les chevaux disposent exactement des mêmes
+champs (indices, galerie, vidéos, présentation éditoriale) — aucune distinction structurelle
+étalon/poulinière/cheval de sport/cheval à vendre. L'utilisateur ne renseigne que ce qui est
+pertinent pour le cheval concerné ; aucun champ n'est masqué ou désactivé automatiquement selon le
+sexe, la catégorie ou le statut commercial (voir déjà ce principe pour le pedigree à l'Étape 5).
+Organisation admin en blocs cohérents plutôt qu'une succession indifférenciée de champs : Indices,
+Médias, Présentation, Informations complémentaires — en plus des meta boxes déjà existantes
+(Identité, Commercialisation, Pedigree, Production, Catégories).
+
+#### Indices sportifs (`includes/cheval-indices.php`)
+
+ISO, ICC, IDR : chacun stocké en deux composants strictement séparés — valeur (entier) et année
+(entier) — jamais dans une chaîne unique du type « 142 (2025) ». **Une seule valeur par indice et
+par cheval** : GWS Equestrian ne conserve JAMAIS d'historique annuel en V1 — un nouvel
+enregistrement REMPLACE simplement l'ancien, normalement le meilleur indice que le professionnel
+souhaite présenter. Les trois indices sont indépendants et tous facultatifs : un cheval peut n'en
+avoir aucun, un seul, ou les trois, sans combinaison imposée ni déduite. L'année d'un indice est
+bornée entre 1900 et l'année EN COURS (jamais l'année courante + 1, contrairement à l'année de
+naissance qui autorise cette marge pour un poulain attendu — un indice est par nature rétrospectif,
+il ne peut jamais concerner une année future).
+
+#### Indices génétiques (`includes/cheval-indices.php`)
+
+BSO, BCC, BDR : structure différente — valeur (nombre, signé, décimal si nécessaire) et coefficient
+de détermination/CD (nombre décimal), stockés séparément, jamais d'année. Le signe positif d'une
+valeur (ex. « +12 ») n'est jamais perdu : il est stocké comme un nombre PHP positif natif (12), le
+« + » n'étant ajouté qu'à l'affichage par `gwseq_cheval_genetic_indice_label()` (ex. « +12 (0.9) »)
+— jamais dans la donnée stockée elle-même, qui reste un nombre exploitable tel quel par un futur
+calcul ou tri.
+
+#### Médias — galerie et vidéos (`includes/cheval-media.php`)
+
+**Photo principale** : reste exclusivement l'image à la une native de WordPress (déjà en place
+depuis l'Étape 4) — aucun second champ créé, `gwseq_get_cheval_photo_principale_id()` n'est qu'un
+alias nommé de `get_post_thumbnail_id()`, pour la seule cohérence de nommage avec les autres
+accesseurs de médias de ce fichier.
+
+**Galerie** : jusqu'à 9 photos complémentaires (10 au total avec la photo principale). Stockée en
+UN SEUL tableau ORDONNÉ d'identifiants d'attachement WordPress (jamais des URLs) dans
+`_gwseq_galerie` — un attachment_id reste valide même si les fichiers dérivés sont régénérés ou le
+média déplacé. Retirer une image de la galerie ne supprime JAMAIS le média de la médiathèque
+(aucun appel à `wp_delete_attachment()` nulle part dans ce fichier, vérifié explicitement par les
+tests) — seule la référence disparaît. Aucun système d'upload parallèle : l'ajout passe
+exclusivement par la médiathèque native (`wp.media()`, voir `assets/cheval-media-admin.js`) —
+sélection multiple, aucun doublon possible, réordonnancement par boutons ↑/↓ (pas de
+glisser-déposer, volontairement simple). Aucun redimensionnement destructif de l'original : une
+taille dérivée `gwseq_large` (1600×1600, non recadrée) est enregistrée pour un futur grand
+affichage, l'original restant toujours disponible pour tout usage nécessitant la pleine résolution
+(print, PDF...) — les renderers futurs réutiliseront les mécanismes natifs de tailles dérivées/
+srcset de WordPress à partir du même attachment_id, jamais une copie physique par canal.
+
+**Vidéos** : liste répétable {URL, titre facultatif}, ORDONNÉE, jusqu'à 10 entrées. Réutilise le
+composant répétable générique déjà construit à l'Étape 2 (`includes/repeater-field.php` — dont
+l'en-tête mentionnait déjà explicitement « URLs de vidéos » comme cas d'usage anticipé) pour le
+rendu et le JavaScript d'ajout/suppression de lignes, avec une sanitation DÉDIÉE : une ligne sans
+URL exploitable (schéma http/https valide) n'est jamais stockée, même si un titre a été saisi seul
+— contrairement à la règle générique du composant, qui ne rejette une ligne que si TOUTES ses
+colonnes sont vides. Aucun upload direct de fichier vidéo : seule une URL est acceptée, compatible
+avec les mécanismes sûrs/oEmbed natifs de WordPress. Le composant répétable générique reçoit à
+cette occasion un paramètre optionnel `$max_rows` (désactive le bouton d'ajout une fois la limite
+atteinte — aide UX uniquement, la garantie réelle reste la sanitation serveur) sans changer son
+comportement par défaut lorsqu'il est omis.
+
+#### Présentation éditoriale (`includes/cheval-editorial.php`)
+
+Huit champs facultatifs, texte libre sanitisé (`sanitize_textarea_field()` — HTML retiré, sauts de
+ligne conservés) : Présentation/Description, Points forts, Potentiel, Résultats/Performances (une
+zone éditoriale, volontairement PAS une base structurée exhaustive de tous les concours), Origines
+— commentaire, Production — commentaire, Conditions de vente/élevage/reproduction, Conseils de
+croisement (disponible pour TOUS les chevaux, jamais conditionné au sexe ou à une catégorie).
+
+**Deux ambiguïtés explicitement levées par des noms de meta sans équivoque** :
+- `_gwseq_commentaire_production` (texte libre du professionnel sur la qualité/les résultats de la
+  production) est une meta TOTALEMENT DISTINCTE de la Production CALCULÉE
+  (`gwseq_get_horse_offspring()`, Étape 5), qui reste une donnée relationnelle dérivée des fiches
+  Cheval, jamais stockée, jamais éditable ici — vérifié par test que ce fichier n'appelle jamais
+  `gwseq_get_horse_offspring()`, et réciproquement que `cheval-pedigree.php` ne connaît jamais
+  `_gwseq_commentaire_production`.
+- `_gwseq_origines_commentaire` (texte libre sur l'intérêt d'une lignée — ex. « cette jument
+  produit particulièrement bien avec des étalons de sang ») est totalement distinct du pedigree
+  STRUCTURÉ (`_gwseq_pere_*`/`_gwseq_mere_*`, Étape 5) : jamais reconstruit à partir de ce texte,
+  ni l'inverse — vérifié par test dans les deux sens (ni `cheval-pedigree.php`, ni le resolver, ne
+  lisent ou n'écrivent jamais `_gwseq_origines_commentaire`).
+
+#### Informations complémentaires — Ostéo-articulaire (`includes/cheval-editorial.php`)
+
+Un unique champ texte libre, rendu dans sa propre meta box (séparée de « Présentation », pour une
+organisation par blocs cohérents). Volontairement PAS un dossier vétérinaire : aucun historique de
+soins, aucun champ vétérinaire, aucun traitement/ordonnance structuré, aucun stockage de radios,
+aucune donnée médicale complexe — uniquement l'information synthétique que le professionnel
+souhaite présenter ou conserver dans la fiche commerciale.
+
+#### Architecture programmatique (§11, même principe que le pedigree — Étape 5)
+
+Chaque nouvelle donnée dispose d'une fonction métier PURE (`gwseq_set_cheval_sport_indice()`,
+`gwseq_set_cheval_genetic_indice()`, `gwseq_set_cheval_galerie()`, `gwseq_set_cheval_videos()`,
+`gwseq_set_cheval_editorial()`), jamais couplée à `$_POST` ni à un nonce/capability — réutilisable
+telle quelle par un futur importeur CSV/XLSX, une duplication de fiche, une API, ou une
+synchronisation GWS Network. Le formulaire d'édition n'est qu'UN client parmi d'autres possibles de
+ces fonctions. Conformément à la décision prise après l'Étape 4, les champs existants (identité,
+commercialisation) n'ont pas été refactorés pour appliquer rétroactivement cette règle.
+
+#### Compatibilité et migrations
+
+Aucune migration destructive, aucune réécriture silencieuse de contenu existant, aucune suppression
+de données lors d'une désactivation/réactivation du module (vérifié explicitement par les tests :
+aucun des trois nouveaux fichiers n'appelle jamais `delete_post_meta()`). Les champs absents sur une
+fiche créée avant l'Étape 6 restent simplement vides à la lecture, sans erreur ni valeur par défaut
+inventée — aucune migration technique n'a été nécessaire.
+
+#### Limitations connues (Étape 6)
+
+- **Aucun âge minimum de reproduction** pour les indices sportifs/génétiques ni pour le pedigree —
+  volontairement, comme demandé.
+- **Galerie sans glisser-déposer** : le réordonnancement se fait par boutons ↑/↓ uniquement, choix
+  assumé pour rester simple (pas de bibliothèque de drag-and-drop).
+- **Aucune restriction à une liste de fournisseurs oEmbed connus** pour les vidéos : seule la
+  validité du schéma (http/https) est vérifiée à ce stade — la compatibilité oEmbed réelle
+  (YouTube, Vimeo...) ne sera exercée qu'au futur rendu (hors périmètre de cette étape).
+- **Pas de validation croisée entre champs éditoriaux et données structurées** : rien n'empêche un
+  professionnel de saisir un texte "Origines" contradictoire avec le pedigree structuré — assumé,
+  ce sont deux sources de vérité volontairement indépendantes (§7 de la demande).
+
+#### Pistes hors périmètre (aucun développement à ce stade)
+
+Rendu public final de la fiche, PDF/print (la règle « année de naissance uniquement, jamais l'âge
+calculé » pour le print est actée mais non implémentée — aucun PDF n'existe encore), QR code,
+catalogue, Social Kit, publication Meta, import Excel/CSV, synchronisation GWS Network, IFCE,
+historique annuel des indices, résultats sportifs structurés exhaustifs, dossier vétérinaire,
+réservation/paiement, logique conditionnelle selon le type de cheval.
+
+#### Procédure de recette — Étape 6
+
+À réaliser dans WordPress Local, sans écrire de code :
+
+1. Ouvrir une fiche Cheval existante : vérifier la présence des nouvelles meta boxes (Indices,
+   Médias, Présentation, Informations complémentaires) sans qu'aucune donnée déjà saisie
+   (identité, commercialisation, pedigree) n'ait été perdue ou modifiée.
+2. Renseigner un ISO (valeur + année) puis enregistrer : recharger et vérifier la persistance
+   exacte des deux valeurs, affichées dans des champs séparés.
+3. Renseigner ICC et IDR indépendamment de l'ISO : vérifier qu'aucun des trois n'affecte les
+   autres.
+4. Enregistrer un nouvel ISO différent sur la même fiche : vérifier que l'ancien est bien remplacé
+   (pas d'historique, pas de doublon).
+5. Renseigner un BSO avec une valeur positive (ex. 12) et un CD (ex. 0,90) : vérifier la
+   persistance exacte des deux valeurs séparément.
+6. Renseigner un BSO avec une valeur négative (ex. -8) : vérifier que le signe est bien conservé.
+7. Ajouter des images à la galerie depuis le bouton dédié : vérifier l'ouverture de la médiathèque
+   WordPress native, la sélection multiple, l'ajout effectif des vignettes.
+8. Réordonner les images de la galerie avec les boutons ↑/↓ : vérifier que l'ordre est bien
+   conservé après enregistrement.
+9. Retirer une image de la galerie, enregistrer, puis vérifier dans Médiathèque que le fichier
+   n'a PAS été supprimé.
+10. Vérifier qu'ajouter/retirer des images de la galerie ne modifie jamais l'image à la une
+    (photo principale), et réciproquement.
+11. Tenter d'ajouter une 10e image à la galerie (9 déjà présentes) : vérifier que le bouton
+    d'ajout est désactivé.
+12. Ajouter une vidéo (URL YouTube ou Vimeo valide + titre facultatif) : enregistrer, recharger,
+    vérifier la persistance.
+13. Ajouter une vidéo avec une URL invalide (texte quelconque) : vérifier qu'elle disparaît après
+    enregistrement (jamais stockée).
+14. Ajouter 10 vidéos puis vérifier que le bouton d'ajout d'une 11e est désactivé.
+15. Renseigner chacun des 8 champs de la meta box « Présentation » : vérifier la persistance
+    exacte de chacun, y compris avec des sauts de ligne.
+16. Renseigner le champ « Ostéo-articulaire » (meta box séparée) : vérifier sa persistance.
+17. Vérifier que le champ « Production — commentaire » n'affiche ni ne modifie jamais la meta box
+    « Production » (calculée) présente par ailleurs sur la fiche.
+18. Vérifier que le champ « Origines — commentaire » n'affiche ni ne modifie jamais le pedigree
+    structuré (meta box « Pedigree »).
+19. Désactiver puis réactiver le module (`config/modules.php`) : vérifier qu'aucune donnée
+    d'indice, de galerie, de vidéo ou d'éditorial n'a été modifiée ou supprimée.
+20. Ouvrir une fiche cheval créée avant cette version (jamais enregistrée avec ces nouveaux
+    champs) : vérifier que tous les nouveaux champs apparaissent simplement vides, sans erreur.
 
 ### Pedigree (Étape 5)
 
@@ -960,18 +1132,19 @@ ci-dessous ciblent explicitement les deux cas qui avaient échoué.
 ### Ce qui n'est délibérément PAS encore construit
 
 Conformément au périmètre strict fixé étape par étape : assistant de première configuration,
-glisser-déposer, indices/vidéos/blocs personnalisés/galerie/résultats détaillés/origines
-éditoriales **métier réels** (le composant répétable qui les portera existe depuis l'Étape 2,
-mais aucune de ces données métier n'est encore créée), fratrie (relation non stockée — seule la
-production, produits d'un même parent GWS, est calculable dès cette étape), duplication, fiche
+glisser-déposer (la galerie de l'Étape 6 se réordonne par boutons ↑/↓, jamais par glisser-déposer),
+résultats sportifs structurés exhaustifs et historique annuel des indices (l'Étape 6 ne conserve
+qu'une seule valeur par indice, jamais un historique), fratrie (relation non stockée — seule la
+production, produits d'un même parent GWS, est calculable dès l'Étape 5), duplication, fiche
 privée/token de partage, export PDF/QR/catalogue, Social Kit, Network, API publique, import/
 onboarding en masse (besoin identifié en recette de l'Étape 4, la règle de création
-programmatique est appliquée par avance au nouveau code du pedigree, voir plus haut), module
-Équipe (besoin identifié en recette de l'Étape 3, retenu pour la feuille de route sans placement
-précis encore décidé), rendu front définitif (y compris pour le pedigree — la boîte de
-vérification admin/développement de l'Étape 5 n'est pas ce futur rendu). Ces éléments
-arrivent aux étapes 5 à 9+ du plan de développement validé, chacune soumise à validation avant la
-suivante.
+programmatique est appliquée par avance au nouveau code du pedigree et de l'Étape 6, voir plus
+haut), module Équipe (besoin identifié en recette de l'Étape 3, retenu pour la feuille de route
+sans placement précis encore décidé), rendu front définitif (y compris pour le pedigree et les
+nouvelles données de l'Étape 6 — la boîte de vérification admin/développement de l'Étape 5 n'est
+pas ce futur rendu), dossier vétérinaire structuré (l'Étape 6 se limite à un champ texte libre
+Ostéo-articulaire). Ces éléments arrivent aux étapes 7 à 9+ du plan de développement validé,
+chacune soumise à validation avant la suivante.
 
 ### Point tranché à l'Étape 4 : photo principale
 

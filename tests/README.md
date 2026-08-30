@@ -18,6 +18,9 @@ php tests/gws-equestrian-prestations-logic-test.php
 php tests/gws-equestrian-prestation-editor-test.php
 php tests/gws-equestrian-cheval-logic-test.php
 php tests/gws-equestrian-pedigree-logic-test.php
+php tests/gws-equestrian-cheval-indices-logic-test.php
+php tests/gws-equestrian-cheval-media-logic-test.php
+php tests/gws-equestrian-cheval-editorial-logic-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -61,6 +64,11 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   `name`/`value`, passage par `parse_str()` — le mécanisme PHP réel de construction de `$_POST`
   — puis sanitation), incluant la caractérisation de l'ancien bug de regroupement des lignes et
   la vérification des attributs `step` par type (`number` accepte les décimales, `integer` non).
+  Depuis l'Étape 6 : paramètre optionnel `$max_rows` de `gwseq_render_repeater_field()` (aide UX
+  qui désactive le bouton d'ajout une fois la limite atteinte, jamais la garantie réelle qui reste
+  la sanitation propre à chaque appelant) — attribut `data-gwseq-repeater-max` bien rendu quand
+  fourni, absent par défaut (comportement historique inchangé), et vérification déclarative que le
+  script ne fait que désactiver un bouton ou retirer un élément du DOM, jamais un appel serveur.
 - Prestations / Groupes tarifaires de `gws-equestrian`, Étape 3
   (`gws-equestrian-prestations-logic-test.php`) : sanitation de la tarification (prix unique
   entier/décimal, valeur `0` jamais confondue avec une absence de prix, mode Cheval/Poney à deux
@@ -186,6 +194,44 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   mode/conservation des branches externes, câblage UX (option désactivée avec indication de la
   raison, verrouillage `data-gwseq-locked-disabled` empêchant toute réactivation par le script pour
   le sexe/l'année, contrairement au conflit père/mère qui reste resynchronisé en direct).
+- Indices sportifs et génétiques de `gws-equestrian`, Étape 6
+  (`gws-equestrian-cheval-indices-logic-test.php`) : ISO/ICC/IDR (valeur et année sanitisées et
+  stockées séparément, indépendance totale entre les trois, valeur sans année et année sans valeur
+  toutes deux acceptées, aucun historique implicite — un second enregistrement remplace toujours
+  le précédent, année bornée à l'année en cours jamais une année future contrairement à l'année de
+  naissance) ; BSO/BCC/BDR (valeur signée décimale et coefficient de détermination stockés
+  séparément, signe positif jamais perdu au stockage — ajouté uniquement à l'affichage par
+  `gwseq_cheval_genetic_indice_label()` — valeur négative et coefficient décimal exacts, aucune
+  meta d'année jamais créée pour ces trois indices) ; robustesse (clé d'indice ou cheval_id
+  invalide refusés proprement) ; rendu admin (champs valeur/année et valeur/CD bien rendus
+  séparément, valeurs pré-remplies) ; persistance et compatibilité avec une fiche jamais
+  enregistrée avec ces champs ; chemin programmatique sans `$_POST` ni nonce.
+- Médias de `gws-equestrian`, Étape 6 (`gws-equestrian-cheval-media-logic-test.php`) : galerie
+  (ajout/suppression/réordonnancement, bornée à 9 images complémentaires à la photo principale,
+  attachment IDs uniquement — jamais une URL ni une valeur mal formée —, aucun doublon, un ID qui
+  n'est pas une image ou qui n'existe pas rejeté, indépendance totale avec la photo principale
+  native (`_thumbnail_id`), aucun appel à `wp_delete_attachment()` dans le fichier — vérifié à la
+  fois fonctionnellement et par lecture directe du code hors commentaires) ; vidéos (URL + titre
+  facultatif, ordre conservé, bornées à 10, URL invalide ou absente entraînant le rejet de la
+  ligne entière même avec un titre saisi, réutilisation du composant répétable générique avec une
+  sanitation dédiée) ; câblage admin (bouton d'ajout, attributs `data-*` de limite, gabarit
+  `<template>` réutilisé, script utilisant `wp.media()` en sélection multiple, aucun uploader
+  personnalisé) ; persistance croisée (modifier la galerie ne fait jamais perdre les vidéos, et
+  réciproquement) et compatibilité avec une fiche jamais enregistrée ; chemin programmatique.
+- Présentation éditoriale et informations complémentaires de `gws-equestrian`, Étape 6
+  (`gws-equestrian-cheval-editorial-logic-test.php`) : chacun des 9 champs enregistré/lu
+  indépendamment, champ vide accepté, sanitation correcte (une balise `<script>` et son contenu
+  retirés, texte conservé), "Conseils de croisement" jamais conditionné au sexe (aucune lecture du
+  sexe dans le fichier) ; séparation stricte et vérifiée par lecture de code (hors commentaires)
+  entre le commentaire "Production" éditorial et la Production CALCULÉE
+  (`gwseq_get_horse_offspring()`, jamais appelée dans ce fichier, et réciproquement
+  `cheval-pedigree.php` ne connaît jamais `_gwseq_commentaire_production`), et entre le commentaire
+  "Origines" éditorial et le pedigree STRUCTURÉ (aucune meta `_gwseq_pere_*`/`_gwseq_mere_*` jamais
+  lue/écrite ici, et réciproquement ni `cheval-pedigree.php` ni le resolver ne connaissent
+  `_gwseq_origines_commentaire`) ; Ostéo-articulaire vérifié comme texte libre uniquement (absence
+  de tout champ structuré de dossier vétérinaire dans le modèle de données) ; rendu admin réparti
+  sur deux meta boxes distinctes (Présentation / Informations complémentaires) ; escaping ;
+  persistance et compatibilité avec une fiche jamais enregistrée ; chemin programmatique.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -220,3 +266,13 @@ un processus PHP séparé — il peut aussi être lancé seul.)
 - Lisibilité réelle en conditions d'usage des indications de raison (« sexe incompatible », «
   année incompatible », depuis 0.10.0) au sein du texte d'une `<option>` désactivée — rendu visuel
   selon le navigateur/OS, longueur acceptable dans une liste avec de nombreux chevaux.
+- Comportement navigateur réel de la galerie photos (depuis l'Étape 6) : ouverture effective de la
+  modale native de la médiathèque WordPress (`wp.media()`), sélection multiple à la souris/au
+  clavier, apparence des vignettes et des boutons de réordonnancement (↑/↓), ressenti du bouton
+  d'ajout désactivé une fois la limite de 9 atteinte, absence d'erreur JavaScript en conditions
+  réelles.
+- Comportement navigateur réel du composant répétable Vidéos avec sa nouvelle limite (depuis
+  l'Étape 6) : ressenti du bouton d'ajout désactivé à la 10e vidéo, absence d'erreur JavaScript.
+- Rendu navigateur réel des nouvelles meta boxes de la fiche Cheval (Indices, Médias, Présentation,
+  Informations complémentaires, Étape 6) : ordre visuel des blocs, lisibilité pour un professionnel
+  non expert WordPress, largeur des champs `<textarea>`.
