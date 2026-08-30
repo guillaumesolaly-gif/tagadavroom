@@ -69,6 +69,27 @@
  *    nœud "external" sans nom — une branche vide y reste toujours une absence de branche. Ce
  *    correctif ne concerne QUE les ascendants externes ; une relation vers une fiche GWS continue
  *    de se désactiver via le mode « Non renseigné » sans jamais supprimer la fiche Cheval liée.
+ * 17. Intégrité du pedigree — un même cheval GWS ne peut jamais être à la fois père ET mère d'un
+ *    même cheval (correctif complémentaire post-recette, 0.9.0). Distinct de l'auto-référence
+ *    (déjà rejetée par gwseq_sanitize_horse_parent_gws_id()) : ici, deux relations GWS valides
+ *    prises séparément créeraient ensemble une incohérence biologique.
+ *    gwseq_horse_parent_conflicts_with_other_role() compare UNIQUEMENT deux relations GWS ACTIVES
+ *    (deux identifiants de fiche) — jamais deux ascendants externes par leur nom (un nom identique
+ *    ne prouve rien, voir l'absence de déduplication déjà actée §7), et jamais une branche externe
+ *    inactive conservée lors d'un changement de mode. gwseq_set_horse_parent() refuse
+ *    l'enregistrement d'une relation "gws" qui créerait ce conflit (retourne `false`, AUCUNE meta
+ *    modifiée pour ce rôle — la relation existante, le cas échéant, n'est jamais supprimée ni
+ *    remplacée silencieusement) ; cette validation s'applique identiquement au chemin
+ *    programmatique (voir la règle architecturale ci-dessous) puisque c'est la même fonction.
+ *    Côté UX admin (assets/cheval-admin.js), le cheval déjà actif dans l'autre sélecteur est
+ *    désactivé (jamais supprimé de la liste, jamais une valeur déjà choisie modifiée
+ *    automatiquement) et cette exclusion se resynchronise en direct si l'autre sélecteur change —
+ *    une aide à la saisie uniquement, la validation serveur ci-dessus restant la seule garantie
+ *    réelle, y compris JavaScript désactivé. Profité de cette passe pour deux corrections
+ *    lexicales validées : « Cheval déjà présent dans GWS » → « Cheval déjà enregistré » et
+ *    « Ascendant hors GWS » → « Nouvel ascendant » (radios de mode), ainsi que le texte de l'aperçu
+ *    développeur : « Aperçu du pedigree enregistré — actualisé après sauvegarde. ». Aucune
+ *    migration automatique d'une éventuelle incohérence déjà enregistrée avant cette version.
  *
  * STOCKAGE (inchangé dans son principe, JSON par branche externe plutôt que des dizaines de meta
  * à plat) : arbre récursif `{name, race, race_autre, father, mother}`, encodé en JSON dans une
@@ -131,6 +152,25 @@ function gwseq_sanitize_horse_parent_gws_id($raw_horse_id, $current_post_id = 0)
   if ($horse_id === (int) $current_post_id) return 0;
   if (get_post_type($horse_id) !== GWSEQ_CPT_CHEVAL) return 0;
   return $horse_id;
+}
+
+function gwseq_horse_parent_other_role($role) {
+  return $role === 'father' ? 'mother' : 'father';
+}
+
+/**
+ * Intégrité du pedigree (correctif complémentaire post-recette, 0.9.0) : un même cheval GWS ne
+ * peut jamais être à la fois père ET mère d'un même cheval — une incohérence biologique distincte
+ * de l'auto-référence (déjà rejetée par gwseq_sanitize_horse_parent_gws_id() ci-dessus). Compare
+ * UNIQUEMENT deux relations GWS actives (deux fiches, deux identifiants) : un ascendant externe
+ * n'a pas d'identifiant de fiche et n'est JAMAIS comparé par son nom — deux ascendants externes
+ * portant le même nom ne prouvent en rien qu'il s'agit du même cheval (voir l'absence de
+ * déduplication déjà actée pour la production/le resolver). Lit la relation ACTIVE de l'autre rôle
+ * telle que déjà enregistrée ; ne touche à aucune donnée, purement une fonction de lecture.
+ */
+function gwseq_horse_parent_conflicts_with_other_role($cheval_id, $role, $horse_id) {
+  $other_relation = gwseq_get_horse_parent($cheval_id, gwseq_horse_parent_other_role($role));
+  return $other_relation['mode'] === 'gws' && $other_relation['horse_id'] === (int) $horse_id;
 }
 
 /**
@@ -242,6 +282,18 @@ function gwseq_migrate_external_ancestor_node($node) {
  * reste strictement inchangée en base (conservation non destructive). Attend
  * $raw_args = {mode, horse_id, external} (external = tableau shaped comme
  * gwseq_sanitize_external_ancestor_tree() l'attend, avec race/race_autre).
+ *
+ * VALEUR DE RETOUR (comportement déterministe, correctif complémentaire post-recette « intégrité
+ * du pedigree », 0.9.0) : `false` si l'appel est malformé (cheval/rôle invalide) OU si la relation
+ * "gws" demandée créerait une incohérence — le MÊME cheval GWS déjà actif comme PÈRE ET comme MÈRE
+ * du cheval édité (voir gwseq_horse_parent_conflicts_with_other_role() ci-dessus ; l'auto-référence
+ * directe reste rejetée séparément par gwseq_sanitize_horse_parent_gws_id()). Dans ce cas précis,
+ * AUCUNE meta n'est modifiée pour ce rôle — la relation existante (le cas échéant) reste telle
+ * quelle, jamais supprimée ni remplacée silencieusement par une valeur incohérente. `true` dans
+ * tous les autres cas, y compris un identifiant GWS invalide/auto-référencé simplement ramené à
+ * '' (comportement inchangé, déjà existant). Cette même fonction est le point d'entrée
+ * programmatique (voir plus haut) : un futur importeur CSV/XLSX reçoit donc exactement la même
+ * garantie qu'un enregistrement passé par le formulaire d'administration.
  */
 function gwseq_set_horse_parent($cheval_id, $role, $raw_args) {
   $cheval_id = (int) $cheval_id;
@@ -253,6 +305,9 @@ function gwseq_set_horse_parent($cheval_id, $role, $raw_args) {
 
   if ($mode === 'gws') {
     $horse_id = gwseq_sanitize_horse_parent_gws_id($raw_args['horse_id'] ?? 0, $cheval_id);
+    if ($horse_id && gwseq_horse_parent_conflicts_with_other_role($cheval_id, $role, $horse_id)) {
+      return false; // incohérence : le même cheval GWS est déjà l'autre parent — rien n'est modifié
+    }
     update_post_meta($cheval_id, $prefix . 'mode', $horse_id ? 'gws' : '');
     if ($horse_id) update_post_meta($cheval_id, $prefix . 'id', $horse_id);
     return true; // _externe volontairement non touché
@@ -444,18 +499,28 @@ function gwseq_render_cheval_parent_fields($post, $role, $label) {
       </label><br>
       <label>
         <input type="radio" name="<?php echo esc_attr($prefix); ?>mode" value="gws" data-gwseq-parent-source="<?php echo esc_attr($role); ?>" <?php checked($relation['mode'], 'gws'); ?>>
-        <?php esc_html_e('Cheval déjà présent dans GWS', 'gws-core'); ?>
+        <?php esc_html_e('Cheval déjà enregistré', 'gws-core'); ?>
       </label><br>
       <label>
         <input type="radio" name="<?php echo esc_attr($prefix); ?>mode" value="external" data-gwseq-parent-source="<?php echo esc_attr($role); ?>" <?php checked($relation['mode'], 'external'); ?>>
-        <?php esc_html_e('Ascendant hors GWS', 'gws-core'); ?>
+        <?php esc_html_e('Nouvel ascendant', 'gws-core'); ?>
       </label>
     </p>
+    <?php
+    // Intégrité du pedigree (correctif complémentaire, §1 UX admin) : le cheval déjà actif comme
+    // GWS pour L'AUTRE rôle (père/mère) est désactivé dans CE sélecteur — un même cheval ne peut
+    // jamais être à la fois père et mère (voir gwseq_horse_parent_conflicts_with_other_role() et
+    // la validation serveur correspondante dans gwseq_set_horse_parent(), seule garantie réelle).
+    // assets/cheval-admin.js resynchronise cette exclusion EN DIRECT si l'autre sélecteur change,
+    // sans jamais modifier automatiquement une valeur déjà sélectionnée dans CE sélecteur.
+    $other_relation = gwseq_get_horse_parent($post->ID, gwseq_horse_parent_other_role($role));
+    $other_active_gws_id = $other_relation['mode'] === 'gws' ? $other_relation['horse_id'] : 0;
+    ?>
     <p data-gwseq-parent-fields="<?php echo esc_attr($role); ?>-gws" style="<?php echo $relation['mode'] === 'gws' ? '' : 'display:none;'; ?>">
-      <select name="<?php echo esc_attr($prefix); ?>id">
+      <select class="gwseq-parent-gws-select" data-gwseq-parent-role="<?php echo esc_attr($role); ?>" name="<?php echo esc_attr($prefix); ?>id">
         <option value="0"><?php esc_html_e('— Choisir un cheval —', 'gws-core'); ?></option>
         <?php foreach (gwseq_cheval_parent_candidates($post->ID) as $candidate) : ?>
-          <option value="<?php echo esc_attr($candidate->ID); ?>" <?php selected($relation['horse_id'], $candidate->ID); ?>><?php echo esc_html(get_the_title($candidate)); ?></option>
+          <option value="<?php echo esc_attr($candidate->ID); ?>" <?php selected($relation['horse_id'], $candidate->ID); ?> <?php disabled($other_active_gws_id && $other_active_gws_id === $candidate->ID); ?>><?php echo esc_html(get_the_title($candidate)); ?></option>
         <?php endforeach; ?>
       </select>
     </p>
@@ -579,7 +644,7 @@ function gwseq_render_cheval_offspring_box($post) {
 }
 
 function gwseq_render_cheval_pedigree_preview_box($post) {
-  echo '<p class="description">' . esc_html__('Aperçu de la résolution du pedigree, à titre de vérification uniquement — ce n’est pas le futur rendu public (Étape 8).', 'gws-core') . '</p>';
+  echo '<p class="description">' . esc_html__('Aperçu du pedigree enregistré — actualisé après sauvegarde.', 'gws-core') . '</p>';
   echo gwseq_render_pedigree_node_preview(gwseq_resolve_horse_pedigree($post->ID));
 }
 

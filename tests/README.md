@@ -162,7 +162,19 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   affectée, une relation GWS désactivée ne supprime jamais la fiche Cheval référencée, le resolver
   ne produit jamais de nœud "external" fantôme même sur une donnée héritée d'avant ce correctif, et
   câblage du bouton explicite « Supprimer cet ascendant » (contrôle rendu, texte de confirmation
-  fourni en attribut `data-*`, écoute JS ciblant uniquement le nœud le plus proche).
+  fourni en attribut `data-*`, écoute JS ciblant uniquement le nœud le plus proche). Correctif
+  intégrité du pedigree 0.9.0 (même cheval GWS impossible comme père ET mère) : auto-parenté
+  toujours protégée de bout en bout via `gwseq_set_horse_parent()`, affectation refusée (valeur de
+  retour `false`, documentée) dans les deux sens (père déjà mère, mère déjà père), une tentative
+  refusée ne supprime ni ne remplace jamais silencieusement une relation existante, deux chevaux
+  GWS distincts toujours acceptés, un mélange GWS + externe (même en cas d'homonymie avec un cheval
+  GWS) toujours accepté sans rapprochement par nom, validation identique via un appel
+  programmatique direct (chemin d'un futur import, sans `$_POST` ni JavaScript), aucune régression
+  sur la Production ni sur la conservation non destructive lors d'un changement de mode, câblage de
+  l'exclusion mutuelle des deux sélecteurs GWS (classe/attribut de rôle, option déjà rendue
+  désactivée dès le serveur, script ne modifiant jamais automatiquement une valeur sélectionnée),
+  et les deux corrections lexicales validées (« Cheval déjà enregistré », « Nouvel ascendant »,
+  texte de l'aperçu développeur).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -191,3 +203,6 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   la boîte de dialogue native `confirm()`, ressenti de la remise à vide immédiate des champs, et
   confirmation qu'un enregistrement ultérieur reflète bien la suppression (couvert côté logique
   serveur par les tests automatisés, mais jamais observé dans un vrai navigateur).
+- Comportement navigateur réel de l'exclusion mutuelle des sélecteurs Père/Mère GWS (depuis
+  0.9.0) : apparence effective d'une `<option>` désactivée selon le navigateur/OS, réactivité
+  perçue en changeant l'un puis l'autre sélecteur, absence d'erreur JavaScript.

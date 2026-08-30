@@ -82,6 +82,45 @@
       applyParentSource();
     });
 
+    // Intégrité du pedigree (correctif complémentaire post-recette, 0.9.0) : un même cheval GWS ne
+    // doit jamais pouvoir être choisi à la fois comme père et comme mère. UX uniquement — la
+    // garantie réelle reste la validation serveur dans gwseq_set_horse_parent() (voir
+    // includes/cheval-pedigree.php), qui refuse l'enregistrement quel que soit l'état de ce
+    // script. Ce bloc se contente de désactiver, dans CHAQUE sélecteur, l'option correspondant au
+    // cheval déjà choisi dans l'AUTRE sélecteur — jamais de changement automatique d'une valeur
+    // déjà sélectionnée : désactiver une <option> ne désélectionne rien, elle empêche seulement un
+    // choix futur qui créerait l'incohérence.
+    var gwsParentSelects = document.querySelectorAll('.gwseq-parent-gws-select');
+    if (gwsParentSelects.length === 2) {
+      var fatherGwsSelect = null;
+      var motherGwsSelect = null;
+      gwsParentSelects.forEach(function (select) {
+        if (select.getAttribute('data-gwseq-parent-role') === 'father') fatherGwsSelect = select;
+        if (select.getAttribute('data-gwseq-parent-role') === 'mother') motherGwsSelect = select;
+      });
+
+      function excludeSelectedOption(sourceSelect, targetSelect) {
+        var sourceValue = sourceSelect.value;
+        Array.prototype.forEach.call(targetSelect.options, function (option) {
+          if (option.value === '' || option.value === '0') {
+            option.disabled = false;
+            return;
+          }
+          option.disabled = (sourceValue !== '' && sourceValue !== '0' && option.value === sourceValue);
+        });
+      }
+
+      function syncGwsParentSelects() {
+        if (!fatherGwsSelect || !motherGwsSelect) return;
+        excludeSelectedOption(fatherGwsSelect, motherGwsSelect);
+        excludeSelectedOption(motherGwsSelect, fatherGwsSelect);
+      }
+
+      if (fatherGwsSelect) fatherGwsSelect.addEventListener('change', syncGwsParentSelects);
+      if (motherGwsSelect) motherGwsSelect.addEventListener('change', syncGwsParentSelects);
+      syncGwsParentSelects();
+    }
+
     // Race/Stud-book d'un ascendant externe (correction post-recette) : jusqu'à 15 nœuds par
     // branche (4 générations), chacun avec son propre sélecteur — une écoute déléguée unique sur
     // le conteneur du pedigree évite d'attacher un gestionnaire par nœud. Le champ "Préciser la

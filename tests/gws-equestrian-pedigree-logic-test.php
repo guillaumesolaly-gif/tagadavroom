@@ -34,6 +34,16 @@ function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES)
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function selected($a, $b) { return $a == $b ? ' selected' : ''; }
 function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
+// FIDÈLE au comportement réel de disabled() (WordPress core) : ÉCHO par défaut ($echo = true),
+// contrairement à selected()/checked() ci-dessus qui ne sont jamais appelées avec leur résultat
+// affiché autrement que via cet écho natif dans le vrai WordPress — un stub non-échoïsant
+// masquerait silencieusement l'attribut "disabled" du rendu, comme un stub non fidèle l'a déjà
+// fait une fois pour wp_unslash()/update_post_meta() (voir plus haut).
+function disabled($value, $compare_value = true, $echo = true) {
+  $result = ($value == $compare_value) ? ' disabled' : '';
+  if ($echo) echo $result;
+  return $result;
+}
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
 function wp_nonce_field($action, $field) { echo '<input type="hidden" name="' . esc_attr($field) . '" value="stub-nonce">'; }
 // Signature fidèle à wp_json_encode() (WordPress core) : le paramètre $options DOIT être
@@ -182,6 +192,107 @@ gws_test_assert(gwseq_sanitize_horse_parent_gws_id('2', 2) === 0, 'Relation GWS 
 gws_test_assert(gwseq_sanitize_horse_parent_gws_id('12345', 2) === 0, 'Relation GWS : ID inexistant rejeté');
 gws_test_assert(gwseq_sanitize_horse_parent_gws_id('99', 2) === 0, 'Relation GWS : ID d’un autre post type (page) rejeté');
 gws_test_assert(gwseq_sanitize_horse_parent_gws_id('abc', 2) === 0, 'Relation GWS : valeur non numérique rejetée, jamais d’erreur');
+
+// =====================================================================================
+// Intégrité du pedigree — un même cheval GWS ne peut jamais être à la fois père ET mère
+// (correctif complémentaire post-recette, 0.9.0). Distinct de l'auto-référence (ci-dessus, déjà
+// protégée) : ici, deux relations valides prises séparément (chacune vers un vrai cheval GWS,
+// différent du cheval édité) créeraient ensemble une incohérence biologique.
+// =====================================================================================
+
+gws_test_make_post(940, GWSEQ_CPT_CHEVAL, 'Cheval Intégrité Racine');
+gws_test_make_post(941, GWSEQ_CPT_CHEVAL, 'Étalon Intégrité A');
+gws_test_make_post(942, GWSEQ_CPT_CHEVAL, 'Étalon Intégrité B');
+
+// --- Auto-parenté : déjà protégée, revérifiée ici de bout en bout via gwseq_set_horse_parent()
+// (et non plus seulement gwseq_sanitize_horse_parent_gws_id() isolément) ---
+$result_self_father = gwseq_set_horse_parent(940, 'father', array('mode' => 'gws', 'horse_id' => 940));
+gws_test_assert($result_self_father === true, 'Intégrité : gwseq_set_horse_parent() accepte l’appel (auto-référence neutralisée en interne, pas une erreur d’appel)');
+gws_test_assert(gwseq_get_horse_parent(940, 'father')['mode'] === '', 'Intégrité : le cheval courant reste impossible comme son propre père (relation restée désactivée)');
+
+$result_self_mother = gwseq_set_horse_parent(940, 'mother', array('mode' => 'gws', 'horse_id' => 940));
+gws_test_assert($result_self_mother === true, 'Intégrité : gwseq_set_horse_parent() accepte l’appel pour la mère également (auto-référence neutralisée en interne)');
+gws_test_assert(gwseq_get_horse_parent(940, 'mother')['mode'] === '', 'Intégrité : le cheval courant reste impossible comme sa propre mère (relation restée désactivée)');
+
+// --- Même cheval GWS comme père ET comme mère : la seconde affectation est refusée ---
+$result_father_A = gwseq_set_horse_parent(940, 'father', array('mode' => 'gws', 'horse_id' => 941));
+gws_test_assert($result_father_A === true && gwseq_get_horse_parent(940, 'father')['horse_id'] === 941, 'Intégrité : le père peut être défini normalement sur un premier cheval GWS distinct');
+
+$result_mother_same_as_father = gwseq_set_horse_parent(940, 'mother', array('mode' => 'gws', 'horse_id' => 941));
+gws_test_assert($result_mother_same_as_father === false, 'Intégrité : affecter le MÊME cheval GWS comme mère alors qu’il est déjà père est REFUSÉ (valeur de retour false, comportement documenté)');
+gws_test_assert(gwseq_get_horse_parent(940, 'mother')['mode'] === '', 'Intégrité : la mère reste désactivée après le refus — aucune valeur incohérente n’a été enregistrée');
+gws_test_assert(gwseq_get_horse_parent(940, 'father')['horse_id'] === 941, 'Intégrité : le refus d’affecter la mère ne modifie jamais la relation existante du père');
+
+// --- Ordre inverse : si la mère est déjà établie, le même cheval est refusé comme père ---
+gws_test_make_post(943, GWSEQ_CPT_CHEVAL, 'Cheval Intégrité Ordre Inverse');
+gwseq_set_horse_parent(943, 'mother', array('mode' => 'gws', 'horse_id' => 941));
+$result_father_same_as_mother = gwseq_set_horse_parent(943, 'father', array('mode' => 'gws', 'horse_id' => 941));
+gws_test_assert($result_father_same_as_mother === false, 'Intégrité : le refus s’applique dans les deux sens — même cheval déjà mère refusé comme père');
+gws_test_assert(gwseq_get_horse_parent(943, 'father')['mode'] === '', 'Intégrité : le père reste désactivé après ce refus (ordre inverse)');
+
+// --- Une relation EXISTANTE côté père n'est jamais silencieusement effacée par une tentative
+// refusée côté mère : elle reste EXACTEMENT celle enregistrée avant la tentative ---
+gws_test_make_post(944, GWSEQ_CPT_CHEVAL, 'Cheval Intégrité Non Écrasement');
+gwseq_set_horse_parent(944, 'father', array('mode' => 'gws', 'horse_id' => 941));
+gwseq_set_horse_parent(944, 'mother', array('mode' => 'gws', 'horse_id' => 942));
+gwseq_set_horse_parent(944, 'mother', array('mode' => 'gws', 'horse_id' => 941)); // refusé
+$relation_944_mother = gwseq_get_horse_parent(944, 'mother');
+gws_test_assert($relation_944_mother['mode'] === 'gws' && $relation_944_mother['horse_id'] === 942, 'Intégrité : une tentative refusée ne supprime ni ne remplace silencieusement une relation mère déjà valide (elle reste celle enregistrée juste avant)');
+
+// --- Deux chevaux GWS différents : acceptés normalement (cas nominal, aucune régression) ---
+gws_test_make_post(945, GWSEQ_CPT_CHEVAL, 'Cheval Intégrité Deux Parents Distincts');
+$result_father_distinct = gwseq_set_horse_parent(945, 'father', array('mode' => 'gws', 'horse_id' => 941));
+$result_mother_distinct = gwseq_set_horse_parent(945, 'mother', array('mode' => 'gws', 'horse_id' => 942));
+$relation_945 = array('father' => gwseq_get_horse_parent(945, 'father'), 'mother' => gwseq_get_horse_parent(945, 'mother'));
+gws_test_assert($result_father_distinct === true && $result_mother_distinct === true, 'Intégrité : deux chevaux GWS différents comme père et mère sont acceptés sans restriction');
+gws_test_assert($relation_945['father']['horse_id'] === 941 && $relation_945['mother']['horse_id'] === 942, 'Intégrité : les deux relations distinctes sont bien actives simultanément');
+
+// --- Père GWS + mère externe : accepté (l'ascendant externe n'a pas d'identifiant de fiche, ne
+// peut jamais entrer en conflit avec une relation GWS) ---
+gws_test_make_post(946, GWSEQ_CPT_CHEVAL, 'Cheval Intégrité GWS Plus Externe');
+$result_father_gws_mixed = gwseq_set_horse_parent(946, 'father', array('mode' => 'gws', 'horse_id' => 941));
+$result_mother_external_mixed = gwseq_set_horse_parent(946, 'mother', array('mode' => 'external', 'external' => array('name' => 'Étalon Intégrité A')));
+gws_test_assert($result_father_gws_mixed === true && $result_mother_external_mixed === true, 'Intégrité : père GWS + mère externe (même nom qu’un cheval GWS existant) accepté sans restriction');
+$relation_946_mother = gwseq_get_horse_parent(946, 'mother');
+gws_test_assert($relation_946_mother['mode'] === 'external' && $relation_946_mother['external']['name'] === 'Étalon Intégrité A', 'Intégrité : un ascendant externe portant le même NOM qu’un cheval GWS n’est jamais comparé par ce nom — aucun rapprochement, aucun refus');
+
+// --- Père externe + mère GWS : symétriquement accepté ---
+gws_test_make_post(947, GWSEQ_CPT_CHEVAL, 'Cheval Intégrité Externe Plus GWS');
+$result_father_external_mixed = gwseq_set_horse_parent(947, 'father', array('mode' => 'external', 'external' => array('name' => 'Étalon Intégrité B')));
+$result_mother_gws_mixed = gwseq_set_horse_parent(947, 'mother', array('mode' => 'gws', 'horse_id' => 942));
+gws_test_assert($result_father_external_mixed === true && $result_mother_gws_mixed === true, 'Intégrité : père externe (même nom qu’un cheval GWS existant) + mère GWS accepté sans restriction');
+
+// --- La protection ne dépend d'AUCUN JavaScript : ces mêmes appels programmatiques directs à
+// gwseq_set_horse_parent() (sans $_POST, sans nonce) sont exactement le chemin qu'un futur
+// importeur CSV/XLSX emprunterait — la validation ci-dessus s'applique donc identiquement là ---
+gws_test_make_post(948, GWSEQ_CPT_CHEVAL, 'Cheval Intégrité Import Simulé');
+$import_father = gwseq_set_horse_parent(948, 'father', array('mode' => 'gws', 'horse_id' => 941));
+$import_mother_conflict = gwseq_set_horse_parent(948, 'mother', array('mode' => 'gws', 'horse_id' => 941));
+gws_test_assert($import_father === true && $import_mother_conflict === false, 'Intégrité : la validation s’applique identiquement à un appel programmatique direct (chemin d’un futur importeur), sans dépendre de $_POST ni de JavaScript');
+
+// --- Aucune régression : Production toujours calculée correctement malgré la nouvelle validation ---
+// (941 est actif comme père GWS de plusieurs chevaux créés plus haut, dont 940 — voir la
+// vérification "Production" attendue depuis 941)
+gws_test_assert(
+  in_array(940, array_map(function ($p) { return $p->ID; }, gwseq_get_horse_offspring(941)), true),
+  'Intégrité : aucune régression sur la Production — un cheval GWS actif comme père d’un autre reste bien listé comme producteur'
+);
+
+// --- Aucune régression : changement de mode et conservation non destructive toujours valides —
+// passer une relation "father" de gws (941) à externe ne touche jamais la mère, et l'ancien
+// identifiant GWS reste conservé, inactif, exactement comme avant ce correctif ---
+gws_test_make_post(949, GWSEQ_CPT_CHEVAL, 'Cheval Intégrité Conservation');
+gwseq_set_horse_parent(949, 'father', array('mode' => 'gws', 'horse_id' => 941));
+gwseq_set_horse_parent(949, 'mother', array('mode' => 'gws', 'horse_id' => 942));
+gwseq_set_horse_parent(949, 'father', array('mode' => 'external', 'external' => array('name' => 'Nouvel Étalon Externe')));
+$relation_949_father = gwseq_get_horse_parent(949, 'father');
+$relation_949_mother = gwseq_get_horse_parent(949, 'mother');
+gws_test_assert($relation_949_father['mode'] === 'external' && $relation_949_father['horse_id'] === 941, 'Intégrité : changement de mode GWS -> externe toujours fonctionnel, ancien ID GWS conservé inactif (conservation non destructive inchangée)');
+gws_test_assert($relation_949_mother['mode'] === 'gws' && $relation_949_mother['horse_id'] === 942, 'Intégrité : la mère n’est jamais affectée par un changement de mode du père (aucune régression)');
+// L'ancien identifiant du père (941) redevient maintenant librement réutilisable comme mère,
+// puisque le père n'est plus actif en mode "gws" sur ce cheval :
+$result_mother_reuse_old_father_id = gwseq_set_horse_parent(949, 'mother', array('mode' => 'gws', 'horse_id' => 941));
+gws_test_assert($result_mother_reuse_old_father_id === true, 'Intégrité : un identifiant GWS redevient utilisable pour l’autre rôle dès que la relation qui l’utilisait n’est plus active en mode "gws" (la vérification porte sur l’état ACTIF, jamais sur l’historique)');
 
 // =====================================================================================
 // Sanitation récursive d'un arbre d'ascendants externes (§2-4, §11, §16 du correctif)
@@ -879,6 +990,39 @@ foreach (array('_gwseq_pere_mode', '_gwseq_pere_id', '_gwseq_pere_externe[name]'
 gws_test_assert(strpos($pedigree_box_html, 'name="_gwseq_pere_externe[father][name]"') !== false, 'Meta box Pedigree : les champs de la génération suivante (père du père externe) sont bien rendus, jusqu’à la profondeur autorisée');
 gws_test_assert(strpos($pedigree_box_html, '<details') !== false, 'Meta box Pedigree : la divulgation progressive (§5) utilise l’élément natif <details>, sans JavaScript nécessaire pour se déplier');
 
+// --- Corrections lexicales validées (passe intégrité du pedigree) ---
+gws_test_assert(strpos($pedigree_box_html, 'Cheval déjà enregistré') !== false, 'Correction lexicale : le libellé "Cheval déjà enregistré" est bien utilisé pour le mode GWS');
+gws_test_assert(strpos($pedigree_box_html, 'Cheval déjà présent dans GWS') === false, 'Correction lexicale : l’ancien libellé "Cheval déjà présent dans GWS" n’est plus utilisé');
+gws_test_assert(strpos($pedigree_box_html, 'Nouvel ascendant') !== false, 'Correction lexicale : le libellé "Nouvel ascendant" est bien utilisé pour le mode externe');
+gws_test_assert(strpos($pedigree_box_html, 'Ascendant hors GWS') === false, 'Correction lexicale : l’ancien libellé "Ascendant hors GWS" n’est plus utilisé');
+
+// --- Câblage nécessaire à l'intégrité du pedigree côté UX admin (§1 de la demande) : chaque
+// sélecteur de cheval GWS porte la classe et l'attribut de rôle utilisés par l'écoute déléguée du
+// script pour désactiver, dans l'autre sélecteur, le cheval déjà choisi ---
+gws_test_assert(substr_count($pedigree_box_html, 'class="gwseq-parent-gws-select"') === 2, 'Intégrité UX : les deux sélecteurs de cheval GWS (père et mère) portent la classe utilisée par l’écoute déléguée du script');
+gws_test_assert(strpos($pedigree_box_html, 'data-gwseq-parent-role="father"') !== false && strpos($pedigree_box_html, 'data-gwseq-parent-role="mother"') !== false, 'Intégrité UX : chaque sélecteur porte son propre rôle (père/mère) en attribut data-*');
+
+$cheval_admin_js_source_early = file_get_contents($module_dir . 'assets/cheval-admin.js');
+$disabled_js_start = strpos($cheval_admin_js_source_early, 'gwseq-parent-gws-select');
+$disabled_js_end = strpos($cheval_admin_js_source_early, "Race/Stud-book d'un ascendant externe");
+$disabled_js_block = substr($cheval_admin_js_source_early, $disabled_js_start, $disabled_js_end - $disabled_js_start);
+gws_test_assert($disabled_js_start !== false && $disabled_js_end !== false && $disabled_js_end > $disabled_js_start, 'Intégrité UX : le bloc de synchronisation des sélecteurs GWS est bien un bloc distinct et localisable dans le script');
+gws_test_assert(strpos($disabled_js_block, 'option.disabled') !== false, 'Intégrité UX : le script désactive bien une option plutôt que de la supprimer ou de changer la sélection en cours');
+gws_test_assert(preg_match('/\.value\s*=(?!=)/', $disabled_js_block) === 0, 'Intégrité UX : le script ne modifie jamais automatiquement la valeur sélectionnée d’un sélecteur (uniquement désactivation d’options — les comparaisons "===" sur .value ne sont pas des affectations)');
+
+// --- Rendu réel : le cheval déjà actif comme GWS pour l'autre rôle est bien désactivé dans CE
+// sélecteur dès le rendu serveur (défense supplémentaire, avant même l'exécution du script) ---
+gws_test_make_post(801, GWSEQ_CPT_CHEVAL, 'Cheval Test Rendu Désactivation');
+gws_test_make_post(802, GWSEQ_CPT_CHEVAL, 'Étalon Déjà Père Du Rendu');
+gwseq_set_horse_parent(801, 'father', array('mode' => 'gws', 'horse_id' => 802));
+ob_start();
+gwseq_render_cheval_pedigree_box(gws_test_make_post_object(801));
+$pedigree_box_html_disabled = ob_get_clean();
+gws_test_assert(
+  preg_match('/<option value="802"[^>]*\bdisabled\b[^>]*>/', $pedigree_box_html_disabled) === 1,
+  'Intégrité UX : dans le sélecteur Mère, l’option correspondant au cheval déjà actif comme Père est bien rendue désactivée dès le serveur'
+);
+
 // --- Câblage nécessaire à la mise à jour dynamique du contexte (§9-10 de la demande de
 // correction) : les données traduites sont fournies au script via des attributs data-*, jamais
 // codées en dur côté JavaScript ; les classes utilisées par l'écoute déléguée sont bien présentes ---
@@ -1071,6 +1215,12 @@ $preview_html = gwseq_render_pedigree_node_preview(gwseq_resolve_horse_pedigree(
 gws_test_assert(strpos($preview_html, 'Aperçu Père Externe') !== false, 'Aperçu resolver : le nom du père externe apparaît dans le rendu');
 gws_test_assert(strpos($preview_html, 'Aperçu Grand-père Externe') !== false, 'Aperçu resolver : le pedigree externe multi-générations est bien rendu récursivement (pas seulement le premier niveau)');
 gws_test_assert(strpos($preview_html, 'externe') !== false, 'Aperçu resolver : les ascendants externes sont identifiés comme tels');
+
+// --- Correction lexicale validée : texte de la boîte d'aperçu développeur ---
+ob_start();
+gwseq_render_cheval_pedigree_preview_box(gws_test_make_post_object(810));
+$preview_box_html = ob_get_clean();
+gws_test_assert(strpos($preview_box_html, 'Aperçu du pedigree enregistré — actualisé après sauvegarde.') !== false, 'Correction lexicale : la boîte d’aperçu développeur affiche bien le nouveau texte validé');
 
 // --- Production : rendu réel d'une liste de descendants (liens vers les fiches) ---
 ob_start();

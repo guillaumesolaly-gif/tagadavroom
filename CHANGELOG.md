@@ -1,5 +1,22 @@
 # Changelog — GWS Starter
 
+## 1.12.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 5 : correctif intégrité du pedigree — même cheval GWS comme père et
+  mère.** La recette a révélé qu'il était possible de sélectionner le même cheval GWS comme père
+  ET comme mère d'un même cheval. Corrigé par une validation serveur dans
+  `gwseq_set_horse_parent()` (refuse l'enregistrement, ne modifie aucune meta, ne supprime jamais
+  une relation existante) doublée d'une aide UX admin (le cheval déjà choisi dans un sélecteur est
+  désactivé dans l'autre, resynchronisé en direct, sans jamais modifier une valeur déjà
+  sélectionnée). La validation s'applique identiquement au chemin programmatique prévu pour un
+  futur import. L'auto-parenté reste protégée comme avant ; deux ascendants externes portant le
+  même nom ne sont jamais rapprochés. Deux corrections lexicales au passage : « Cheval déjà
+  présent dans GWS » → « Cheval déjà enregistré », « Ascendant hors GWS » → « Nouvel ascendant »,
+  et le texte de l'aperçu développeur simplifié. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.9.0) pour le détail complet.
+- 32 nouvelles assertions automatisées, suite complète toujours 100 % passante (663 assertions au
+  total) — aucune assertion affaiblie.
+
 ## 1.11.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 5 : correctif complémentaire — suppression d'un ascendant externe

@@ -17,8 +17,9 @@ pedigree de Jamerose) a validé le modèle fonctionnel mais révélé des probl�
 corrigés en 0.6.0 (Race/Stud-book harmonisé, contexte de saisie, compteur de génération,
 convention de présentation des noms). La reprise de cette recette a ensuite révélé un **bug
 bloquant** (corruption des noms accentués à l'enregistrement) ainsi que deux défauts
-complémentaires, corrigés en 0.7.0, puis un dernier défaut (un ascendant externe vidé continuait
-d'exister en base), corrigé en 0.8.0 (voir plus bas) ; en attente d'une nouvelle recette. Voir
+complémentaires, corrigés en 0.7.0, puis un défaut (un ascendant externe vidé continuait d'exister
+en base), corrigé en 0.8.0, puis un défaut d'intégrité (un même cheval GWS pouvait être choisi
+comme père ET comme mère), corrigé en 0.9.0 (voir plus bas) ; en attente d'une nouvelle recette. Voir
 `CHANGELOG.md` de ce dossier pour l'historique détaillé par étape, et la proposition de conception
 validée pour le contexte d'ensemble.
 
@@ -187,6 +188,42 @@ resolver ne produisait déjà, et ne produit toujours jamais, de nœud "external
 correctif) ; une relation vers une fiche GWS continue de se désactiver via le mode « Non renseigné »
 sans jamais supprimer la fiche Cheval référencée.
 
+#### Correctif intégrité 0.9.0 — même cheval GWS comme père et mère
+
+La recette confirme que l'auto-parenté est correctement empêchée (le cheval édité n'est jamais
+proposé comme son propre parent), mais révèle qu'il restait possible de sélectionner le MÊME cheval
+GWS comme père ET comme mère d'un même cheval — une incohérence biologique distincte de
+l'auto-parenté.
+
+**Validation serveur** : `gwseq_set_horse_parent()` refuse désormais l'enregistrement d'une
+relation `gws` qui créerait ce conflit —
+`gwseq_horse_parent_conflicts_with_other_role()` compare la relation soumise à la relation ACTIVE
+déjà enregistrée pour l'autre rôle (père ↔ mère). En cas de conflit, la fonction retourne `false`
+(comportement déterministe et documenté) et NE MODIFIE AUCUNE meta pour ce rôle : la relation
+existante, le cas échéant, n'est jamais supprimée ni remplacée silencieusement par une valeur
+incohérente. Cette validation s'applique identiquement à un appel programmatique direct — c'est
+exactement la même fonction que celle qu'un futur importeur CSV/XLSX utiliserait — sans dépendre de
+`$_POST` ni de JavaScript.
+
+**UX admin** (`assets/cheval-admin.js`) : le cheval déjà actif dans l'autre sélecteur est désormais
+désactivé (`disabled`) dans le sélecteur courant — jamais retiré de la liste, jamais une valeur déjà
+sélectionnée modifiée automatiquement. Si la sélection de l'un des deux sélecteurs change,
+l'exclusion de l'autre se resynchronise en direct. Défense en profondeur : l'option est déjà rendue
+désactivée dès le rendu serveur (avant toute exécution de script), et la validation serveur
+ci-dessus reste de toute façon la seule garantie réelle, y compris JavaScript désactivé.
+
+**Ce qui reste inchangé** : l'auto-parenté reste protégée exactement comme avant ; deux ascendants
+externes ne sont jamais comparés par leur nom — un nom identique (y compris une homonymie avec un
+cheval GWS) ne prouve jamais qu'il s'agit du même cheval, aucun rapprochement automatique n'est
+tenté ; les branches externes inactives conservées lors d'un changement de mode ne sont jamais
+affectées par cette validation ; le resolver et le modèle de pedigree ne sont pas modifiés
+au-delà de cette contrainte.
+
+**Deux corrections lexicales validées, profitées de cette passe** : le libellé du mode GWS devient
+« Cheval déjà enregistré » (au lieu de « Cheval déjà présent dans GWS ») et celui du mode externe
+devient « Nouvel ascendant » (au lieu de « Ascendant hors GWS ») ; le texte de la boîte d'aperçu
+développeur devient « Aperçu du pedigree enregistré — actualisé après sauvegarde. ».
+
 #### Modèle de données (Étape 5)
 
 Pour chaque cheval, deux relations indépendantes : Père et Mère. Chacune est stockée sur trois
@@ -311,6 +348,11 @@ l'état des lieux sur Prestation/Cheval-identité/Commercialisation).
   d'enregistrer une fois pour qu'elle soit définitivement nettoyée. Aucune migration automatique
   n'a été effectuée sur les données existantes, pour les mêmes raisons de prudence que pour le
   correctif Unicode ci-dessus.
+- **Aucune migration automatique d'une incohérence père/mère déjà enregistrée avant le correctif
+  0.9.0** : une fiche où le même cheval GWS était déjà stocké comme père ET comme mère avant cette
+  version resterait dans cet état tant qu'un utilisateur ne modifie pas explicitement l'un des deux
+  côtés (la validation ne s'applique qu'aux NOUVELLES affectations soumises, jamais à une
+  réécriture automatique d'une donnée déjà en base).
 
 #### Pistes futures actées en roadmap (aucun développement à ce stade)
 
@@ -398,7 +440,7 @@ saisi de Jamerose, un test à la fois :
 vide) :
 
 17. Créer un ascendant externe (nom saisi, éventuellement une race), enregistrer, puis effacer
-    entièrement le champ Nom (en laissant le mode sur « Ascendant hors GWS ») et enregistrer à
+    entièrement le champ Nom (en laissant le mode sur « Nouvel ascendant ») et enregistrer à
     nouveau : recharger la fiche et vérifier que l'ascendant NE réapparaît PAS — ni dans le champ
     Nom, ni dans la boîte « Pedigree résolu ».
 18. Reproduire le même essai avec un ascendant possédant lui-même un père/une mère renseigné(e) :
@@ -415,6 +457,28 @@ vide) :
 22. Vérifier qu'une relation vers un cheval GWS, une fois désactivée via « Non renseigné », ne
     supprime jamais la fiche Cheval du cheval qui était référencé (elle reste normalement
     consultable et modifiable).
+
+**Étapes ajoutées pour le correctif intégrité 0.9.0** (même cheval GWS impossible comme père et
+mère) :
+
+23. Sélectionner un cheval GWS comme Père, puis ouvrir le sélecteur Mère : vérifier que ce même
+    cheval y apparaît désactivé (grisé, non sélectionnable), sans avoir été retiré de la liste.
+24. Changer la sélection du Père pour un autre cheval : vérifier que le sélecteur Mère se met à
+    jour en direct (l'ancien cheval redevient sélectionnable, le nouveau devient désactivé), sans
+    recharger la page.
+25. Vérifier que si la Mère a déjà une valeur sélectionnée qui n'est pas concernée par le
+    changement, elle n'est jamais modifiée automatiquement par ce réajustement.
+26. Forcer malgré tout l'enregistrement du même cheval comme père et mère (JavaScript désactivé, ou
+    en modifiant la requête) : vérifier que l'enregistrement de la seconde relation identique est
+    refusé et que la relation existante n'est ni supprimée ni corrompue — recharger la fiche pour
+    confirmer l'état conservé.
+27. Vérifier que l'auto-parenté reste impossible comme avant (le cheval édité n'apparaît toujours
+    pas dans ses propres sélecteurs Père/Mère).
+28. Vérifier qu'un pedigree mêlant un père GWS et une mère externe (ou l'inverse) portant le même
+    nom qu'un cheval GWS existant s'enregistre normalement, sans blocage ni confusion.
+29. Relire les libellés des radios Père/Mère : « Cheval déjà enregistré » et « Nouvel ascendant » ;
+    et le texte de la boîte d'aperçu développeur : « Aperçu du pedigree enregistré — actualisé
+    après sauvegarde. ».
 
 ### Cheval (Étape 4)
 

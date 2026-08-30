@@ -5,6 +5,39 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.9.0 — Étape 5 : correctif intégrité du pedigree — même cheval GWS comme père et mère
+
+Correctif suite à un nouveau défaut observé en recette runtime : il était possible de sélectionner
+le même cheval GWS comme père ET comme mère d'un même cheval — une incohérence biologique
+distincte de l'auto-parenté (déjà correctement empêchée).
+
+- **Validation serveur** : `gwseq_set_horse_parent()` refuse désormais l'enregistrement d'une
+  relation "gws" qui créerait ce conflit — le même cheval GWS déjà actif comme l'autre parent
+  (`gwseq_horse_parent_conflicts_with_other_role()`). Retourne `false` (comportement documenté,
+  vérifiable par un appel) et ne modifie AUCUNE meta pour ce rôle dans ce cas : la relation
+  existante, le cas échéant, n'est jamais supprimée ni remplacée silencieusement. Cette validation
+  s'applique identiquement à un appel programmatique direct (le futur chemin d'import), puisque
+  c'est exactement la même fonction, sans dépendre de $_POST ni de JavaScript.
+- **UX admin** (`assets/cheval-admin.js`) : le cheval déjà actif dans l'autre sélecteur (père ↔
+  mère) est désormais désactivé dans le sélecteur courant, et cette exclusion se resynchronise en
+  direct si l'autre sélecteur change — sans jamais modifier automatiquement une valeur déjà
+  sélectionnée. Une aide à la saisie uniquement ; la validation serveur reste la seule garantie
+  réelle, y compris avec JavaScript désactivé (l'option est déjà rendue désactivée dès le serveur,
+  défense en profondeur).
+- **Ce qui reste inchangé** : l'auto-parenté reste protégée comme avant ; deux ascendants externes
+  ne sont jamais comparés par leur nom (aucun rapprochement, même en cas d'homonymie avec un cheval
+  GWS) ; les branches externes inactives conservées lors d'un changement de mode ne sont jamais
+  affectées ; le resolver et le modèle de pedigree ne sont pas modifiés au-delà de cette contrainte.
+- **Corrections lexicales validées** : « Cheval déjà présent dans GWS » → « Cheval déjà
+  enregistré » ; « Ascendant hors GWS » → « Nouvel ascendant » ; texte de l'aperçu développeur →
+  « Aperçu du pedigree enregistré — actualisé après sauvegarde. ».
+- **Compatibilité** : aucune migration automatique d'une éventuelle incohérence déjà enregistrée
+  avant cette version (un même cheval déjà stocké comme père et mère d'une fiche resterait dans cet
+  état jusqu'à une modification explicite de l'un des deux côtés par l'utilisateur).
+- 32 nouvelles assertions dans le test Pedigree (242 au total). Suite complète rejouée : 10
+  fichiers, 663 assertions, 100 % vertes, zéro avertissement PHP.
+- Versions : GWS Core 1.11.0 → 1.12.0, GWS Equestrian 0.8.0 → 0.9.0.
+
 ## 0.8.0 — Étape 5 : correctif complémentaire — suppression d'un ascendant externe vide
 
 Correctif suite à un nouveau défaut observé en reprise de recette runtime : un ascendant externe
