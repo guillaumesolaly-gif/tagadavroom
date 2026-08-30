@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) exit;
  */
 function gwseq_rename_groupe_excerpt_meta_box() {
   remove_meta_box('postexcerpt', GWSEQ_CPT_GROUPE, 'normal');
-  add_meta_box('gwseq-groupe-description', 'Description courte', 'post_excerpt_meta_box', GWSEQ_CPT_GROUPE, 'normal', 'default');
+  add_meta_box('gwseq-groupe-description', __('Description courte', 'gws-core'), 'post_excerpt_meta_box', GWSEQ_CPT_GROUPE, 'normal', 'default');
 }
 add_action('add_meta_boxes_' . GWSEQ_CPT_GROUPE, 'gwseq_rename_groupe_excerpt_meta_box');
 
@@ -41,8 +41,8 @@ function gwseq_count_prestations_in_groupe($groupe_id) {
 }
 
 function gwseq_groupe_admin_columns($columns) {
-  $columns['gwseq_prestations_count'] = 'Prestations';
-  $columns['gwseq_ordre'] = 'Ordre';
+  $columns['gwseq_prestations_count'] = __('Prestations', 'gws-core');
+  $columns['gwseq_ordre'] = __('Ordre', 'gws-core');
   return $columns;
 }
 add_filter('manage_' . GWSEQ_CPT_GROUPE . '_posts_columns', 'gwseq_groupe_admin_columns');

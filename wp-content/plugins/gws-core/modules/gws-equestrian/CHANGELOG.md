@@ -5,6 +5,66 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.3.3 — Étape 3 : corrections post-recette runtime (presets, UX, i18n)
+
+Trois corrections suite au CR de recette runtime de GWS Core 1.6.2 / GWS Equestrian 0.3.2 :
+
+- **Cause racine et correction du bug des modèles de prestations (bloquant).** Le CPT
+  `gwseq_prestation` a `show_in_rest => true` depuis l'Étape 1, donc WordPress lui applique
+  l'éditeur par blocs par défaut. Le sélecteur de modèle (`includes/presets.php`) s'accroche au
+  hook `edit_form_after_title`, propre au gabarit d'édition CLASSIQUE
+  (`wp-admin/edit-form-advanced.php`) : cette action n'est jamais déclenchée par le gabarit de
+  l'éditeur par blocs (`edit-form-blocks.php`), d'où l'absence totale et silencieuse du bloc
+  « Partir d'un modèle » en recette. Les meta boxes classiques (Groupe tarifaire, Tarification)
+  fonctionnaient malgré tout grâce à la compatibilité descendante de `add_meta_box()` dans
+  l'éditeur par blocs — compatibilité qui ne s'étend pas aux actions du gabarit classique.
+  Correction : nouveau fichier `includes/prestation-editor.php`, qui désactive l'éditeur par
+  blocs pour ce seul post type via le filtre natif `use_block_editor_for_post_type`, ce qui
+  restaure le déclenchement réel de `edit_form_after_title`. `show_in_rest` reste activé (les
+  deux réglages sont indépendants). Aucun second mécanisme d'affichage ajouté.
+- **UX Nom/Description de la fiche Prestation.** `post_title`/`post_content` restent les seules
+  sources de vérité (aucune meta dupliquée) ; le retour à l'éditeur classique (ci-dessus) élimine
+  la confusion visuelle signalée en recette (bloc pouvant remonter au-dessus du titre) puisque le
+  gabarit classique place le titre en premier, de façon prévisible. Espace réservé du titre
+  personnalisé (« Nom de la prestation » au lieu du texte générique WordPress) et libellé
+  « Description » injecté juste au-dessus de l'éditeur natif — uniquement des ré-étiquetages au
+  rendu, aucune donnée ajoutée. Arbitrage explicite : l'éditeur classique (TinyMCE) est conservé
+  sans restriction de sa barre d'outils (couvre déjà largement le besoin réel — texte, gras,
+  italique, listes, liens — sans permettre de construire un layout, contrairement à l'éditeur par
+  blocs ; une personnalisation plus fine serait une customisation fragile d'un composant natif
+  pour un bénéfice marginal, non retenue).
+- **Internationalisation.** Toutes les chaînes d'interface du module (labels de CPT/taxonomie,
+  options de tarification/unités/devise/affichage des prix, meta boxes, résumé de tarif, modèles
+  de prestations, composant répétable) passent désormais par les fonctions de traduction
+  WordPress (`__()`, `esc_html__()`, `esc_attr__()`, `esc_html_e()`, `esc_attr_e()`) avec le text
+  domain unique `gws-core` (cœur et modules métier partagent le même domaine — ce sont des
+  sous-fonctionnalités d'un seul plugin). `gws-core.php` charge désormais les traductions
+  (`load_plugin_textdomain()`, en-tête `Domain Path: /languages`, voir
+  `wp-content/plugins/gws-core/languages/README.md`). Correction du bug signalé (`£ HT`) : le
+  suffixe HT/TTC est une chaîne traduisible indépendante de la devise — une devise ne détermine
+  jamais une langue et réciproquement ; les valeurs techniques stockées (`ht`, `ttc`) restent
+  inchangées. Les identifiants de modèles de prestations (`includes/presets.php`) ont été
+  restructurés en identifiants techniques stables non traduits (ex. `pension_pre_avec_infra`),
+  distincts de leur libellé affiché désormais traductible — évite qu'un identifiant d'URL dépende
+  d'un texte traduit. Le contenu saisi par le professionnel (noms, descriptions, groupes,
+  libellés personnalisés) n'est jamais passé dans une fonction de traduction. Le module QA
+  (`includes/qa-repeater.php`, jamais actif en production) n'a délibérément pas été
+  internationalisé : outil de développement jetable, jamais vu par un utilisateur réel.
+- Fichiers créés : `includes/prestation-editor.php`,
+  `wp-content/plugins/gws-core/languages/README.md`.
+- Fichiers modifiés : `includes/post-types.php`, `includes/taxonomies.php`, `includes/admin-ui.php`,
+  `includes/groupe-admin.php`, `includes/settings.php`, `includes/prestation-fields.php`,
+  `includes/presets.php`, `includes/repeater-field.php` (i18n uniquement, aucune logique
+  changée) ; `wp-content/plugins/gws-core/gws-core.php` (chargement des traductions — changement
+  du cœur explicitement justifié : prérequis technique direct et nécessaire pour que les appels
+  `__()` du module produisent un jour un effet réel).
+- 37 nouvelles assertions dans le nouveau fichier `tests/gws-equestrian-prestation-editor-test.php`,
+  dont un test du comportement réel du filtre `use_block_editor_for_post_type` (pas seulement sa
+  présence), du HTML effectivement rendu par le sélecteur de modèle, et du text domain utilisé
+  par chaque appel de traduction rencontré. Les assertions existantes de
+  `gws-equestrian-prestations-logic-test.php` portant sur les presets ont été mises à jour pour
+  utiliser les nouveaux identifiants techniques stables (même couverture, pas de régression).
+
 ## 0.3.2 — Étape 3 : "Sur devis" devient fonctionnellement "Sur demande"
 
 Dernier ajustement fonctionnel avant recette runtime :

@@ -22,12 +22,12 @@ if (!defined('ABSPATH')) exit;
 function gwseq_register_post_types() {
   register_post_type(GWSEQ_CPT_PRESTATION, array(
     'labels' => array(
-      'name' => 'Prestations',
-      'singular_name' => 'Prestation',
-      'add_new_item' => 'Ajouter une prestation',
-      'edit_item' => 'Modifier la prestation',
-      'all_items' => 'Prestations',
-      'not_found' => 'Aucune prestation trouvée',
+      'name' => __('Prestations', 'gws-core'),
+      'singular_name' => __('Prestation', 'gws-core'),
+      'add_new_item' => __('Ajouter une prestation', 'gws-core'),
+      'edit_item' => __('Modifier la prestation', 'gws-core'),
+      'all_items' => __('Prestations', 'gws-core'),
+      'not_found' => __('Aucune prestation trouvée', 'gws-core'),
     ),
     'public' => true,
     'has_archive' => true,
@@ -39,12 +39,12 @@ function gwseq_register_post_types() {
 
   register_post_type(GWSEQ_CPT_GROUPE, array(
     'labels' => array(
-      'name' => 'Groupes tarifaires',
-      'singular_name' => 'Groupe tarifaire',
-      'add_new_item' => 'Ajouter un groupe tarifaire',
-      'edit_item' => 'Modifier le groupe tarifaire',
-      'all_items' => 'Groupes tarifaires',
-      'not_found' => 'Aucun groupe tarifaire trouvé',
+      'name' => __('Groupes tarifaires', 'gws-core'),
+      'singular_name' => __('Groupe tarifaire', 'gws-core'),
+      'add_new_item' => __('Ajouter un groupe tarifaire', 'gws-core'),
+      'edit_item' => __('Modifier le groupe tarifaire', 'gws-core'),
+      'all_items' => __('Groupes tarifaires', 'gws-core'),
+      'not_found' => __('Aucun groupe tarifaire trouvé', 'gws-core'),
     ),
     'public' => false,
     'publicly_queryable' => false,
@@ -61,12 +61,12 @@ function gwseq_register_post_types() {
 
   register_post_type(GWSEQ_CPT_CHEVAL, array(
     'labels' => array(
-      'name' => 'Chevaux',
-      'singular_name' => 'Cheval',
-      'add_new_item' => 'Ajouter un cheval',
-      'edit_item' => 'Modifier la fiche cheval',
-      'all_items' => 'Chevaux',
-      'not_found' => 'Aucun cheval trouvé',
+      'name' => __('Chevaux', 'gws-core'),
+      'singular_name' => __('Cheval', 'gws-core'),
+      'add_new_item' => __('Ajouter un cheval', 'gws-core'),
+      'edit_item' => __('Modifier la fiche cheval', 'gws-core'),
+      'all_items' => __('Chevaux', 'gws-core'),
+      'not_found' => __('Aucun cheval trouvé', 'gws-core'),
     ),
     'public' => true,
     'has_archive' => true,

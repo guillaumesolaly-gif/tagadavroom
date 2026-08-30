@@ -46,6 +46,51 @@ meta custom, WordPress gère nativement la sauvegarde des trois champs.
 - **Réglage de devise** (même écran) : EUR par défaut, GBP/USD/CHF disponibles. Mapping local
   code → symbole (`gwseq_currency_symbol()`), aucune bibliothèque externe, aucun taux de change.
 
+### Corrections post-recette runtime (0.3.3)
+
+La première recette runtime de l'Étape 3 (GWS Core 1.6.2) a validé l'ensemble du modèle métier,
+de la persistance et de la tarification, mais a révélé trois points corrigés dans cette version :
+
+- **Modèles de prestations inaccessibles (bloquant).** Cause racine : `gwseq_prestation` utilise
+  l'éditeur par blocs par défaut (`show_in_rest => true` depuis l'Étape 1), qui ne déclenche
+  jamais le hook classique (`edit_form_after_title`) utilisé par le sélecteur de modèle — d'où son
+  absence totale et silencieuse, malgré un code fonctionnellement correct. Corrigé en désactivant
+  l'éditeur par blocs pour ce seul post type (`includes/prestation-editor.php`, filtre natif
+  `use_block_editor_for_post_type`), qui restaure le gabarit classique. `show_in_rest` reste
+  activé (réglage indépendant de l'éditeur affiché).
+- **UX Nom/Description.** Le retour à l'éditeur classique règle aussi la confusion visuelle
+  signalée (bloc pouvant remonter au-dessus du titre dans l'éditeur par blocs) : le gabarit
+  classique place le titre en premier, de façon prévisible. Espace réservé du titre personnalisé
+  (« Nom de la prestation ») et libellé « Description » ajouté au-dessus de l'éditeur natif —
+  aucune donnée ajoutée, `post_title`/`post_content` restent les seules sources de vérité.
+- **Internationalisation.** Toutes les chaînes d'interface du module passent désormais par les
+  fonctions de traduction WordPress avec le text domain `gws-core` (partagé avec le cœur — voir
+  `wp-content/plugins/gws-core/languages/README.md`). Le suffixe HT/TTC, signalé produisant
+  `£ HT` avec la devise GBP, est désormais une chaîne traduisible indépendante de la devise
+  choisie (une devise ne détermine jamais une langue). Le contenu saisi par le professionnel
+  n'est jamais traduit.
+
+Voir `CHANGELOG.md` de ce dossier (0.3.3) pour le détail complet.
+
+#### Recette ciblée sur ces trois corrections
+
+1. **Modèles de prestations** : Prestations > Ajouter — vérifier qu'un bloc « Comment
+   souhaitez-vous commencer ? » apparaît immédiatement sous le titre, avec un sélecteur organisé
+   par familles (Pension/Travail/Cours/Élevage/Reproduction/Autres). Choisir un modèle, cliquer
+   « Préremplir depuis ce modèle » : le titre se remplit. Enregistrer, puis modifier librement le
+   nom : rien ne rattache la prestation créée au modèle d'origine.
+2. **UX Nom/Description** : sur ce même écran, vérifier que le champ titre est immédiatement
+   identifiable (espace réservé « Nom de la prestation ») et qu'un libellé « Description »
+   apparaît clairement au-dessus de la zone de texte, sans qu'aucun bloc ne les recouvre ou ne les
+   fasse disparaître visuellement à l'ouverture de l'écran.
+3. **i18n** : si une traduction anglaise du plugin est installée (voir
+   `wp-content/plugins/gws-core/languages/README.md`), vérifier que les libellés de l'interface
+   (modes de tarification, unités, réglages) s'affichent en anglais et que le suffixe HT/TTC
+   affiche sa traduction anglaise, quelle que soit la devise choisie (y compris GBP). Sans
+   traduction installée, vérifier au minimum que rien ne s'affiche cassé ou en anglais partiel.
+4. Revérifier rapidement un point déjà validé pour confirmer l'absence de régression : créer une
+   prestation avec un prix unique, l'enregistrer, vérifier la colonne Tarif de la liste.
+
 ### Arbitrages techniques de l'Étape 3
 
 - **Catégorie métier et groupe tarifaire restent fusionnés** (décision de l'Étape 1 confirmée) :

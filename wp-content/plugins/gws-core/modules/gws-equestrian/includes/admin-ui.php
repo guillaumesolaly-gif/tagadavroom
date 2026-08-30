@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
  */
 function gwseq_rename_order_meta_box($post_type) {
   remove_meta_box('pageparentdiv', $post_type, 'side');
-  add_meta_box('gwseq-ordre-' . $post_type, 'Ordre d’affichage', 'page_attributes_meta_box', $post_type, 'side', 'default');
+  add_meta_box('gwseq-ordre-' . $post_type, __('Ordre d’affichage', 'gws-core'), 'page_attributes_meta_box', $post_type, 'side', 'default');
 }
 
 add_action('add_meta_boxes_' . GWSEQ_CPT_PRESTATION, function () {

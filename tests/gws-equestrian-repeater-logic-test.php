@@ -23,6 +23,9 @@ function esc_url_raw($value) { $value = trim((string) $value); return $value ===
 function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_textarea($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
+// i18n (Étape 3, relecture) : "Actions"/"+ Ajouter une ligne"/"Supprimer" passent désormais par
+// esc_html__() — ce test porte sur la structure du markup, pas sur la traduction.
+function esc_html__($text, $domain = 'default') { return esc_html($text); }
 
 define('ABSPATH', __DIR__ . '/');
 $repo_root = dirname(__DIR__);

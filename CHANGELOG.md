@@ -1,5 +1,18 @@
 # Changelog — GWS Starter
 
+## 1.6.3 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 3, corrections post-recette runtime.** Corrige le bug bloquant des
+  modèles de prestations (cause racine : éditeur par blocs actif par défaut sur `gwseq_prestation`,
+  qui ne déclenche jamais le hook utilisé par le sélecteur de modèle — corrigé en restaurant
+  l'éditeur classique pour ce post type via le filtre natif `use_block_editor_for_post_type`),
+  améliore la présentation Nom/Description de la fiche Prestation, et internationalise
+  l'ensemble des chaînes d'interface du module (text domain `gws-core`, chargement des
+  traductions ajouté dans `gws-core.php`). Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.3.3). Étape 3 toujours en
+  attente de recette runtime ciblée sur ces corrections.
+- 37 nouvelles assertions automatisées, suite existante toujours 100 % passante.
+
 ## 1.6.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 3, dernier ajustement fonctionnel** : le mode de tarification `devis`

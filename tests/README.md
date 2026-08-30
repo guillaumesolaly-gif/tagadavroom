@@ -15,6 +15,7 @@ php tests/schema-homepage-logic-test.php
 php tests/gws-equestrian-foundations-test.php
 php tests/gws-equestrian-repeater-logic-test.php
 php tests/gws-equestrian-prestations-logic-test.php
+php tests/gws-equestrian-prestation-editor-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -79,6 +80,16 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   par défaut/personnalisé/volontairement vide (distinction « jamais initialisé » vs « vidé
   explicitement » via `metadata_exists()`), compatibilité avec les prestations déjà créées en
   1.6.1, absence de prix obligatoire, indépendance vis-à-vis du réglage global « Prix masqués ».
+- Correction post-recette runtime de l'Étape 3 (`gws-equestrian-prestation-editor-test.php`) :
+  cause racine du bug des modèles de prestations (le filtre `use_block_editor_for_post_type`
+  désactive réellement l'éditeur par blocs pour `gwseq_prestation`, jamais globalement), rendu
+  réel du sélecteur de modèle (contenu HTML effectivement produit, pas seulement la présence du
+  hook), absence d'écriture avant sauvegarde et d'indépendance totale après, UX Nom/Description
+  (espace réservé du titre, libellé Description, aucune meta dupliquée), portée des assets, et
+  internationalisation (text domain `gws-core` cohérent sur tous les appels de traduction
+  rencontrés dans le code source du module, HT/TTC indépendants de la devise choisie — y compris
+  le cas GBP signalé en recette —, contenu utilisateur jamais passé dans une fonction de
+  traduction).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

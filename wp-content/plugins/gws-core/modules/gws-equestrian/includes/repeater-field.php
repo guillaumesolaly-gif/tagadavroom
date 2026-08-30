@@ -190,13 +190,13 @@ function gwseq_render_repeater_field($post, $meta_key, $schema, $nonce_action) {
   foreach ($schema as $column) {
     echo '<th>' . esc_html($column['label']) . '</th>';
   }
-  echo '<th class="gwseq-repeater__col-actions"><span class="screen-reader-text">Actions</span></th>';
+  echo '<th class="gwseq-repeater__col-actions"><span class="screen-reader-text">' . esc_html__('Actions', 'gws-core') . '</span></th>';
   echo '</tr></thead><tbody class="gwseq-repeater__rows">';
   foreach ($rows as $index => $row) {
     echo gwseq_repeater_row_markup($meta_key, $schema, is_array($row) ? $row : array(), $index);
   }
   echo '</tbody></table>';
-  echo '<p><button type="button" class="button gwseq-repeater__add">+ Ajouter une ligne</button></p>';
+  echo '<p><button type="button" class="button gwseq-repeater__add">' . esc_html__('+ Ajouter une ligne', 'gws-core') . '</button></p>';
   echo '<template class="gwseq-repeater__template">' . gwseq_repeater_row_markup($meta_key, $schema, array(), '__INDEX__') . '</template>';
   echo '</div>';
 }
@@ -229,7 +229,7 @@ function gwseq_repeater_row_markup($meta_key, $schema, $row, $index) {
     }
     echo '</td>';
   }
-  echo '<td class="gwseq-repeater__col-actions"><button type="button" class="button-link-delete gwseq-repeater__remove">Supprimer</button></td>';
+  echo '<td class="gwseq-repeater__col-actions"><button type="button" class="button-link-delete gwseq-repeater__remove">' . esc_html__('Supprimer', 'gws-core') . '</button></td>';
   echo '</tr>';
   return ob_get_clean();
 }

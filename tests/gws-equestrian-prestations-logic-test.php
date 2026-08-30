@@ -30,6 +30,13 @@ function esc_url_raw($value) { $value = trim((string) $value); return $value ===
 function absint($value) { return abs((int) $value); }
 function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
+// i18n (Étape 3, relecture) : options/libellés passent désormais par les fonctions de traduction
+// WordPress — ce test porte sur la logique métier, pas sur la traduction, donc simples passe-plats.
+function __($text, $domain = 'default') { return $text; }
+function esc_html__($text, $domain = 'default') { return esc_html($text); }
+function esc_attr__($text, $domain = 'default') { return esc_attr($text); }
+function esc_html_e($text, $domain = 'default') { echo esc_html($text); }
+function esc_attr_e($text, $domain = 'default') { echo esc_attr($text); }
 function selected($a, $b) { return $a == $b ? ' selected' : ''; }
 function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
@@ -319,23 +326,23 @@ foreach (array('recolte' => 'Récolte', 'colis' => 'Colis', 'etalon' => 'Étalon
 
 $flat_presets = gwseq_prestation_preset_flat();
 gws_test_assert(
-  ($flat_presets[sanitize_title('Semence — congélation')]['unite'] ?? null) === 'paillette',
+  ($flat_presets['semence_congelation']['unite'] ?? null) === 'paillette',
   'Preset Congélation : unité suggérée corrigée en "paillette" (et non plus "dose")'
 );
 gws_test_assert(
-  ($flat_presets[sanitize_title('Semence — réfrigération')]['unite'] ?? null) === 'recolte',
+  ($flat_presets['semence_refrigeration']['unite'] ?? null) === 'recolte',
   'Preset Réfrigération : unité suggérée "récolte"'
 );
 gws_test_assert(
-  ($flat_presets[sanitize_title('Semence — préparation doses réfrigérées')]['unite'] ?? null) === 'dose',
+  ($flat_presets['semence_preparation_doses']['unite'] ?? null) === 'dose',
   'Preset Préparation doses réfrigérées : unité "dose" confirmée inchangée'
 );
 gws_test_assert(
-  ($flat_presets[sanitize_title('Semence — expédition France / international')]['unite'] ?? null) === 'colis',
+  ($flat_presets['semence_expedition']['unite'] ?? null) === 'colis',
   'Preset Expédition : unité suggérée "colis"'
 );
 gws_test_assert(
-  ($flat_presets[sanitize_title('Spermogramme')]['unite'] ?? null) === 'etalon',
+  ($flat_presets['spermogramme']['unite'] ?? null) === 'etalon',
   'Preset Spermogramme : unité suggérée "étalon"'
 );
 
@@ -344,9 +351,9 @@ gws_test_assert(
 // =====================================================================================
 $flat = gwseq_prestation_preset_flat();
 gws_test_assert(count($flat) === count(array_unique(array_keys($flat))), 'Presets : tous les identifiants générés sont uniques (aucune collision de slug)');
-gws_test_assert(isset($flat[sanitize_title('Pension pré avec infrastructures')]), 'Presets : un modèle attendu est bien présent dans la liste à plat');
+gws_test_assert(isset($flat['pension_pre_avec_infra']), 'Presets : un modèle attendu est bien présent dans la liste à plat');
 
-$_GET['gwseq_preset'] = sanitize_title('IAF / chaleur');
+$_GET['gwseq_preset'] = 'iaf_chaleur';
 $requested = gwseq_get_requested_preset_defaults();
 gws_test_assert($requested !== null && $requested['label'] === 'IAF / chaleur', 'Presets : modèle demandé via le paramètre d’URL correctement résolu');
 gws_test_assert($requested['unite'] === 'chaleur', 'Presets : unité suggérée du modèle correctement transmise');

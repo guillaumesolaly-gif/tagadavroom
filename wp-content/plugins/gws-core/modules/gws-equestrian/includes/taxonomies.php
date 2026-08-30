@@ -12,9 +12,9 @@ if (!defined('ABSPATH')) exit;
 function gwseq_register_taxonomies() {
   register_taxonomy(GWSEQ_TAX_CATEGORIE_CHEVAL, GWSEQ_CPT_CHEVAL, array(
     'labels' => array(
-      'name' => 'Catégories de chevaux',
-      'singular_name' => 'Catégorie de cheval',
-      'add_new_item' => 'Ajouter une catégorie de cheval',
+      'name' => __('Catégories de chevaux', 'gws-core'),
+      'singular_name' => __('Catégorie de cheval', 'gws-core'),
+      'add_new_item' => __('Ajouter une catégorie de cheval', 'gws-core'),
     ),
     'public' => true,
     'hierarchical' => false,

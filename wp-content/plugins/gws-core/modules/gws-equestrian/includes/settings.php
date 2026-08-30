@@ -22,9 +22,9 @@ if (!defined('ABSPATH')) exit;
 
 function gwseq_price_display_mode_options() {
   return array(
-    'ttc' => 'TTC (toutes taxes comprises)',
-    'ht' => 'HT (hors taxes)',
-    'hidden' => 'Prix masqués (aucun tarif affiché publiquement)',
+    'ttc' => __('TTC (toutes taxes comprises)', 'gws-core'),
+    'ht' => __('HT (hors taxes)', 'gws-core'),
+    'hidden' => __('Prix masqués (aucun tarif affiché publiquement)', 'gws-core'),
   );
 }
 
@@ -46,10 +46,10 @@ function gwseq_currency_symbols() {
 
 function gwseq_currency_options() {
   return array(
-    'EUR' => 'Euro (€)',
-    'GBP' => 'Livre sterling (£)',
-    'USD' => 'Dollar américain ($)',
-    'CHF' => 'Franc suisse (CHF)',
+    'EUR' => __('Euro (€)', 'gws-core'),
+    'GBP' => __('Livre sterling (£)', 'gws-core'),
+    'USD' => __('Dollar américain ($)', 'gws-core'),
+    'CHF' => __('Franc suisse (CHF)', 'gws-core'),
   );
 }
 
@@ -100,8 +100,8 @@ add_action('admin_init', 'gwseq_register_settings');
 function gwseq_add_settings_page() {
   add_submenu_page(
     'edit.php?post_type=' . GWSEQ_CPT_PRESTATION,
-    'Réglages — Prestations',
-    'Réglages',
+    __('Réglages — Prestations', 'gws-core'),
+    __('Réglages', 'gws-core'),
     'manage_options',
     'gwseq-prestations-settings',
     'gwseq_render_settings_page'
@@ -114,32 +114,32 @@ function gwseq_render_settings_page() {
   $settings = gwseq_settings();
   ?>
   <div class="wrap">
-    <h1>Réglages — Prestations</h1>
+    <h1><?php esc_html_e('Réglages — Prestations', 'gws-core'); ?></h1>
     <form method="post" action="options.php">
       <?php settings_fields('gwseq_settings_group'); ?>
       <table class="form-table" role="presentation"><tbody>
         <tr>
-          <th scope="row">Affichage des tarifs</th>
+          <th scope="row"><?php esc_html_e('Affichage des tarifs', 'gws-core'); ?></th>
           <td>
             <?php foreach (gwseq_price_display_mode_options() as $key => $label) : ?>
               <label><input type="radio" name="gwseq_settings[price_display_mode]" value="<?php echo esc_attr($key); ?>" <?php checked($settings['price_display_mode'], $key); ?>> <?php echo esc_html($label); ?></label><br>
             <?php endforeach; ?>
-            <p class="description">Indique uniquement la nature des montants déjà saisis : GWS Equestrian ne calcule aucune TVA. « Prix masqués » n’efface aucun montant enregistré — c’est réversible à tout moment.</p>
+            <p class="description"><?php esc_html_e('Indique uniquement la nature des montants déjà saisis : GWS Equestrian ne calcule aucune TVA. « Prix masqués » n’efface aucun montant enregistré — c’est réversible à tout moment.', 'gws-core'); ?></p>
           </td>
         </tr>
         <tr>
-          <th scope="row">Devise</th>
+          <th scope="row"><?php esc_html_e('Devise', 'gws-core'); ?></th>
           <td>
             <select name="gwseq_settings[currency]">
               <?php foreach (gwseq_currency_options() as $key => $label) : ?>
                 <option value="<?php echo esc_attr($key); ?>" <?php selected($settings['currency'], $key); ?>><?php echo esc_html($label); ?></option>
               <?php endforeach; ?>
             </select>
-            <p class="description">Aucun taux de change ni conversion : les montants saisis sont simplement présentés dans cette devise.</p>
+            <p class="description"><?php esc_html_e('Aucun taux de change ni conversion : les montants saisis sont simplement présentés dans cette devise.', 'gws-core'); ?></p>
           </td>
         </tr>
       </tbody></table>
-      <?php submit_button('Enregistrer'); ?>
+      <?php submit_button(); ?>
     </form>
   </div>
   <?php

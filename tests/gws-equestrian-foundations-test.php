@@ -41,6 +41,9 @@ function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
 // register_post_meta n'a besoin que d'exister : les fichiers de l'Étape 3 l'appellent sur 'init'
 // (donc réellement exécuté par ce stub) mais ce test ne porte pas sur les meta enregistrées.
 function register_post_meta($object_type, $meta_key, $args = array()) {}
+// i18n (Étape 3, relecture) : les libellés de post types/taxonomie passent désormais par __() —
+// ce test porte sur les arguments d'enregistrement, pas sur la traduction, donc simple passe-plat.
+function __($text, $domain = 'default') { return $text; }
 
 // Depuis l'Étape 2, module.php charge aussi le composant répétable et sa démonstration QA
 // (includes/repeater-field.php, includes/qa-repeater.php). Ce test ne porte que sur les
