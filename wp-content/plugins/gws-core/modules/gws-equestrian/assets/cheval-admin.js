@@ -1,10 +1,15 @@
 /**
- * Écran d'édition d'une fiche cheval — affichage conditionnel de trois groupes de champs
- * indépendants : précision "Robe : Autre", précision "Race/Stud-book : Autre", et le bloc de prix
- * correspondant au mode de prix choisi (Prix fixe / Fourchette / Sur demande). Même technique que
- * assets/prestation-admin.js (JavaScript natif, aucune dépendance, la sauvegarde réelle reste
- * entièrement gérée côté serveur — voir includes/cheval-fields.php) : ce script ne fait
- * qu'afficher/masquer des blocs déjà présents dans le DOM.
+ * Écran d'édition d'une fiche cheval — affichage conditionnel de plusieurs groupes de champs
+ * indépendants : précision "Robe : Autre", précision "Race/Stud-book : Autre", le bloc de prix
+ * correspondant au mode de prix choisi (Prix fixe / Fourchette / Sur demande), et — depuis
+ * l'Étape 5 — la source de chaque parent (Père/Mère : cheval GWS ou ascendant externe). Même
+ * technique que assets/prestation-admin.js (JavaScript natif, aucune dépendance, la sauvegarde
+ * réelle reste entièrement gérée côté serveur — voir includes/cheval-fields.php et
+ * includes/cheval-pedigree.php) : ce script ne fait qu'afficher/masquer des blocs déjà présents
+ * dans le DOM. Léger, scopé à cet écran, sans erreur si JavaScript est indisponible : les deux
+ * groupes de champs (GWS et externe) restent alors simplement tous deux visibles et le serveur
+ * reste seul autoritaire sur ce qui est réellement enregistré (voir la sanitation par mode dans
+ * includes/cheval-pedigree.php).
  */
 (function () {
   'use strict';
@@ -49,5 +54,29 @@
       prixModeSelect.addEventListener('change', applyPrixMode);
       applyPrixMode();
     }
+
+    // Source du Père / de la Mère (Étape 5) : deux groupes de radios indépendants, noms de champs
+    // distincts (_gwseq_pere_mode / _gwseq_mere_mode) — chacun bascule son propre bloc GWS/externe.
+    [
+      { role: 'father', name: '_gwseq_pere_mode' },
+      { role: 'mother', name: '_gwseq_mere_mode' }
+    ].forEach(function (parent) {
+      var radios = document.getElementsByName(parent.name);
+      if (!radios.length) return;
+
+      function applyParentSource() {
+        var selected = '';
+        radios.forEach(function (radio) {
+          if (radio.checked) selected = radio.value;
+        });
+        setVisible('[data-gwseq-parent-fields="' + parent.role + '-gws"]', selected === 'gws');
+        setVisible('[data-gwseq-parent-fields="' + parent.role + '-external"]', selected === 'external');
+      }
+
+      radios.forEach(function (radio) {
+        radio.addEventListener('change', applyParentSource);
+      });
+      applyParentSource();
+    });
   });
 })();

@@ -1,5 +1,24 @@
 # Changelog — GWS Starter
 
+## 1.8.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 5 : Pedigree** (relations Père/Mère récursives, resolver, production),
+  en attente de sa recette runtime. Chaque parent est soit un cheval déjà présent dans GWS
+  (référence par ID, jamais de duplication de ses données), soit un ascendant hors GWS structuré
+  qui peut lui-même avoir ses propres ascendants externes jusqu'à 4 générations (arbre encodé en
+  JSON, sans jamais créer de fiche artificielle pour un ancêtre non géré comme cheval du client).
+  Un resolver produit une structure de données déterministe et indépendante du HTML (protection
+  contre les cycles directs et indirects, dégradation propre si un parent est supprimé, une seule
+  branche active par relation sans jamais mélanger une source GWS et une source externe),
+  réutilisable plus tard par le rendu web, un export PDF/catalogue ou une API. Nouvelle règle
+  architecturale appliquée à ce code (décidée après l'Étape 4) : les relations peuvent être
+  créées/modifiées programmatiquement sans dépendre du formulaire admin ni fabriquer un faux
+  nonce — préparant un futur import en masse sans refactorer les étapes déjà validées. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.5.0) pour le détail
+  complet.
+- 100 nouvelles assertions automatisées, suite existante toujours 100 % passante (505 assertions
+  au total).
+
 ## 1.7.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 4 gelée définitivement** après recette runtime concluante. Seule

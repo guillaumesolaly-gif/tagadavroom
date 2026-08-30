@@ -5,6 +5,113 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.5.0 — Étape 5 : Pedigree — relations Père/Mère récursives, resolver, production
+
+En attente de sa propre recette runtime. Construit le socle de filiation de la fiche Cheval, sans
+toucher au rendu front (Étape 8) ni aux indices/médias/duplication (étapes suivantes).
+
+- **Relations Père / Mère**, chacune indépendamment soit un cheval déjà présent dans GWS ("mode
+  gws", référence par ID de post, jamais par nom), soit un ascendant hors GWS structuré ("mode
+  external"). **Un ascendant externe n'est pas une simple feuille** : il peut lui-même avoir un
+  père et une mère, également externes, jusqu'à la profondeur maximale du pedigree — un marchand
+  ou un cavalier professionnel dont aucun ascendant n'est géré dans GWS peut ainsi saisir un
+  pedigree complet sur 4 générations sans jamais créer la moindre fiche `gwseq_cheval`
+  artificielle. Chaque niveau reste facultatif (l'utilisateur s'arrête où il veut). Aucun parent
+  n'est jamais requis (un pedigree incomplet est parfaitement acceptable). Auto-référence directe
+  rejetée à la sanitation ; un ID inexistant ou pointant vers un autre post type est également
+  rejeté, jamais fait confiance côté serveur même si le `<select>` d'origine ne proposait que des
+  chevaux valides.
+- **Stockage de la branche externe** : un arbre récursif `{name, breed, father, mother}` encodé en
+  JSON dans une seule meta (`_gwseq_pere_externe`/`_gwseq_mere_externe`), plutôt que des dizaines
+  de meta à plat (`pere_pere_pere_nom`...). JSON plutôt que `serialize()` PHP : représentation
+  lisible, indépendante du langage, plus simple à valider/faire évoluer/importer/projeter vers une
+  future API. Bornée strictement à `GWSEQ_PEDIGREE_MAX_DEPTH - 1` niveaux supplémentaires sous le
+  premier ascendant externe — une structure fournie plus profonde (formulaire trafiqué ou import
+  malveillant) est silencieusement tronquée à la sanitation, jamais un moyen de contourner la
+  limite serveur.
+- **Aucune fiche créée pour un ascendant externe, aucune base globale d'ancêtres, aucune
+  déduplication** : un même étalon externe (ex. « Kannan ») peut être ressaisi indépendamment dans
+  plusieurs pedigrees sans lien entre les saisies — simplicité assumée pour la V1, un futur
+  Network ou référentiel équin pourra améliorer cela.
+- **Une seule branche active par relation, conservation non destructive lors d'un changement de
+  mode** : passer de GWS à externe (ou l'inverse) ne touche JAMAIS les meta de l'autre branche —
+  l'ancienne reste stockée mais inactive, récupérable si l'utilisateur revient en arrière. Le
+  resolver ne lit jamais la branche inactive (aucun mélange possible). Le rattachement d'un
+  ascendant externe à une vraie fiche GWS reste toujours une action explicite de l'utilisateur
+  (choix dans le `<select>`), jamais une correspondance devinée automatiquement par nom.
+- **Aucune duplication de données pour la branche GWS (§22)** : seule la relation (mode + ID) est
+  stockée sur la fiche enfant. Nom, race, Global Horse ID ou pedigree du parent GWS ne sont jamais
+  copiés — le resolver les récupère à la source à chaque résolution, donc un changement de
+  nom/race/pedigree d'un parent GWS est automatiquement répercuté à tous ses descendants, sans
+  aucune resynchronisation manuelle.
+- **UX en divulgation progressive** (`includes/cheval-pedigree.php`) : Nom + Race toujours
+  visibles pour un ascendant externe, puis — s'il reste de la profondeur disponible — un élément
+  natif `<details>` (aucun JavaScript nécessaire pour ce repli/dépli, accessible par construction)
+  révèle Père/Mère de cet ascendant. Un utilisateur qui ne connaît que le père et la mère ne
+  remplit que le père et la mère ; un utilisateur avec un pedigree complet peut le renseigner sans
+  jamais être confronté à un formulaire massif dès le premier écran.
+- **Nouvelle règle architecturale appliquée à ce nouveau code (décidée après l'Étape 4)** :
+  `gwseq_set_horse_parent($cheval_id, $role, $args)` est une fonction métier pure, jamais couplée
+  à `$_POST` ni à un nonce/capability — réutilisable telle quelle par un futur importeur
+  CSV/XLSX, une migration ou WP-CLI, y compris pour fournir une structure externe imbriquée sur
+  plusieurs générations. Le formulaire admin (`gwseq_save_cheval_pedigree_meta()`) n'en est qu'UN
+  client parmi d'autres : il ajoute uniquement les garde-fous de formulaire (nonce/capability/
+  autosave/révision) puis délègue entièrement la persistance. Prestation/Cheval-identité/
+  Commercialisation (Étapes 3-4) n'ont volontairement PAS été refactorées à cette occasion (voir
+  le mini-audit de la version 0.4.1) — seul le nouveau code applique la règle.
+- **Resolver** (`includes/pedigree-resolver.php`, nouveau) : produit une structure de données
+  déterministe (jamais de HTML), réutilisable plus tard par le rendu web (Étape 8), un export
+  PDF/catalogue, ou une projection API — aucune donnée privée exposée par défaut (seuls
+  id/global_id [uniquement pour une fiche GWS]/nom/race/filiation apparaissent, jamais statut
+  commercial, prix, éleveur, propriétaire, UELN/SIRE, catégories). Traite les branches GWS et
+  externes avec exactement la même logique de comptage de génération, un mélange des deux dans un
+  même pedigree (ex. une fiche GWS dont un ascendant intermédiaire a lui-même un parent externe)
+  ne crée donc aucune ambiguïté de profondeur. Profondeur par défaut : 4 générations d'ascendants
+  au-delà de la fiche elle-même (parents/grands-parents/arrière-grands-parents/
+  arrière-arrière-grands-parents, 30 nœuds maximum), au-delà desquelles un nœud sentinelle
+  `depth_limit` remplace une relation réelle plutôt que de la confondre avec une absence de
+  donnée — y compris si une donnée corrompue en base contenait davantage de générations que la
+  limite autorisée (le resolver borne sa propre récursion indépendamment de ce qui est stocké).
+  Protection contre les cycles directs (déjà rejetés à la sauvegarde pour une relation GWS,
+  contrôle redondant au resolver par défense en profondeur) et indirects (impossibles à empêcher
+  à la sauvegarde, détectés et interrompus proprement à la résolution, sans boucle infinie ni
+  erreur fatale) — une branche externe ne peut jamais former de cycle, elle n'est composée que de
+  texte structuré. Mémoïsation locale à un seul appel de résolution (clé = identifiant + profondeur
+  restante, pas seulement l'identifiant, pour rester correcte face à un même ascendant GWS croisé
+  à deux profondeurs différentes) — aucun cache persistant construit en V1.
+- **Suppression d'un parent référencé (§23)** : mise à la corbeille — résolution inchangée, les
+  données du parent restent intactes. Suppression définitive — dégradation propre (nœud
+  `unavailable`), jamais d'erreur fatale, jamais de casse du reste de la fiche. Aucun hook de
+  nettoyage automatique n'a été installé sur la suppression d'un cheval : cela reviendrait à
+  modifier automatiquement d'autres fiches suite à une action sur celle-ci, ce que la règle "pas
+  de destruction de données" interdit depuis l'Étape 4.
+- **Production** (`gwseq_get_horse_offspring()`, inchangée par le correctif) : descendants
+  calculés à la volée par requête inverse (jamais une liste stockée sur la fiche du parent), et
+  uniquement pour de vraies relations entre deux fiches `gwseq_cheval` — un ascendant externe,
+  même ressaisi à l'identique dans plusieurs pedigrees, n'est jamais rapproché ni compté comme une
+  production quelconque. Affichée en meta box uniquement si au moins un descendant existe (absence
+  de donnée = absence d'affichage, y compris pour une meta box entière).
+- **Aperçu de résolution du pedigree** : boîte de vérification en lecture seule, réservée aux
+  environnements local/développement (même garde que le Global Horse ID) — simple liste imbriquée
+  sans style, rendant désormais correctement les branches externes multi-générations (et non plus
+  seulement leur premier niveau), explicitement documentée comme un outil de vérification et non
+  le futur rendu public de l'Étape 8.
+- Fichiers créés : `includes/pedigree-resolver.php`, `includes/cheval-pedigree.php`.
+- Fichiers modifiés : `module.php` (chargement des deux nouveaux fichiers, version) ;
+  `assets/cheval-admin.js` (affichage conditionnel de la source Père/Mère, léger, sans erreur si
+  JavaScript est indisponible — le serveur reste seul autoritaire).
+- 100 nouvelles assertions dans le nouveau fichier `tests/gws-equestrian-pedigree-logic-test.php`
+  (relations pures, sanitation récursive d'un arbre externe avec troncature de profondeur,
+  persistance et changement de mode sans mélange des branches, chemin programmatique sans
+  `$_POST`/nonce pour une structure externe imbriquée, resolver — ascendant externe simple/avec
+  parents externes/branche complète/pedigree entièrement externe/mélange GWS+externe/profondeur
+  maximale/donnée corrompue en base bornée quand même, cycles direct/indirect, parent supprimé,
+  mise à jour répercutée automatiquement, mémoïsation d'un ascendant GWS croisé deux fois —,
+  production sans déduplication des externes, sécurité de la sauvegarde y compris sur une
+  structure externe profonde soumise via un vrai `$_POST`, escaping admin, divulgation progressive
+  via `<details>`, internationalisation). Suite existante (405 assertions) toujours 100 % passante
+  — aucune régression sur les étapes précédentes.
+
 ## 0.4.1 — Étape 4 : micro-correction post-recette (présentation de l'âge) et gel
 
 La recette runtime de l'Étape 4 (0.4.0) est concluante. Une seule micro-correction demandée

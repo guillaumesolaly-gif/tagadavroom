@@ -17,6 +17,7 @@ php tests/gws-equestrian-repeater-logic-test.php
 php tests/gws-equestrian-prestations-logic-test.php
 php tests/gws-equestrian-prestation-editor-test.php
 php tests/gws-equestrian-cheval-logic-test.php
+php tests/gws-equestrian-pedigree-logic-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -113,6 +114,25 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   accordée « an(s) » et de toute mention permanente d'approximation ; aide discrète disponible en
   attribut `title` uniquement) — le calcul sous-jacent (convention métier équine) reste inchangé.
 
+- Pedigree de `gws-equestrian`, Étape 5 (`gws-equestrian-pedigree-logic-test.php`) : relations
+  Père/Mère (référence à un cheval GWS existant, jamais par nom, jamais d'auto-référence, jamais
+  d'ID d'un autre post type accepté), ascendants externes structurés récursifs (un ascendant
+  externe peut lui-même avoir un père et une mère externes jusqu'à 4 générations, arbre borné et
+  sanitizé à chaque niveau, une profondeur excessive fournie en entrée est silencieusement
+  ignorée), conservation non destructive lors d'un changement de source GWS ⇄ externe (l'ancienne
+  branche reste stockée mais inactive, le resolver ne mélange jamais les deux), chemin
+  programmatique (une relation, y compris une structure externe imbriquée, peut être créée sans
+  `$_POST` ni nonce fabriqué), resolver (structure de données déterministe indépendante du HTML,
+  mélange naturel de branches GWS et externes dans un même pedigree, profondeur maximale avec
+  troncature même face à une donnée corrompue en base, cycles directs et indirects détectés sans
+  boucle infinie, dégradation propre si un parent est supprimé définitivement, mise à jour d'un
+  parent GWS répercutée automatiquement sans resynchronisation, mémoïsation d'un ascendant croisé
+  deux fois dans un pedigree), production (descendants calculés à la volée, jamais stockés, jamais
+  de rapprochement entre ascendants externes identiques), sécurité de la sauvegarde (nonce,
+  permissions, autosave, révision, sanitation serveur y compris sur une structure externe profonde
+  soumise via un vrai `$_POST`), divulgation progressive de l'interface (élément natif `<details>`,
+  aucun JavaScript requis pour son repli/dépli), et internationalisation.
+
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
 - Rendu HTML réel des gabarits, comportement de l'éditeur (sélecteur de gabarit de page).
@@ -126,6 +146,9 @@ un processus PHP séparé — il peut aussi être lancé seul.)
 - Rendu navigateur réel de l'écran d'édition d'une fiche cheval : apparence effective de la liste
   de cases à cocher native de `post_categories_meta_box()` (widget WordPress non réimplémenté ici),
   bascule visuelle des champs conditionnels par `assets/cheval-admin.js` (robe/race « Autre », mode
-  de prix), ordre visuel réel des meta boxes (Identité/Commercialisation/Catégories/Ordre/Image à la
-  une), et disparition effective de l'affordance de création rapide de catégorie une fois le CSS
-  chargé dans une vraie page d'administration.
+  de prix, source Père/Mère), ordre visuel réel des meta boxes (Identité/Commercialisation/
+  Pedigree/Catégories/Ordre/Image à la une), et disparition effective de l'affordance de création
+  rapide de catégorie une fois le CSS chargé dans une vraie page d'administration.
+- Comportement navigateur réel de la divulgation progressive du pedigree (élément `<details>`
+  imbriqué sur plusieurs niveaux) : ouverture/fermeture au clic, accessibilité clavier, lisibilité
+  visuelle d'un arbre externe profondément imbriqué.
