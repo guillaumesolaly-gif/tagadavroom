@@ -1,5 +1,21 @@
 # Changelog — GWS Starter
 
+## 1.7.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 4 gelée définitivement** après recette runtime concluante. Seule
+  correction : présentation de l'âge du cheval (« 1 an »/« 7 ans » au lieu de « ≈ 7 an(s) (âge
+  calendaire approximatif, jamais au jour près) ») — le calcul lui-même (convention métier
+  équine : un an de plus au 1er janvier) était déjà correct et reste inchangé.
+- **Mini-audit Import/Onboarding** (nouveau besoin produit confirmé pour une future version,
+  aucun développement à ce stade) sur Groupe tarifaire/Prestation/Cheval : aucune modification
+  nécessaire immédiatement ; une factorisation minimale de la persistance des meta de
+  Prestation/Cheval est identifiée et proposée pour le jour où l'import sera engagé, mais
+  volontairement non réalisée maintenant. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.4.1) et son `README.md`
+  pour le détail complet.
+- 11 nouvelles assertions automatisées, suite existante toujours 100 % passante (404 assertions
+  au total).
+
 ## 1.7.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 4 : Cheval — socle métier, catégories, commercialisation, Global

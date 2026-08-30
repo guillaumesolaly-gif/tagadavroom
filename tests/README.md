@@ -108,6 +108,10 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   type (comportement du filtre, pas seulement sa présence) avec un arbitrage distinct de celui de
   la Prestation, colonnes d'administration (Catégories/Statut commercial/Prix/Ordre), portée des
   assets, et internationalisation (text domain cohérent, contenu utilisateur jamais traduit).
+  Complété après relecture (micro-correction 0.4.1) : présentation de l'âge (« 1 an »/« 7 ans »
+  accordés via `_n()`, exemples exacts de la demande, absence du symbole « ≈ », de la forme non
+  accordée « an(s) » et de toute mention permanente d'approximation ; aide discrète disponible en
+  attribut `title` uniquement) — le calcul sous-jacent (convention métier équine) reste inchangé.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

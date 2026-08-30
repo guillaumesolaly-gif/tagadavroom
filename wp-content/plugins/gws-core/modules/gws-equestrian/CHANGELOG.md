@@ -5,6 +5,40 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.4.1 — Étape 4 : micro-correction post-recette (présentation de l'âge) et gel
+
+La recette runtime de l'Étape 4 (0.4.0) est concluante. Une seule micro-correction demandée
+avant gel définitif :
+
+- **Présentation de l'âge** : le calcul (`année courante - année de naissance`,
+  `gwseq_cheval_age_from_birth_year()`) était déjà correct — c'est la convention métier équine
+  elle-même (un cheval prend un an de plus au 1er janvier), pas une approximation à corriger, et
+  reste inchangé. Seule sa présentation change : nouvelle fonction pure
+  `gwseq_cheval_age_label()` produisant « 1 an »/« 7 ans » (accord singulier/pluriel via `_n()`,
+  text domain `gws-core`), en lieu et place de « ≈ 7 an(s) (âge calendaire approximatif, jamais
+  au jour près) ». Une aide discrète (« Âge calculé automatiquement à partir de l'année de
+  naissance selon la convention équine. ») reste disponible en attribut `title` (infobulle),
+  sans texte permanent visible.
+- **Mini-audit Import/Onboarding** (nouveau besoin produit confirmé pour une future version,
+  aucun développement à ce stade) : analyse de Groupe tarifaire / Prestation / Cheval pour
+  détecter une logique métier essentielle couplée à `$_POST`/`save_post` qu'un futur importeur
+  devrait dupliquer. Résultat : Groupe tarifaire n'a aucun couplage (champs 100 % natifs) ; pour
+  Prestation et Cheval, la sanitation est déjà pure et réutilisable, mais la persistance (mapping
+  valeur sanitizée → clé de meta) vit aujourd'hui dans la même fonction que les garde-fous de
+  sécurité liés au formulaire admin, laquelle lit `$_POST` directement. Une factorisation
+  minimale (séparer persistance et garde-fous de sécurité, sans nouvelle abstraction générique)
+  est **proposée mais volontairement non implémentée dans cette version**, pour ne pas modifier
+  des étapes déjà validées en anticipation d'une fonctionnalité qui n'existe pas encore. Le
+  Global Horse ID est déjà conforme aux règles d'un futur import sans aucune modification
+  nécessaire. Voir `README.md` de ce dossier pour le détail complet de l'audit.
+- Fichier modifié : `includes/cheval-fields.php` uniquement (présentation de l'âge — aucun
+  changement de comportement ailleurs).
+- 11 nouvelles assertions dans `tests/gws-equestrian-cheval-logic-test.php` (136 au total pour ce
+  fichier ; 404 au total sur l'ensemble de la suite). Aucune régression.
+- **Étape 4 gelée à l'issue de cette version.** Étape 5 (Pedigree) toujours non commencée ; ne
+  seront pas non plus développés à ce stade : galerie photos/vidéos (Étape 6), Import/Onboarding,
+  guide utilisateur, module Équipe/Membres — tous confirmés pour la roadmap, voir `README.md`.
+
 ## 0.4.0 — Étape 4 : Cheval — socle métier, catégories, commercialisation, Global Horse ID
 
 Construction du socle métier réel de la fiche cheval, en attente de sa propre recette runtime.

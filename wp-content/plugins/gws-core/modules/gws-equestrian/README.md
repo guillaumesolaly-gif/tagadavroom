@@ -116,6 +116,85 @@ plus lisible et prévisible pour une fiche métier à ce stade.
 13. Désactiver puis réactiver le module (`config/modules.php`) : vérifier qu'aucun cheval, aucune
     catégorie, aucun statut commercial ni aucun identifiant technique n'a été modifié ou recréé.
 
+### Micro-correction post-recette (0.4.1) — présentation de l'âge
+
+La recette runtime de l'Étape 4 a été concluante ; une seule micro-correction a été demandée :
+l'affichage de l'âge (« ≈ 7 an(s) (âge calendaire approximatif, jamais au jour près) ») ne
+correspondait pas à la convention métier équine, où un cheval prend un an de plus au
+1er janvier — ce n'est pas une approximation, c'est la définition retenue. Le **calcul**
+(`année courante - année de naissance`) était déjà correct et reste inchangé
+(`gwseq_cheval_age_from_birth_year()`) ; seule sa **présentation** a changé
+(`gwseq_cheval_age_label()`, nouveau) : « 1 an » / « 7 ans » (accord singulier/pluriel via
+`_n()`), sans le symbole « ≈ », sans la forme non accordée « an(s) », sans mention permanente
+d'approximation. Une aide discrète (« Âge calculé automatiquement à partir de l'année de
+naissance selon la convention équine. ») reste disponible en attribut `title` (infobulle), sans
+surcharger l'écran.
+
+### Décisions de roadmap actées lors de la recette de l'Étape 4 (aucun développement à ce stade)
+
+Quatre besoins produits ont été confirmés pour la suite du plan de développement, sans qu'aucun
+code ne soit construit maintenant :
+
+- **Galerie photos et vidéos (Étape 6)** : jusqu'à 9 photos supplémentaires en plus de la Photo
+  principale (10 au total), stockées en identifiants d'attachement WordPress ordonnés, sans
+  duplication physique des médias, avec exploitation des tailles WordPress/`srcset` (jamais les
+  originaux lourds sur le front) ; jusqu'à 10 vidéos par cheval (URL + titre facultatif, pas
+  d'upload de fichier vidéo), vraisemblablement portées par le composant répétable de l'Étape 2.
+  Médias conçus comme données structurées indépendantes du rendu HTML, réutilisables par
+  web/PDF/catalogue/Social Kit.
+- **Import / Onboarding en masse (chevaux, groupes/prestations, membres d'équipe)** : aucun
+  importeur construit à ce stade, mais nouvelle règle architecturale permanente — toute donnée
+  métier doit pouvoir être créée/mise à jour programmatiquement sans dépendre exclusivement du
+  formulaire d'administration WordPress ; l'admin est un client du modèle métier parmi d'autres
+  futurs clients (import, migrations, API, Network), jamais l'unique moyen valide de
+  l'alimenter. Voir « Mini-audit Import/Onboarding » ci-dessous pour l'état actuel du code sur ce
+  point précis.
+- **Documentation / guide utilisateur** : aides contextuelles, guide utilisateur GWS Equestrian,
+  documentation technique séparée pour développeurs/agents IA — à construire une fois les
+  fonctionnalités et leur UX stabilisées, jamais pour compenser une UX déficiente.
+- **Équipe / Membres** : besoin reconfirmé pour la V1 (déjà noté à l'issue de l'Étape 3), devra
+  lui aussi respecter la règle de création programmatique ci-dessus.
+
+#### Mini-audit Import/Onboarding — Groupe tarifaire / Prestation / Cheval
+
+Question posée : existe-t-il une logique métier ou une validation essentielle actuellement si
+couplée au formulaire admin / `$_POST` / `save_post` qu'un futur importeur devrait la dupliquer ?
+
+- **Groupe tarifaire** : aucune meta custom, aucun couplage — Nom/Ordre/Description sont des
+  champs natifs WordPress (`post_title`/`menu_order`/`post_excerpt`), déjà entièrement
+  créables/modifiables via `wp_insert_post()`/`wp_update_post()` sans passer par un formulaire.
+  **Rien à signaler.**
+- **Prestation et Cheval** (même constat pour les deux, même structure de code) : la
+  **sanitation** est déjà pure et réutilisable telle quelle
+  (`gwseq_sanitize_prestation_tarification_input()`, `gwseq_sanitize_prestation_groupe_id()`,
+  `gwseq_sanitize_cheval_identity_input()`, `gwseq_sanitize_cheval_commercial_input()` — aucune
+  ne lit `$_POST` elle-même, toutes acceptent un tableau explicite en paramètre, déjà testées
+  ainsi). En revanche, la **persistance** (l'association valeur sanitizée → clé de meta, via une
+  série d'appels `update_post_meta()`) est aujourd'hui écrite à l'intérieur même de la fonction
+  qui porte aussi les garde-fous de sécurité liés au formulaire (`gwseq_save_prestation_meta()`,
+  `gwseq_save_cheval_meta()`), et qui lit `$_POST` directement plutôt que de recevoir un tableau
+  en paramètre. Un futur importeur qui voudrait persister ces données devrait donc soit dupliquer
+  cette séquence d'appels `update_post_meta()`, soit fabriquer un faux nonce/`$_POST` pour
+  appeler la fonction existante — les deux étant fragiles et à éviter.
+  **Factorisation minimale proposée (non réalisée à ce stade, en attente de validation)** :
+  scinder chaque fonction de sauvegarde en deux — une fonction de persistance pure
+  (`gwseq_persist_prestation_meta($post_id, $raw)` / `gwseq_persist_cheval_meta($post_id, $raw)`)
+  qui sanitize puis enregistre les meta à partir d'un tableau explicite (réutilisable par un futur
+  import, sans nonce ni `$_POST`), et la fonction existante réduite à ses seuls garde-fous de
+  sécurité (nonce/capability/autosave/révision) suivie d'un simple appel à cette fonction avec
+  `$_POST`. Aucun changement de comportement, aucune nouvelle abstraction générique — seulement
+  un découpage en deux de code déjà écrit. **Non implémenté dans cette livraison**,
+  conformément à la demande de ne pas modifier trois étapes déjà validées pour anticiper une
+  fonctionnalité qui n'existe pas encore ; à réaliser au moment où l'Import/Onboarding sera
+  réellement engagé, ou plus tôt si souhaité.
+- **Global Horse ID et futur import** : déjà conforme aux règles rappelées en recette sans
+  aucune modification nécessaire — `gwseq_assign_cheval_global_id()` génère un nouvel UUID
+  uniquement en l'absence de meta existante (`metadata_exists()`), donc une création
+  programmatique suivra la même règle qu'un enregistrement admin (nouveau cheval → nouvel UUID,
+  cheval existant mis à jour → UUID conservé) sans code supplémentaire ; la meta n'étant jamais
+  lue depuis `$_POST` ni exposée en REST, un fichier CSV/XLSX ne peut aujourd'hui imposer aucune
+  valeur pour ce champ par construction.
+
 ### Prestations et Groupes tarifaires (Étape 3)
 
 **Groupe tarifaire** : Nom (titre natif), Ordre (menu_order natif, meta box « Ordre

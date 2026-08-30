@@ -183,8 +183,12 @@ function gwseq_sanitize_cheval_taille($raw) {
 
 /**
  * Âge calculé, jamais stocké (§4) : donnée dérivée de l'année de naissance, recalculée à chaque
- * lecture. Avec une seule année de naissance (pas de date complète), il ne s'agit jamais que d'un
- * âge calendaire approximatif — jamais un âge au jour près.
+ * lecture. Calcul volontairement simple (année courante - année de naissance) : ce n'est pas une
+ * approximation à corriger, c'est la convention métier équine elle-même — un cheval prend
+ * conventionnellement un an de plus au 1er janvier, indépendamment de sa date de naissance réelle
+ * dans l'année (correction demandée en recette de l'Étape 4, valeur retenue confirmée par le
+ * client comme la bonne définition métier, seule la présentation a changé — voir
+ * gwseq_cheval_age_label() ci-dessous).
  */
 function gwseq_cheval_age_from_birth_year($annee_naissance, $current_year = null) {
   $annee_naissance = gwseq_sanitize_cheval_annee_naissance($annee_naissance);
@@ -192,6 +196,21 @@ function gwseq_cheval_age_from_birth_year($annee_naissance, $current_year = null
   if ($current_year === null) $current_year = (int) gmdate('Y');
   $age = $current_year - $annee_naissance;
   return $age >= 0 ? $age : '';
+}
+
+/**
+ * Libellé affiché de l'âge (§ recette Étape 4) : "1 an"/"7 ans", jamais "≈ 7 an(s)" ni de mention
+ * permanente d'approximation — le calcul lui-même reste la convention équine assumée (voir
+ * gwseq_cheval_age_from_birth_year()), donc rien à en excuser dans l'interface. Accord
+ * singulier/pluriel géré nativement par _n(), chaîne du logiciel traductible.
+ */
+function gwseq_cheval_age_label($age) {
+  if ($age === '') return '';
+  return sprintf(
+    /* translators: %d: âge en années (convention équine : un an de plus au 1er janvier) */
+    _n('%d an', '%d ans', $age, 'gws-core'),
+    $age
+  );
 }
 
 /**
@@ -402,11 +421,7 @@ function gwseq_render_cheval_identite_box($post) {
     <label for="gwseq-cheval-annee"><strong><?php esc_html_e('Année de naissance', 'gws-core'); ?></strong></label><br>
     <input type="number" step="1" class="small-text" id="gwseq-cheval-annee" name="_gwseq_annee_naissance" value="<?php echo esc_attr($identity['annee_naissance']); ?>">
     <?php if ($age !== '') : ?>
-      <span class="description"> <?php echo esc_html(sprintf(
-        /* translators: %d: âge calculé en années, approximatif (calendaire) */
-        __('≈ %d an(s) (âge calendaire approximatif, jamais au jour près)', 'gws-core'),
-        $age
-      )); ?></span>
+      <span class="description" title="<?php esc_attr_e('Âge calculé automatiquement à partir de l’année de naissance selon la convention équine.', 'gws-core'); ?>"> <?php echo esc_html(gwseq_cheval_age_label($age)); ?></span>
     <?php endif; ?>
   </p>
   <p>

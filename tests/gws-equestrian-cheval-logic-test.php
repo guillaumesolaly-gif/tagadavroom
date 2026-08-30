@@ -34,6 +34,7 @@ function wp_nonce_field($action, $field) { echo '<input type="hidden" name="' . 
 // i18n : chaîne telle quelle, mais on capture le text domain utilisé pour vérifier sa cohérence.
 $GLOBALS['__gwseq_test_domains_used'] = array();
 function __($text, $domain = 'default') { $GLOBALS['__gwseq_test_domains_used'][] = $domain; return $text; }
+function _n($single, $plural, $number, $domain = 'default') { $GLOBALS['__gwseq_test_domains_used'][] = $domain; return $number == 1 ? $single : $plural; }
 function esc_html__($text, $domain = 'default') { $GLOBALS['__gwseq_test_domains_used'][] = $domain; return esc_html($text); }
 function esc_attr__($text, $domain = 'default') { $GLOBALS['__gwseq_test_domains_used'][] = $domain; return esc_attr($text); }
 function esc_html_e($text, $domain = 'default') { echo esc_html__($text, $domain); }
@@ -146,6 +147,15 @@ gws_test_assert(gwseq_cheval_age_from_birth_year(2018, 2026) === 8, 'Âge calcul
 gws_test_assert(gwseq_cheval_age_from_birth_year('', 2026) === '', 'Âge calculé : aucune année de naissance -> aucun âge (jamais 0 par défaut)');
 gws_test_assert(gwseq_cheval_age_from_birth_year('abc', 2026) === '', 'Âge calculé : année invalide -> aucun âge, jamais d’erreur');
 gws_test_assert(!array_key_exists('_gwseq_age', $GLOBALS['__gwseq_test_registered_meta']), 'Âge : jamais enregistré comme meta (donnée dérivée uniquement)');
+
+// --- Libellé de l'âge (correction demandée en recette) : "1 an"/"7 ans", jamais "≈ 7 an(s)"
+// ni de mention permanente d'approximation — exemples exacts fournis par le client ---
+gws_test_assert(gwseq_cheval_age_label(gwseq_cheval_age_from_birth_year(2025, 2026)) === '1 an', 'Libellé âge : 2025 en 2026 -> "1 an" (exemple exact de la demande)');
+gws_test_assert(gwseq_cheval_age_label(gwseq_cheval_age_from_birth_year(2019, 2026)) === '7 ans', 'Libellé âge : 2019 en 2026 -> "7 ans" (exemple exact de la demande)');
+gws_test_assert(gwseq_cheval_age_label('') === '', 'Libellé âge : aucun âge -> aucun libellé');
+gws_test_assert(strpos(gwseq_cheval_age_label(7), '≈') === false, 'Libellé âge : jamais le symbole "≈"');
+gws_test_assert(strpos(gwseq_cheval_age_label(7), 'an(s)') === false, 'Libellé âge : jamais la forme non accordée "an(s)"');
+gws_test_assert(strpos(gwseq_cheval_age_label(7), 'calendaire') === false && strpos(gwseq_cheval_age_label(7), 'approximatif') === false, 'Libellé âge : aucune mention permanente d’approximation');
 
 // --- Robe : valeur standard, et "Autre" avec précision libre ---
 $i = gwseq_sanitize_cheval_identity_input(array('_gwseq_robe' => 'bai_brun'));
@@ -385,6 +395,19 @@ $identite_html = ob_get_clean();
 foreach (array('_gwseq_sexe', '_gwseq_annee_naissance', '_gwseq_robe', '_gwseq_race', '_gwseq_taille_cm', '_gwseq_eleveur', '_gwseq_proprietaire', '_gwseq_ueln', '_gwseq_sire') as $field_name) {
   gws_test_assert(strpos($identite_html, 'name="' . $field_name . '"') !== false, "Meta box Identité : le champ $field_name est réellement rendu");
 }
+
+// --- Rendu réel de l'âge sur une fiche avec année de naissance renseignée : format correct,
+// aucune mention interdite, aide discrète présente uniquement en attribut title (pas de texte
+// permanent visible qui surchargerait l'interface) ---
+$GLOBALS['__gwseq_test_meta'][701] = array('_gwseq_annee_naissance' => (int) gmdate('Y') - 7);
+ob_start();
+gwseq_render_cheval_identite_box((object) array('ID' => 701));
+$identite_html_with_age = ob_get_clean();
+gws_test_assert(strpos($identite_html_with_age, '7 ans') !== false, 'Rendu réel : l’âge s’affiche correctement accordé au pluriel ("7 ans")');
+gws_test_assert(strpos($identite_html_with_age, '≈') === false, 'Rendu réel : plus aucun symbole "≈" dans la fiche');
+gws_test_assert(strpos($identite_html_with_age, 'an(s)') === false, 'Rendu réel : plus aucune forme non accordée "an(s)" dans la fiche');
+gws_test_assert(strpos($identite_html_with_age, 'calendaire approximatif') === false, 'Rendu réel : plus de mention permanente d’approximation dans la fiche');
+gws_test_assert(strpos($identite_html_with_age, 'title="') !== false && strpos($identite_html_with_age, 'convention équine') !== false, 'Rendu réel : l’explication de la convention équine reste disponible, mais en aide discrète (attribut title), pas en texte permanent visible');
 
 // =====================================================================================
 // Éditeur : désactivation de l'éditeur par blocs, espace réservé du titre — comportement réel
