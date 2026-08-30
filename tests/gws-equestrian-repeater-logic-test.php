@@ -20,6 +20,9 @@ function wp_unslash($value) { return is_array($value) ? array_map('wp_unslash', 
 function sanitize_text_field($value) { return trim(strip_tags((string) $value)); }
 function sanitize_textarea_field($value) { return trim((string) $value); }
 function esc_url_raw($value) { $value = trim((string) $value); return $value === '' ? '' : $value; }
+function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
+function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
+function esc_textarea($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 
 define('ABSPATH', __DIR__ . '/');
 $repo_root = dirname(__DIR__);
@@ -139,6 +142,112 @@ $special = gwseq_repeater_sanitize_rows($schema, array(
 ));
 gws_test_assert($special[0]['libelle'] === "L'étalon & sa jument – Café", 'Caractères spéciaux : apostrophe/accents/esperluette conservés tels quels (texte)');
 gws_test_assert($special[0]['note'] === 'Ligne avec accents : à, é, î, ô, ü', 'Caractères spéciaux : accents conservés (textarea)');
+
+// =====================================================================================
+// RÉGRESSION (anomalie runtime signalée) : le nommage HTML réel doit grouper les colonnes
+// d'une même ligne, pas les éclater. On ne se contente plus de tester
+// gwseq_repeater_sanitize_rows() avec un tableau PHP déjà bien formé : on part du VRAI markup
+// produit par gwseq_repeater_row_markup(), on en extrait les attributs name/value, on les fait
+// passer par parse_str() — le mécanisme PHP réel utilisé pour construire $_POST à partir d'un
+// corps de formulaire — puis seulement on sanitize le résultat. C'est le chemin complet qui a
+// révélé le bug en recette, pas seulement sa dernière étape.
+// =====================================================================================
+$runtime_schema = array(
+  'libelle' => array('label' => 'Libellé', 'type' => 'text'),
+  'valeur' => array('label' => 'Valeur', 'type' => 'number'),
+  'annee' => array('label' => 'Année', 'type' => 'integer'),
+);
+$meta_key = '_gwseq_qa_repeater_demo';
+
+function gws_test_extract_name_value_pairs($markup) {
+  preg_match_all('/name="([^"]*)" value="([^"]*)"/', $markup, $matches, PREG_SET_ORDER);
+  $pairs = array();
+  foreach ($matches as $match) {
+    $pairs[] = array(html_entity_decode($match[1], ENT_QUOTES), html_entity_decode($match[2], ENT_QUOTES));
+  }
+  return $pairs;
+}
+
+function gws_test_parse_str_from_pairs($pairs) {
+  $parts = array();
+  foreach ($pairs as $pair) {
+    $parts[] = rawurlencode($pair[0]) . '=' . rawurlencode($pair[1]);
+  }
+  parse_str(implode('&', $parts), $parsed);
+  return $parsed;
+}
+
+// --- Le markup d'une ligne réelle utilise bien un index explicite, pas "[]" ---
+$row0_markup = gwseq_repeater_row_markup($meta_key, $runtime_schema, array('libelle' => 'ISO', 'valeur' => '125.5', 'annee' => '2025'), 0);
+$row1_markup = gwseq_repeater_row_markup($meta_key, $runtime_schema, array('libelle' => 'ICC', 'valeur' => '130', 'annee' => '2026'), 1);
+
+gws_test_assert(strpos($row0_markup, $meta_key . '[0][libelle]') !== false, 'Markup ligne 0 : name utilise "[0][libelle]", pas "[][libelle]"');
+gws_test_assert(strpos($row0_markup, $meta_key . '[0][valeur]') !== false, 'Markup ligne 0 : name utilise "[0][valeur]"');
+gws_test_assert(strpos($row0_markup, $meta_key . '[0][annee]') !== false, 'Markup ligne 0 : name utilise "[0][annee]"');
+gws_test_assert(strpos($row1_markup, $meta_key . '[1][libelle]') !== false, 'Markup ligne 1 : name utilise "[1][libelle]" (index différent de la ligne 0)');
+gws_test_assert(strpos($row0_markup, '[][') === false, 'Markup ligne 0 : ne contient plus jamais "[][" (ancien format buggé)');
+
+// --- Reproduction exacte du bug signalé avec l'ANCIEN format ("{meta}[][colonne]" pour chaque
+// colonne) : documente pourquoi la correction était nécessaire — une ligne de 3 colonnes y
+// devient bien 3 lignes d'une seule colonne chacune une fois passée par le vrai parseur PHP ---
+$buggy_pairs = array(
+  array($meta_key . '[][libelle]', 'ISO'),
+  array($meta_key . '[][valeur]', '125'),
+  array($meta_key . '[][annee]', '2025'),
+);
+$buggy_parsed = gws_test_parse_str_from_pairs($buggy_pairs);
+gws_test_assert(
+  count($buggy_parsed[$meta_key]) === 3
+    && $buggy_parsed[$meta_key][0] === array('libelle' => 'ISO')
+    && $buggy_parsed[$meta_key][1] === array('valeur' => '125')
+    && $buggy_parsed[$meta_key][2] === array('annee' => '2025'),
+  'Caractérisation du bug signalé : l’ancien format "[][colonne]" éclate bien une ligne en 3 lignes distinctes via parse_str() (confirme le diagnostic)'
+);
+
+// --- Avec le format corrigé (index explicite partagé), une ligne reste une ligne ---
+$fixed_pairs = gws_test_extract_name_value_pairs($row0_markup);
+$fixed_parsed = gws_test_parse_str_from_pairs($fixed_pairs);
+gws_test_assert(
+  count($fixed_parsed[$meta_key]) === 1,
+  'Format corrigé : les 3 colonnes de la ligne 0 forment bien une seule ligne après parse_str()'
+);
+gws_test_assert(
+  $fixed_parsed[$meta_key][0] === array('libelle' => 'ISO', 'valeur' => '125.5', 'annee' => '2025'),
+  'Format corrigé : la ligne reconstituée contient bien les 3 valeurs saisies, groupées ensemble'
+);
+
+// --- Bout en bout : markup de plusieurs lignes -> parse_str() -> sanitation -> structure finale
+// attendue, avec le cas exact du CR (une valeur décimale, une valeur 0, plusieurs lignes) ---
+$row2_markup = gwseq_repeater_row_markup($meta_key, $runtime_schema, array('libelle' => 'IDR', 'valeur' => '0', 'annee' => '2024'), 2);
+$all_pairs = array_merge(
+  gws_test_extract_name_value_pairs($row0_markup),
+  gws_test_extract_name_value_pairs($row1_markup),
+  gws_test_extract_name_value_pairs($row2_markup)
+);
+$end_to_end_parsed = gws_test_parse_str_from_pairs($all_pairs);
+$end_to_end_clean = gwseq_repeater_sanitize_rows($runtime_schema, $end_to_end_parsed[$meta_key]);
+
+gws_test_assert(count($end_to_end_clean) === 3, 'Bout en bout : 3 lignes soumises -> 3 lignes conservées, dans le bon regroupement');
+gws_test_assert($end_to_end_clean[0] === array('libelle' => 'ISO', 'valeur' => 125.5, 'annee' => '2025'), 'Bout en bout : ligne 0 exacte, valeur décimale préservée (125.5)');
+gws_test_assert($end_to_end_clean[1] === array('libelle' => 'ICC', 'valeur' => 130.0, 'annee' => '2026'), 'Bout en bout : ligne 1 exacte');
+gws_test_assert($end_to_end_clean[2] === array('libelle' => 'IDR', 'valeur' => 0.0, 'annee' => '2024'), 'Bout en bout : ligne 2 exacte, valeur 0 préservée (pas traitée comme vide)');
+
+// --- Ligne partiellement remplie (ISO | | 2025) : reste une seule ligne, ni éclatée ni supprimée ---
+$partial_markup = gwseq_repeater_row_markup($meta_key, $runtime_schema, array('libelle' => 'ISO', 'valeur' => '', 'annee' => '2025'), 0);
+$partial_parsed = gws_test_parse_str_from_pairs(gws_test_extract_name_value_pairs($partial_markup));
+$partial_clean = gwseq_repeater_sanitize_rows($runtime_schema, $partial_parsed[$meta_key]);
+gws_test_assert(count($partial_clean) === 1, 'Ligne partiellement remplie : conservée comme une seule ligne (pas supprimée)');
+gws_test_assert($partial_clean[0] === array('libelle' => 'ISO', 'valeur' => '', 'annee' => '2025'), 'Ligne partiellement remplie : valeurs exactes, colonne vide conservée telle quelle');
+
+// =====================================================================================
+// RÉGRESSION (anomalie n°1) : 'number' doit accepter les décimales (step="any"), 'integer' reste
+// limité aux entiers (step="1"), les autres types n'ont pas d'attribut step.
+// =====================================================================================
+gws_test_assert(strpos($row0_markup, 'step="any"') !== false, 'Type number : attribut step="any" présent (accepte les décimales dans le navigateur)');
+gws_test_assert(strpos($row0_markup, 'step="1"') !== false, 'Type integer : attribut step="1" présent (limite le navigateur aux entiers)');
+
+$text_only_markup = gwseq_repeater_row_markup('_x', array('libelle' => array('label' => 'Libellé', 'type' => 'text')), array('libelle' => 'x'), 0);
+gws_test_assert(strpos($text_only_markup, 'step=') === false, 'Type text : aucun attribut step (non pertinent pour ce type)');
 
 echo ($failures === 0 ? 'Tous les tests sont passés.' : "$failures test(s) en échec.") . "\n";
 exit($failures === 0 ? 0 : 1);

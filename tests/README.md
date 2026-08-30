@@ -52,7 +52,11 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   lignes entièrement vides, conservation de la valeur `0`/`"0"` sur chaque type numérique, rejet
   silencieux des clés inattendues et des données mal formées (ligne ou tableau de lignes qui
   n'est pas un tableau, valeur de colonne elle-même un tableau), conservation des caractères
-  spéciaux (apostrophes, accents, esperluette).
+  spéciaux (apostrophes, accents, esperluette). Depuis la 0.2.1 : reproduction du chemin réel
+  navigateur → `$_POST` en partant du markup HTML effectivement généré (extraction des attributs
+  `name`/`value`, passage par `parse_str()` — le mécanisme PHP réel de construction de `$_POST`
+  — puis sanitation), incluant la caractérisation de l'ancien bug de regroupement des lignes et
+  la vérification des attributs `step` par type (`number` accepte les décimales, `integer` non).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

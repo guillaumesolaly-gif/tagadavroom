@@ -1,5 +1,14 @@
 # Changelog — GWS Starter
 
+## 1.5.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correction de deux anomalies bloquantes du composant répétable `gws-equestrian`**, révélées
+  par la première recette runtime de l'Étape 2 sous WordPress Local : perte de la structure des
+  lignes à l'enregistrement (nommage HTML des champs corrigé pour partager un index explicite
+  par ligne), et champ `number` limité aux entiers par le navigateur (`step="any"` ajouté). Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.2.1) pour le détail
+  complet. Étape 2 toujours en attente de validation — non promue Étape 3.
+
 ## 1.5.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Ajout du module métier optionnel `gws-equestrian`** (gestion et publication de contenu pour

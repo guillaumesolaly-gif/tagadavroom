@@ -36,7 +36,9 @@ aucune dépendance à ce fichier pour un futur consommateur (rendu front, export
 
 ### Procédure de recette — Étape 2 (composant répétable)
 
-À réaliser dans WordPress Local, sans écrire de code :
+À réaliser dans WordPress Local, sans écrire de code. Mise à jour suite aux deux anomalies
+relevées lors de la première recette (0.2.0 → 0.2.1, voir `CHANGELOG.md`) : les étapes 4 et 5
+ci-dessous ciblent explicitement les deux cas qui avaient échoué.
 
 1. Sur un environnement dont le type est `local` ou `development`
    (`wp_get_environment_type()`), un nouveau menu **QA — Répétable (Equestrian)** apparaît dans
@@ -46,21 +48,29 @@ aucune dépendance à ce fichier pour un futur consommateur (rendu front, export
    Valeur / Année) » doit s'afficher, initialement vide.
 3. Cliquer sur « + Ajouter une ligne » : une ligne de champs doit apparaître, le focus doit se
    poser sur son premier champ.
-4. Remplir cette ligne, cliquer une seconde fois sur « + Ajouter une ligne » pour une deuxième
-   ligne, la remplir avec des valeurs différentes (tester en particulier `0` dans le champ
-   Valeur, et des caractères spéciaux — apostrophe, accents, `&` — dans le champ Libellé).
-   Publier ou mettre à jour.
-5. Recharger la page d'édition : les deux lignes et leurs valeurs doivent être restituées à
-   l'identique, dans le même ordre, y compris le `0` et les caractères spéciaux.
-6. Supprimer une des deux lignes via son bouton « Supprimer », enregistrer, recharger : la ligne
-   supprimée ne doit plus jamais réapparaître ; l'autre reste intacte.
-7. Vérifier la console navigateur sur cet écran : aucune erreur JavaScript.
-8. Vérifier qu'aucun fichier CSS/JS de ce composant n'est chargé sur un autre écran WordPress
+4. Remplir cette ligne avec `ISO` / `125.5` / `2025` : le champ Valeur doit accepter la décimale
+   `125.5` sans blocage du navigateur (anomalie n°1 corrigée). Cliquer une seconde fois sur
+   « + Ajouter une ligne » pour une deuxième ligne, la remplir avec `ICC` / `130` / `2026`, puis
+   une troisième avec `IDR` / `0` / `2024` (tester en particulier `0` dans le champ Valeur, et
+   des caractères spéciaux — apostrophe, accents, `&` — dans un champ Libellé). Publier ou
+   mettre à jour.
+5. Recharger la page d'édition : les **trois lignes doivent être restituées exactement comme
+   saisies, chacune avec ses trois valeurs regroupées sur sa propre ligne** — `ISO`/`125.5`/`2025`,
+   `ICC`/`130`/`2026`, `IDR`/`0`/`2024`, dans cet ordre. Vérifier explicitement qu'aucune valeur
+   n'a été déplacée sur une ligne différente et qu'aucune ligne supplémentaire n'est apparue
+   (anomalie n°2 corrigée).
+6. Supprimer la ligne du milieu via son bouton « Supprimer », enregistrer, recharger : elle ne
+   doit plus jamais réapparaître ; les deux autres restent intactes et dans leur ordre respectif.
+7. Ajouter à nouveau deux nouvelles lignes à la suite : vérifier qu'elles s'enregistrent
+   correctement l'une et l'autre (pas de collision d'index entre lignes ajoutées dans la même
+   session d'édition).
+8. Vérifier la console navigateur sur cet écran : aucune erreur JavaScript.
+9. Vérifier qu'aucun fichier CSS/JS de ce composant n'est chargé sur un autre écran WordPress
    sans rapport (Tableau de bord, Articles, une Prestation, un Cheval...) — inspecter l'onglet
    réseau du navigateur.
-9. Vérifier qu'aucun élément de test créé ici n'apparaît nulle part sur le site public (le CPT de
-   démonstration n'est jamais public).
-10. Supprimer les éléments de test créés une fois la recette terminée (aucune suppression
+10. Vérifier qu'aucun élément de test créé ici n'apparaît nulle part sur le site public (le CPT
+    de démonstration n'est jamais public).
+11. Supprimer les éléments de test créés une fois la recette terminée (aucune suppression
     automatique n'est effectuée par le module).
 
 ### Rappel — ce que l'Étape 1 a construit (toujours valide, non modifié depuis)

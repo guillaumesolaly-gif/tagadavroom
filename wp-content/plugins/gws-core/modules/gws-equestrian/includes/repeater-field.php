@@ -42,6 +42,20 @@
  * C'est un choix délibéré : la logique métier qui consomme ces données (rendu web aujourd'hui,
  * rendu PDF demain) n'a besoin d'aucune connaissance de ce fichier pour les lire.
  *
+ * NOMMAGE DES CHAMPS HTML — chaque ligne porte un index explicite, partagé par toutes ses
+ * colonnes : name="{meta_key}[{index}][{colonne}]" (ex. "_x_lignes[0][libelle]",
+ * "_x_lignes[0][valeur]", "_x_lignes[0][annee]" pour une même ligne 0). C'est indispensable :
+ * des noms sans index partagé (ex. "{meta_key}[][colonne]" pour chaque colonne) ne produisent PAS
+ * une ligne par groupe de champs — PHP alloue un nouvel index à chaque NOM DE CHAMP distinct
+ * rencontré, pas à chaque ligne visuelle, ce qui éclate une ligne de 3 colonnes en 3 lignes d'une
+ * seule colonne chacune à la réception. Les lignes déjà enregistrées reçoivent leur position réelle
+ * (0, 1, 2...) ; le gabarit `<template>` utilisé par le JS pour une nouvelle ligne porte le jeton
+ * littéral "__INDEX__" à la place d'un index, que le JS remplace par un entier garanti unique
+ * (compteur porté par l'attribut data-gwseq-next-index du conteneur, initialisé au nombre de
+ * lignes existantes, incrémenté à chaque ajout, jamais réutilisé) avant d'insérer la ligne dans le
+ * DOM. Les index n'ont pas besoin d'être contigus après une suppression : gwseq_repeater_sanitize_rows()
+ * réindexe proprement le résultat final, quels que soient les index bruts reçus.
+ *
  * TYPES DE CHAMPS SUPPORTÉS (primitives déjà nécessaires, pas une bibliothèque complète) :
  *   - 'text'     : texte court   (délègue à gws_core_field_sanitize(), cœur gws-core)
  *   - 'textarea' : texte long    (idem)
@@ -171,41 +185,46 @@ function gwseq_render_repeater_field($post, $meta_key, $schema, $nonce_action) {
   $rows = get_post_meta($post->ID, $meta_key, true);
   if (!is_array($rows)) $rows = array();
 
-  echo '<div class="gwseq-repeater" data-gwseq-repeater="' . esc_attr($meta_key) . '">';
+  echo '<div class="gwseq-repeater" data-gwseq-repeater="' . esc_attr($meta_key) . '" data-gwseq-next-index="' . esc_attr((string) count($rows)) . '">';
   echo '<table class="widefat gwseq-repeater__table"><thead><tr>';
   foreach ($schema as $column) {
     echo '<th>' . esc_html($column['label']) . '</th>';
   }
   echo '<th class="gwseq-repeater__col-actions"><span class="screen-reader-text">Actions</span></th>';
   echo '</tr></thead><tbody class="gwseq-repeater__rows">';
-  foreach ($rows as $row) {
-    echo gwseq_repeater_row_markup($meta_key, $schema, is_array($row) ? $row : array());
+  foreach ($rows as $index => $row) {
+    echo gwseq_repeater_row_markup($meta_key, $schema, is_array($row) ? $row : array(), $index);
   }
   echo '</tbody></table>';
   echo '<p><button type="button" class="button gwseq-repeater__add">+ Ajouter une ligne</button></p>';
-  echo '<template class="gwseq-repeater__template">' . gwseq_repeater_row_markup($meta_key, $schema, array()) . '</template>';
+  echo '<template class="gwseq-repeater__template">' . gwseq_repeater_row_markup($meta_key, $schema, array(), '__INDEX__') . '</template>';
   echo '</div>';
 }
 
 /**
- * Markup d'une ligne (existante ou vierge pour le gabarit JS). Les champs utilisent
- * name="{meta_key}[][colonne]" (sans index numérique) : à la soumission, PHP réindexe
- * automatiquement dans l'ordre du DOM — aucune gestion d'index à faire côté JS, donc aucun risque
- * de trou ou de doublon d'index après suppression d'une ligne.
+ * Markup d'une ligne (existante ou vierge pour le gabarit JS). $index est un entier pour une
+ * ligne réelle (sa position dans le tableau stocké), ou le jeton littéral "__INDEX__" pour le
+ * gabarit du JS — voir la note de nommage en tête de fichier : toutes les colonnes d'une même
+ * ligne DOIVENT partager le même index pour que PHP les regroupe correctement à la réception.
  */
-function gwseq_repeater_row_markup($meta_key, $schema, $row) {
+function gwseq_repeater_row_markup($meta_key, $schema, $row, $index) {
   ob_start();
   echo '<tr class="gwseq-repeater__row">';
   foreach ($schema as $column_key => $column) {
     $type = $column['type'] ?? 'text';
     $value = $row[$column_key] ?? '';
-    $name = $meta_key . '[][' . $column_key . ']';
+    $name = $meta_key . '[' . $index . '][' . $column_key . ']';
     echo '<td>';
     if ($type === 'textarea') {
       echo '<textarea class="widefat" rows="2" aria-label="' . esc_attr($column['label']) . '" name="' . esc_attr($name) . '">' . esc_textarea($value) . '</textarea>';
     } else {
       $input_type = ($type === 'url') ? 'url' : (in_array($type, array('number', 'integer'), true) ? 'number' : 'text');
-      $step = ($type === 'integer') ? ' step="1"' : '';
+      // step="1" limite volontairement 'integer' aux nombres entiers ; 'number' doit au contraire
+      // accepter les décimales, ce que le pas par défaut du navigateur (1 si l'attribut step est
+      // absent) empêche silencieusement — step="any" lève cette limite pour ce type uniquement.
+      $step = '';
+      if ($type === 'integer') $step = ' step="1"';
+      elseif ($type === 'number') $step = ' step="any"';
       echo '<input class="widefat" type="' . esc_attr($input_type) . '"' . $step . ' aria-label="' . esc_attr($column['label']) . '" name="' . esc_attr($name) . '" value="' . esc_attr($value) . '">';
     }
     echo '</td>';

@@ -19,7 +19,20 @@
       var rows = container.querySelector('.gwseq-repeater__rows');
       if (!template || !rows) return;
 
-      rows.appendChild(template.content.cloneNode(true));
+      // Chaque ligne doit porter un index unique partagé par toutes ses colonnes (voir
+      // repeater-field.php) : le gabarit contient le jeton littéral "__INDEX__" à la place de cet
+      // index, remplacé ici par un compteur qui ne fait qu'augmenter (jamais réutilisé, même après
+      // suppression d'une ligne) pour ne jamais entrer en collision avec une ligne existante.
+      var nextIndex = parseInt(container.getAttribute('data-gwseq-next-index'), 10);
+      if (isNaN(nextIndex)) nextIndex = 0;
+
+      var fragment = template.content.cloneNode(true);
+      fragment.querySelectorAll('[name]').forEach(function (field) {
+        field.name = field.name.replace('__INDEX__', String(nextIndex));
+      });
+      container.setAttribute('data-gwseq-next-index', String(nextIndex + 1));
+
+      rows.appendChild(fragment);
       var newRow = rows.lastElementChild;
       var firstField = newRow ? newRow.querySelector('input, textarea') : null;
       if (firstField) firstField.focus();
