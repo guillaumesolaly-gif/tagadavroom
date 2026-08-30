@@ -172,6 +172,13 @@ function gwseq_resolve_horse_node($cheval_id, $depth_remaining, &$memo, $ancesto
  * gwseq_cheval_race_label() — même référentiel, jamais dupliqué), même si le stockage interne
  * distingue `race` (code technique) et `race_autre` (texte) : le contrat de sortie du resolver ne
  * change pas pour ses consommateurs (front/PDF/catalogue/API futurs).
+ *
+ * GARDE DÉFENSIVE (§5 du correctif complémentaire post-recette « suppression d'un ascendant
+ * externe vide », 0.8.0) : un nœud sans nom (`$tree_node` non tableau, ou "name" absent/vide) n'est
+ * jamais résolu en un nœud "external" — il reste `null`, quels que soient les autres champs
+ * éventuellement présents. Une branche vide reste donc toujours une absence de branche, jamais un
+ * nœud fantôme affiché, y compris pour une donnée antérieure à ce correctif (garde déjà en place
+ * avant 0.8.0 — cette version se contente de la documenter et de la tester explicitement).
  */
 function gwseq_resolve_external_ancestor_node($tree_node, $depth_remaining) {
   if (!is_array($tree_node) || ($tree_node['name'] ?? '') === '') return null;

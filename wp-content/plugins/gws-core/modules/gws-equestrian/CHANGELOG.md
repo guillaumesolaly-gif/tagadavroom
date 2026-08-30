@@ -5,6 +5,41 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.8.0 — Étape 5 : correctif complémentaire — suppression d'un ascendant externe vide
+
+Correctif suite à un nouveau défaut observé en reprise de recette runtime : un ascendant externe
+créé (nom saisi) puis entièrement vidé par l'utilisateur — en restant sur le mode « Ascendant hors
+GWS » — continuait d'exister en base et réapparaissait à la réouverture de la fiche.
+
+- **Cause exacte** : un nœud sans nom n'a jamais pu être stocké (`gwseq_sanitize_external_ancestor_tree()`
+  renvoie déjà `null` dès qu'un nom est vide, y compris récursivement pour tout sous-arbre —
+  garantie déjà en place, inchangée par ce correctif). Le vrai défaut se situait dans
+  `gwseq_set_horse_parent()` : quand l'arbre sanitisé devenait ainsi entièrement `null`, seule la
+  meta `..._mode` était réinitialisée — l'ancienne meta `..._externe` restait intacte. Ce
+  comportement est correct pour un CHANGEMENT DE MODE (GWS ⇄ externe, où la conservation non
+  destructive est volontaire) mais pas ici : l'utilisateur restait sur « externe » et avait
+  activement tout effacé, sans que la donnée stockée ne suive.
+- **Correctif** : quand l'arbre sanitisé est entièrement vide alors que le mode soumis est
+  `external`, `..._externe` est désormais explicitement supprimée (`delete_post_meta()`) plutôt que
+  laissée à sa valeur précédente — sans jamais toucher à la branche GWS (`_id`) ni à la relation de
+  l'autre parent (père/mère gérés indépendamment).
+- **Bouton explicite « Supprimer cet ascendant »** (`assets/cheval-admin.js`) : permet de vider en
+  un clic un nœud, à n'importe quelle génération, ainsi que toute sa sous-branche — avec une
+  confirmation (« Supprimer cet ascendant et ses origines ? ») si des origines enfants sont déjà
+  renseignées. Purement une remise à vide des champs côté client (jamais d'appel serveur, jamais de
+  suppression d'élément du DOM) : la suppression réelle en base reste l'effet du mécanisme
+  ci-dessus au prochain enregistrement. Le texte de confirmation est fourni par PHP via l'attribut
+  `data-delete-confirm`, jamais codé en dur en JavaScript.
+- **Resolver inchangé** : la garde qui empêche de résoudre un nœud externe sans nom en un nœud
+  fantôme (`gwseq_resolve_external_ancestor_node()`) existait déjà avant ce correctif — elle est
+  désormais testée explicitement, y compris sur une donnée héritée d'avant cette version.
+- **Relation vers une fiche GWS non concernée** : le choix « Non renseigné » continue de désactiver
+  la relation sans jamais supprimer la fiche Cheval référencée (comportement inchangé, revérifié
+  par un test dédié).
+- 21 nouvelles assertions dans le test Pedigree (210 au total). Suite complète rejouée : 10
+  fichiers, 631 assertions, 100 % vertes, zéro avertissement PHP.
+- Versions : GWS Core 1.10.0 → 1.11.0, GWS Equestrian 0.7.0 → 0.8.0.
+
 ## 0.7.0 — Étape 5 : correctif BLOQUANT (corruption Unicode), contexte dynamique, génération terminale
 
 Correctif urgent suite à la reprise de la recette runtime sur le pedigree de Jamerose. Trois

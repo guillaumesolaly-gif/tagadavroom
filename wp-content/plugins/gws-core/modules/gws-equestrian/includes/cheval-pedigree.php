@@ -30,19 +30,45 @@
  *    intitulé contextuel (« Père de UNTOUCHABLE 27 », « Mère de KANNAN »...) construit à partir du
  *    nom déjà enregistré du cheval concerné — jamais une nomenclature généalogique complexe
  *    (« grand-père paternel »...), jamais un Père/Mère nu sans contexte. Un repli explicite
- *    (« cet ascendant ») s'applique tant que le nom n'est pas encore renseigné ; aucun JavaScript
- *    n'est nécessaire à la validité des données, et volontairement aucun JavaScript ne recalcule
- *    ces intitulés en direct pendant la frappe (solution sans JS jugée suffisante : un
- *    enregistrement de la fiche suffit à les rafraîchir, un texte d'aide le rappelle à l'écran).
- *    Un compteur « Génération N sur 4 » accompagne chaque niveau, et la génération 4 n'affiche
- *    plus AUCUN contrôle « + Renseigner ses origines » (arrêt visuel strict) — la limite serveur
+ *    (« cet ascendant ») s'applique tant que le nom n'est pas encore renseigné. Un compteur
+ *    « Génération N sur 4 » accompagne chaque niveau, et la génération 4 n'affiche plus AUCUN
+ *    contrôle « + Renseigner ses origines » (arrêt visuel strict) — la limite serveur
  *    (gwseq_sanitize_external_ancestor_tree(), inchangée dans son principe) reste de toute façon
- *    la garantie réelle, une requête manipulée ne peut pas la contourner.
+ *    la garantie réelle, une requête manipulée ne peut pas la contourner. **Correctif BLOQUANT
+ *    (post-reprise de recette)** : un premier essai sans JavaScript s'est révélé insuffisant en
+ *    conditions réelles (un nom fraîchement saisi ne se reflétait dans ces intitulés qu'après
+ *    enregistrement) ; une écoute déléguée légère (assets/cheval-admin.js), strictement scopée à
+ *    cet écran, met désormais ces intitulés à jour EN DIRECT pendant la frappe, sans jamais lire
+ *    ni modifier la valeur réellement envoyée au serveur (voir plus bas §16 pour le même fichier
+ *    JS étendu par le correctif complémentaire de nettoyage).
  * 12-15. Convention de présentation des noms (§12-15) : `post_title`/`name` restent enregistrés
  *    exactement tels que saisis (aucune transformation destructive de la source) ; seule leur
  *    PRÉSENTATION dans l'interface du pedigree passe par gwseq_format_horse_name_display()
  *    (majuscules, sans accents — voir cheval-fields.php), jamais Race/Stud-book qui reste une
  *    valeur structurée via référentiel, jamais une transformation de casse.
+ * 16. Nettoyage automatique des ascendants externes vidés (correctif complémentaire post-recette,
+ *    0.8.0) : la recette a révélé qu'un ascendant externe créé puis vidé par l'utilisateur (nom
+ *    effacé, tout en restant sur le mode "Ascendant hors GWS") continuait d'exister en base et
+ *    réapparaissait à la réouverture de la fiche. CAUSE : un nœud sans nom n'a JAMAIS été stockable
+ *    (gwseq_sanitize_external_ancestor_tree() renvoie déjà `null` dès qu'un nom est vide, y compris
+ *    récursivement pour tout sous-arbre — cette garantie existait déjà et n'a pas changé) ; mais
+ *    quand l'arbre entier devenait ainsi entièrement `null`, gwseq_set_horse_parent() ne
+ *    réinitialisait QUE la meta "..._mode" et laissait l'ANCIENNE meta "..._externe" intacte —
+ *    correct pour un CHANGEMENT DE MODE (gws <-> externe, où cette conservation est voulue), mais pas
+ *    ici : l'utilisateur restait sur "externe" et avait activement tout effacé, sans que la donnée
+ *    stockée ne suive. CORRECTIF : quand l'arbre sanitisé est entièrement vide alors que le mode
+ *    soumis est "external", "..._externe" est désormais explicitement supprimée
+ *    (`delete_post_meta()`) plutôt que laissée à sa valeur précédente — sans toucher à la branche
+ *    GWS (`_id`) ni à la relation de l'autre parent. Un bouton explicite « Supprimer cet ascendant »
+ *    (assets/cheval-admin.js) permet en complément à l'utilisateur de vider en un clic un nœud (à
+ *    n'importe quelle génération) et toute sa sous-branche — avec confirmation si des origines
+ *    enfants sont déjà renseignées — sans attendre un enregistrement pour voir le formulaire se
+ *    vider : purement une remise à vide des champs côté client, la suppression réelle en base
+ *    restant l'effet du mécanisme ci-dessus au moment de la sauvegarde. Le resolver
+ *    (includes/pedigree-resolver.php) ne produisait déjà, et continue de ne jamais produire, de
+ *    nœud "external" sans nom — une branche vide y reste toujours une absence de branche. Ce
+ *    correctif ne concerne QUE les ascendants externes ; une relation vers une fiche GWS continue
+ *    de se désactiver via le mode « Non renseigné » sans jamais supprimer la fiche Cheval liée.
  *
  * STOCKAGE (inchangé dans son principe, JSON par branche externe plutôt que des dizaines de meta
  * à plat) : arbre récursif `{name, race, race_autre, father, mother}`, encodé en JSON dans une
@@ -115,9 +141,13 @@ function gwseq_sanitize_horse_parent_gws_id($raw_horse_id, $current_post_id = 0)
  * n'importe quel autre champ enum du module, jamais stocké tel quel.
  *
  * Un nœud sans nom n'est pas une donnée exploitable et n'est jamais stocké (§25) — y compris son
- * éventuel sous-arbre, qui n'a alors rien à quoi se rattacher. $depth_remaining borne strictement
- * la récursion quelle que soit la profondeur du tableau fourni en entrée (§16 : une structure
- * malformée ou excessivement profonde ne peut jamais contourner la limite côté serveur).
+ * éventuel sous-arbre, qui n'a alors rien à quoi se rattacher (un nœud, à quelque génération que
+ * ce soit, N'EXISTE QUE s'il porte un nom ; cette règle, à elle seule, garantit déjà qu'aucun nœud
+ * « totalement vide » ne peut jamais être stocké nulle part dans l'arbre — voir le correctif
+ * complémentaire post-recette plus bas dans l'en-tête de ce fichier pour le SEUL cas qui échappait
+ * réellement à cette garantie). $depth_remaining borne strictement la récursion quelle que soit la
+ * profondeur du tableau fourni en entrée (§16 : une structure malformée ou excessivement profonde
+ * ne peut jamais contourner la limite côté serveur).
  */
 function gwseq_sanitize_external_ancestor_tree($raw, $depth_remaining) {
   $raw = is_array($raw) ? $raw : array();
@@ -242,7 +272,23 @@ function gwseq_set_horse_parent($cheval_id, $role, $raw_args) {
     // que wp_unslash() puisse corrompre. N'a rien à voir avec gwseq_format_horse_name_display()
     // (fonction de présentation) : celle-ci ne fait qu'afficher fidèlement une donnée déjà
     // corrompue en amont — elle n'est jamais appelée ici, ni dans aucune fonction de sanitation.
-    if ($tree !== null) update_post_meta($cheval_id, $prefix . 'externe', wp_json_encode($tree, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    if ($tree !== null) {
+      update_post_meta($cheval_id, $prefix . 'externe', wp_json_encode($tree, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    } else {
+      // CORRECTIF COMPLÉMENTAIRE post-recette (0.8.0) : $tree === null signifie que l'utilisateur a
+      // vidé la totalité de l'arbre externe tout en restant sur le mode "Ascendant hors GWS" (le
+      // nom du premier ascendant, seul champ qui conditionne l'existence même du nœud — voir
+      // gwseq_sanitize_external_ancestor_tree() — est vide). AVANT ce correctif, seule la meta
+      // "..._mode" était réinitialisée ('') ; "..._externe" restait volontairement intacte pour la
+      // conservation non destructive d'un CHANGEMENT DE MODE (gws <-> externe) — mais ici il ne
+      // s'agit pas d'un changement de mode, l'utilisateur est resté sur "externe" et a activement
+      // vidé son contenu : laisser l'ancienne donnée en base faisait réapparaître un ascendant
+      // pourtant explicitement effacé dès que l'utilisateur rouvrait ou rebasculait sur ce mode —
+      // c'est le bug rapporté en recette (« un ascendant vidé continue d'exister »). Supprimer la
+      // meta ici ne touche jamais la branche GWS (`_id`), ni la branche externe d'une AUTRE
+      // relation (père vs mère, gérées indépendamment), ni le cheval principal.
+      delete_post_meta($cheval_id, $prefix . 'externe');
+    }
     return true; // _id volontairement non touché
   }
 
@@ -352,7 +398,8 @@ function gwseq_render_cheval_pedigree_box($post) {
     data-father-prefix="<?php echo esc_attr__('Père de ', 'gws-core'); ?>"
     data-mother-prefix="<?php echo esc_attr__('Mère de ', 'gws-core'); ?>"
     data-summary-prefix="<?php echo esc_attr__('+ Renseigner les origines de ', 'gws-core'); ?>"
-    data-fallback-name="<?php echo esc_attr__('cet ascendant', 'gws-core'); ?>">
+    data-fallback-name="<?php echo esc_attr__('cet ascendant', 'gws-core'); ?>"
+    data-delete-confirm="<?php echo esc_attr__('Supprimer cet ascendant et ses origines ?', 'gws-core'); ?>">
     <?php
     echo '<p><strong>' . esc_html(sprintf(
       /* translators: %s: nom du cheval, en présentation GWS (majuscules, sans accents) */
@@ -447,6 +494,13 @@ function gwseq_render_cheval_parent_fields($post, $role, $label) {
  * - Race/Stud-book réutilise le référentiel de la fiche Cheval, avec le même mécanisme
  *   "Autre + précision" ; $field_name porte la notation par crochets, $_POST reconstruit
  *   nativement l'arbre complet.
+ * - CORRECTIF COMPLÉMENTAIRE (nettoyage des ascendants vides, 0.8.0) : un bouton « Supprimer cet
+ *   ascendant » (classe `gwseq-delete-ancestor`) permet de vider intentionnellement CE nœud et
+ *   toute sa sous-branche (avec confirmation par `assets/cheval-admin.js` si des origines enfants
+ *   sont déjà renseignées) sans attendre un enregistrement — il agit uniquement sur les champs de
+ *   ce nœud et de ses descendants (jamais une autre branche, jamais le cheval principal), en
+ *   remettant simplement leurs valeurs à vide : la suppression réelle en base reste l'effet du
+ *   nettoyage automatique de gwseq_sanitize_external_ancestor_tree() au moment de la sauvegarde.
  */
 function gwseq_render_external_ancestor_fields($field_name, $node, $depth_remaining, $context_label) {
   $node = is_array($node) ? $node : array();
@@ -485,6 +539,9 @@ function gwseq_render_external_ancestor_fields($field_name, $node, $depth_remain
     <p class="gwseq-external-race-autre-wrap" style="<?php echo ($node['race'] ?? '') === 'autre' ? '' : 'display:none;'; ?>">
       <label><?php esc_html_e('Préciser la race / le stud-book', 'gws-core'); ?></label><br>
       <input type="text" class="regular-text" name="<?php echo esc_attr($field_name); ?>[race_autre]" value="<?php echo esc_attr($node['race_autre'] ?? ''); ?>">
+    </p>
+    <p>
+      <button type="button" class="button-link-delete gwseq-delete-ancestor"><?php esc_html_e('Supprimer cet ascendant', 'gws-core'); ?></button>
     </p>
     <?php if (!$is_last_generation) :
       $node_display_name = gwseq_pedigree_display_name($node['name'] ?? '');

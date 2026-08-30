@@ -101,6 +101,9 @@ function get_edit_post_link($post_id) { return 'https://example.test/wp-admin/po
 // (voir la remarque sur wp_unslash() ci-dessus et le CR de cette correction).
 function update_post_meta($post_id, $key, $value) { $GLOBALS['__gwseq_test_meta'][$post_id][$key] = wp_unslash($value); return true; }
 function get_post_meta($post_id, $key, $single = false) { return $GLOBALS['__gwseq_test_meta'][$post_id][$key] ?? ''; }
+// FIDÈLE au comportement réel de delete_metadata() : la clé disparaît complètement (get_post_meta()
+// retombe alors sur '' via ?? '' ci-dessus, exactement comme une meta jamais enregistrée).
+function delete_post_meta($post_id, $key) { unset($GLOBALS['__gwseq_test_meta'][$post_id][$key]); return true; }
 function metadata_exists($type, $post_id, $key) {
   return array_key_exists($post_id, $GLOBALS['__gwseq_test_meta']) && array_key_exists($key, $GLOBALS['__gwseq_test_meta'][$post_id]);
 }
@@ -888,11 +891,107 @@ gws_test_assert(substr_count($pedigree_box_html, 'class="gwseq-ancestor-node"') 
 gws_test_assert(strpos($pedigree_box_html, 'gwseq-external-name-input') !== false, 'Contexte dynamique : le champ Nom porte la classe utilisée par l’écoute déléguée du script');
 
 // --- Le JavaScript ne doit jamais être décrit comme modifiant la donnée : vérification déclarative
-// directe sur le fichier (aucune assignation à .value dans le bloc de mise à jour du contexte) ---
+// directe sur le fichier (aucune assignation à .value dans le bloc de mise à jour du contexte,
+// borné à l'écoute 'input' elle-même — le bloc de suppression explicite plus bas, qui remet lui
+// bien des valeurs à vide de façon assumée, est vérifié séparément ci-dessous) ---
 $cheval_admin_js_source = file_get_contents($module_dir . 'assets/cheval-admin.js');
-$context_update_js_block = substr($cheval_admin_js_source, strpos($cheval_admin_js_source, 'gwseqPedigreeDisplayName'));
+$context_update_js_start = strpos($cheval_admin_js_source, 'gwseqPedigreeDisplayName');
+$delete_button_js_start = strpos($cheval_admin_js_source, "addEventListener('click'");
+$context_update_js_block = substr($cheval_admin_js_source, $context_update_js_start, $delete_button_js_start - $context_update_js_start);
+gws_test_assert($delete_button_js_start !== false && $delete_button_js_start > $context_update_js_start, 'Contexte dynamique : le bloc de suppression explicite (écoute "click") est bien un bloc distinct, situé après celui de mise à jour du contexte (écoute "input")');
 gws_test_assert(strpos($context_update_js_block, '.value =') === false, 'Contexte dynamique : le script ne réaffecte jamais la propriété .value d’un champ (aucune normalisation de la saisie)');
 gws_test_assert(strpos($context_update_js_block, 'e.target.value') !== false, 'Contexte dynamique : le script LIT bien la valeur courante du champ Nom (sans jamais l’écrire)');
+
+// =====================================================================================
+// Correctif complémentaire — suppression d'un ascendant externe vide (recette runtime)
+//
+// CAUSE : un nœud sans nom n'a jamais été stockable (gwseq_sanitize_external_ancestor_tree()
+// renvoie déjà null dès qu'un nom est vide, y compris récursivement pour tout sous-arbre — cette
+// garantie existait déjà, elle n'a pas changé ici). Le vrai défaut était ailleurs : quand
+// l'utilisateur vidait la totalité de l'arbre externe tout en restant sur le mode "Ascendant hors
+// GWS", gwseq_set_horse_parent() réinitialisait bien "..._mode" mais laissait l'ANCIENNE
+// "..._externe" intacte (conservation prévue pour un CHANGEMENT DE MODE, pas pour un contenu vidé
+// en restant sur le même mode) — l'ancien ascendant réapparaissait donc à la prochaine ouverture
+// de la fiche, ou dès qu'on rebasculait sur "externe". CORRECTIF : "..._externe" est désormais
+// explicitement supprimée avec delete_post_meta() dans ce cas précis.
+// =====================================================================================
+
+gws_test_make_post(900, GWSEQ_CPT_CHEVAL, 'Cheval Nettoyage Ascendant');
+
+// --- Nœud externe vide (aucun nom) : jamais stocké, comme avant ce correctif (§2 de la demande :
+// nœud partiellement renseigné conservé, nœud totalement vide jamais stocké) ---
+gwseq_set_horse_parent(900, 'father', array('mode' => 'external', 'external' => array('name' => '', 'race' => '', 'race_autre' => '')));
+gws_test_assert(get_post_meta(900, '_gwseq_pere_mode', true) === '', 'Nettoyage : un arbre externe totalement vide à la sauvegarde désactive la relation (mode vide)');
+gws_test_assert(get_post_meta(900, '_gwseq_pere_externe', true) === '', 'Nettoyage : aucune structure JSON vide n’est stockée pour un ascendant externe jamais nommé');
+
+// --- Scénario exact du bug rapporté : un ascendant est créé (nom saisi, enregistré), puis
+// entièrement vidé par l’utilisateur tout en restant sur le mode "externe" ---
+gwseq_set_horse_parent(900, 'mother', array('mode' => 'external', 'external' => array('name' => 'Kannan', 'race' => 'kwpn')));
+gws_test_assert(get_post_meta(900, '_gwseq_mere_mode', true) === 'external', 'Nettoyage (avant vidage) : l’ascendant Kannan est bien enregistré, mode externe actif');
+gws_test_assert(json_decode(get_post_meta(900, '_gwseq_mere_externe', true), true)['name'] === 'Kannan', 'Nettoyage (avant vidage) : le nom "Kannan" est bien présent dans la structure JSON stockée');
+
+gwseq_set_horse_parent(900, 'mother', array('mode' => 'external', 'external' => array('name' => '', 'race' => '')));
+gws_test_assert(get_post_meta(900, '_gwseq_mere_mode', true) === '', 'Nettoyage : après avoir vidé le nom, la relation est bien désactivée (mode redevenu vide)');
+gws_test_assert(get_post_meta(900, '_gwseq_mere_externe', true) === '', 'Nettoyage (correctif) : la structure JSON "Kannan" précédemment enregistrée est bien SUPPRIMÉE — elle ne réapparaît pas à la prochaine lecture (c’est exactement le bug rapporté en recette : "le nœud continue d’exister vide")');
+$relation_after_clear = gwseq_get_horse_parent(900, 'mother');
+gws_test_assert($relation_after_clear['mode'] === '' && $relation_after_clear['external'] === null, 'Nettoyage : gwseq_get_horse_parent() ne renvoie plus aucune trace de l’ancien ascendant "Kannan" après vidage');
+
+// --- Nœud partiellement renseigné (nom seul) : conservé, jamais confondu avec un nœud vide ---
+gwseq_set_horse_parent(900, 'father', array('mode' => 'external', 'external' => array('name' => 'Voltaire')));
+$relation_partial = gwseq_get_horse_parent(900, 'father');
+gws_test_assert($relation_partial['mode'] === 'external' && $relation_partial['external']['name'] === 'Voltaire', 'Nettoyage : un nœud partiellement renseigné (nom seul, ni race ni descendant) est bien conservé, jamais traité comme vide');
+
+// --- Nœud avec un descendant renseigné à un niveau plus profond : conservé sur toute sa branche ---
+gwseq_set_horse_parent(900, 'father', array('mode' => 'external', 'external' => array(
+  'name' => 'Kannan', 'race' => 'kwpn',
+  'father' => array('name' => 'Voltaire', 'race' => 'hanovrien'),
+)));
+$relation_with_child = gwseq_get_horse_parent(900, 'father');
+gws_test_assert($relation_with_child['external']['name'] === 'Kannan' && $relation_with_child['external']['father']['name'] === 'Voltaire', 'Nettoyage : un nœud avec un descendant renseigné (père de Kannan = Voltaire) est bien conservé sur toute sa branche');
+
+// --- Vider ce même père (Kannan + Voltaire) : toute la branche disparaît proprement, la mère
+// (une autre relation, gérée indépendamment) reste totalement intacte ---
+gwseq_set_horse_parent(900, 'mother', array('mode' => 'external', 'external' => array('name' => 'Une Jument Intacte', 'race' => 'trakehner')));
+gwseq_set_horse_parent(900, 'father', array('mode' => 'external', 'external' => array('name' => '', 'father' => array('name' => ''))));
+$relation_after_full_clear = gwseq_get_horse_parent(900, 'father');
+$relation_mother_untouched = gwseq_get_horse_parent(900, 'mother');
+gws_test_assert($relation_after_full_clear['mode'] === '' && $relation_after_full_clear['external'] === null, 'Nettoyage : vider un ascendant avec toute sa sous-branche (Kannan + Voltaire) supprime bien toute la structure, y compris le descendant');
+gws_test_assert($relation_mother_untouched['mode'] === 'external' && $relation_mother_untouched['external']['name'] === 'Une Jument Intacte', 'Nettoyage : l’autre branche (la mère) reste totalement intacte — le nettoyage n’agit que sur la relation ciblée');
+
+// --- Une relation GWS n'est jamais concernée par ce nettoyage : le choix "Non renseigné" désactive
+// la relation sans jamais toucher à la fiche Cheval référencée (§4 de la demande) ---
+gws_test_make_post(901, GWSEQ_CPT_CHEVAL, 'Étalon GWS Référencé');
+gwseq_set_horse_parent(900, 'father', array('mode' => 'gws', 'horse_id' => 901));
+gwseq_set_horse_parent(900, 'father', array('mode' => ''));
+gws_test_assert(get_post_type(901) === GWSEQ_CPT_CHEVAL && get_post(901) !== null, 'Nettoyage : désactiver une relation GWS ("Non renseigné") ne supprime jamais la fiche Cheval référencée');
+gws_test_assert((int) get_post_meta(900, '_gwseq_pere_id', true) === 901, 'Nettoyage : conservation non destructive inchangée pour une relation GWS — l’ancien ID reste récupérable, comme avant ce correctif');
+
+// --- Le resolver ne produit jamais de nœud "external" vide, y compris pour une donnée héritée
+// d'avant ce correctif (garde défensive déjà en place, ici testée explicitement — §5 de la
+// demande : "une branche vide = absence de branche") ---
+gws_test_make_post(902, GWSEQ_CPT_CHEVAL, 'Cheval Donnée Historique Vide');
+$GLOBALS['__gwseq_test_meta'][902] = array(
+  '_gwseq_pere_mode' => 'external',
+  '_gwseq_pere_externe' => wp_json_encode(array('name' => '', 'race' => 'kwpn', 'race_autre' => '', 'father' => null, 'mother' => null)),
+);
+$resolved_902 = gwseq_resolve_horse_pedigree(902);
+gws_test_assert($resolved_902['father'] === null, 'Resolver : une donnée héritée d’un nœud externe sans nom (même avec une race renseignée) n’est jamais résolue en un nœud "external" fantôme — reste null');
+
+// --- Bouton "Supprimer cet ascendant" : présence du contrôle et du texte de confirmation
+// contextuel dans le rendu admin, câblage JS correspondant ---
+gws_test_make_post(903, GWSEQ_CPT_CHEVAL, 'Cheval Bouton Suppression');
+gwseq_set_horse_parent(903, 'father', array('mode' => 'external', 'external' => array('name' => 'Kannan')));
+ob_start();
+gwseq_render_cheval_pedigree_box(gws_test_make_post_object(903));
+$delete_button_html = ob_get_clean();
+gws_test_assert(strpos($delete_button_html, 'gwseq-delete-ancestor') !== false, 'Bouton de suppression : le contrôle "Supprimer cet ascendant" est bien rendu pour un ascendant externe');
+gws_test_assert(strpos($delete_button_html, 'data-delete-confirm="Supprimer cet ascendant et ses origines ?"') !== false, 'Bouton de suppression : le texte de confirmation traduit est fourni en attribut data-* (jamais codé en dur côté JavaScript)');
+
+$delete_js_block = substr($cheval_admin_js_source, $delete_button_js_start);
+gws_test_assert(strpos($delete_js_block, 'gwseq-delete-ancestor') !== false, 'Bouton de suppression : le script écoute bien les clics sur le bouton "Supprimer cet ascendant"');
+gws_test_assert(strpos($delete_js_block, "closest('.gwseq-ancestor-node')") !== false, 'Bouton de suppression : le script cible le nœud le plus proche du bouton cliqué, jamais un autre nœud ou le formulaire entier');
+gws_test_assert(strpos($delete_js_block, 'confirm(') !== false, 'Bouton de suppression : une confirmation est bien demandée avant de vider un nœud possédant des origines enfants');
+gws_test_assert(strpos($delete_js_block, 'window.confirm(confirmText)') !== false || strpos($delete_js_block, 'confirm(confirmText)') !== false, 'Bouton de suppression : le texte de la confirmation provient bien de la donnée traduite fournie par PHP (attribut data-delete-confirm), jamais codé en dur');
 
 // =====================================================================================
 // Contexte de saisie (§3-11 de la demande de correction) : jamais un Père/Mère nu, toujours le

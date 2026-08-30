@@ -17,7 +17,8 @@ pedigree de Jamerose) a validé le modèle fonctionnel mais révélé des probl�
 corrigés en 0.6.0 (Race/Stud-book harmonisé, contexte de saisie, compteur de génération,
 convention de présentation des noms). La reprise de cette recette a ensuite révélé un **bug
 bloquant** (corruption des noms accentués à l'enregistrement) ainsi que deux défauts
-complémentaires, corrigés en 0.7.0 (voir plus bas) ; en attente d'une nouvelle recette. Voir
+complémentaires, corrigés en 0.7.0, puis un dernier défaut (un ascendant externe vidé continuait
+d'exister en base), corrigé en 0.8.0 (voir plus bas) ; en attente d'une nouvelle recette. Voir
 `CHANGELOG.md` de ce dossier pour l'historique détaillé par étape, et la proposition de conception
 validée pour le contexte d'ensemble.
 
@@ -149,6 +150,43 @@ requête inverse, jamais stockés sur la fiche du parent — seules de vraies re
 fiches `gwseq_cheval` comptent, un ascendant externe n'est jamais une source de « production »
 calculable.
 
+#### Correctif complémentaire 0.8.0 — suppression d'un ascendant externe vide
+
+La reprise de recette a révélé un dernier défaut : un ascendant externe créé (nom saisi), puis
+entièrement vidé par l'utilisateur en restant sur le mode « Ascendant hors GWS », continuait
+d'exister en base et réapparaissait à la réouverture de la fiche.
+
+**Cause exacte** : un nœud sans nom n'a jamais pu être stocké — `gwseq_sanitize_external_ancestor_tree()`
+renvoie déjà `null` dès qu'un nom est vide, y compris récursivement pour tout sous-arbre (garantie
+déjà en place, inchangée par ce correctif). Le vrai défaut se situait dans
+`gwseq_set_horse_parent()` : quand l'arbre sanitisé devenait ainsi entièrement `null` (l'ascendant
+vidé), seule la meta `..._mode` était réinitialisée à `''` — l'ancienne meta `..._externe`
+(contenant encore le nom précédemment saisi) restait, elle, intacte en base. Ce comportement est le
+bon pour un CHANGEMENT DE MODE (GWS ⇄ externe, où la conservation non destructive est volontaire,
+voir plus haut) mais pas ici : l'utilisateur restait sur « externe » et avait activement tout
+effacé, sans que la donnée stockée ne suive — d'où la résurrection de l'ancien ascendant.
+
+**Correctif** : quand l'arbre sanitisé est entièrement vide alors que le mode soumis reste
+`external`, `..._externe` est désormais explicitement supprimée (`delete_post_meta()`) plutôt que
+laissée à sa valeur précédente — sans jamais toucher à la branche GWS (`_id`) ni à la relation de
+l'autre parent (père et mère restent gérés indépendamment).
+
+**Bouton explicite « Supprimer cet ascendant »** (`assets/cheval-admin.js`) : à chaque génération,
+un bouton permet de vider en un clic un nœud et toute sa sous-branche, avec une confirmation
+(« Supprimer cet ascendant et ses origines ? ») uniquement si des origines enfants sont déjà
+renseignées. Purement une remise à vide des champs déjà présents dans le DOM côté client — jamais
+un appel serveur, jamais une suppression d'élément du DOM, jamais de système de corbeille : la
+suppression réelle en base reste l'effet du mécanisme ci-dessus au prochain enregistrement. Le
+texte de confirmation est fourni par PHP via l'attribut `data-delete-confirm` du conteneur
+`.gwseq-pedigree-i18n`, jamais codé en dur en JavaScript.
+
+**Ce qui reste inchangé** : un nœud partiellement renseigné (un nom seul, par exemple) est toujours
+conservé, tout comme un nœud dont un descendant reste renseigné à un niveau plus profond ; le
+resolver ne produisait déjà, et ne produit toujours jamais, de nœud "external" fantôme sans nom
+(garde déjà en place, désormais testée explicitement, y compris sur une donnée héritée d'avant ce
+correctif) ; une relation vers une fiche GWS continue de se désactiver via le mode « Non renseigné »
+sans jamais supprimer la fiche Cheval référencée.
+
 #### Modèle de données (Étape 5)
 
 Pour chaque cheval, deux relations indépendantes : Père et Mère. Chacune est stockée sur trois
@@ -266,6 +304,13 @@ l'état des lieux sur Prestation/Cheval-identité/Commercialisation).
   tant qu'un utilisateur ne la corrige pas manuellement en resaisissant le nom concerné (une fois
   corrigée et resauvegardée avec le correctif 0.7.0 en place, elle ne peut plus se corrompre à
   nouveau). La fiche de recette Jamerose sera corrigée manuellement après déploiement.
+- **Une fiche déjà enregistrée avant le correctif 0.8.0** pourrait avoir conservé, orpheline, une
+  ancienne structure externe déjà vidée par l'utilisateur avant cette version (le symptôme exact du
+  bug corrigé ici) — elle réapparaîtrait alors une seule fois à l'ouverture de la fiche ; il suffit
+  de la revider explicitement (ou d'utiliser le bouton « Supprimer cet ascendant ») et
+  d'enregistrer une fois pour qu'elle soit définitivement nettoyée. Aucune migration automatique
+  n'a été effectuée sur les données existantes, pour les mêmes raisons de prudence que pour le
+  correctif Unicode ci-dessus.
 
 #### Pistes futures actées en roadmap (aucun développement à ce stade)
 
@@ -348,6 +393,28 @@ saisi de Jamerose, un test à la fois :
     « Pedigree résolu » que le nœud de génération 4 ne présente plus aucune ligne « Père : Non
     renseigné »/« Mère : Non renseigné » — la génération 4 doit apparaître comme terminale, sans
     laisser croire qu'une génération 5 existerait.
+
+**Étapes ajoutées pour le correctif complémentaire 0.8.0** (suppression d'un ascendant externe
+vide) :
+
+17. Créer un ascendant externe (nom saisi, éventuellement une race), enregistrer, puis effacer
+    entièrement le champ Nom (en laissant le mode sur « Ascendant hors GWS ») et enregistrer à
+    nouveau : recharger la fiche et vérifier que l'ascendant NE réapparaît PAS — ni dans le champ
+    Nom, ni dans la boîte « Pedigree résolu ».
+18. Reproduire le même essai avec un ascendant possédant lui-même un père/une mère renseigné(e) :
+    vérifier qu'en vidant l'ascendant du premier niveau, toute sa sous-branche disparaît également
+    après enregistrement, sans erreur.
+19. Utiliser le bouton « Supprimer cet ascendant » sur un nœud sans origines enfants : vérifier que
+    les champs se vident immédiatement, sans confirmation demandée.
+20. Utiliser le même bouton sur un nœud dont les origines (père/mère) sont déjà renseignées :
+    vérifier qu'une confirmation (« Supprimer cet ascendant et ses origines ? ») s'affiche avant
+    tout vidage, et que refuser cette confirmation ne modifie aucun champ.
+21. Vérifier que supprimer un ascendant du Père n'affecte jamais les champs déjà saisis côté Mère
+    (et réciproquement), et que le reste du pedigree (autres générations non concernées) reste
+    intact après enregistrement.
+22. Vérifier qu'une relation vers un cheval GWS, une fois désactivée via « Non renseigné », ne
+    supprime jamais la fiche Cheval du cheval qui était référencé (elle reste normalement
+    consultable et modifiable).
 
 ### Cheval (Étape 4)
 

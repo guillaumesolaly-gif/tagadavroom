@@ -1,5 +1,24 @@
 # Changelog — GWS Starter
 
+## 1.11.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 5 : correctif complémentaire — suppression d'un ascendant externe
+  vide.** La reprise de recette a révélé qu'un ascendant externe créé (nom saisi) puis entièrement
+  vidé par l'utilisateur, en restant sur le mode « Ascendant hors GWS », continuait d'exister en
+  base et réapparaissait à la réouverture de la fiche. Cause exacte : un nœud sans nom n'a jamais
+  pu être stocké (garantie déjà en place, inchangée), mais quand l'arbre entier devenait ainsi
+  vide, seule la meta de mode était réinitialisée — l'ancienne structure JSON restait, elle,
+  intacte en base (comportement pensé pour un changement de mode GWS ⇄ externe, pas adapté à un
+  contenu vidé en restant sur le même mode). Corrigé en supprimant explicitement cette meta dans ce
+  cas précis. Ajout d'un bouton explicite « Supprimer cet ascendant » (avec confirmation si des
+  origines enfants sont déjà renseignées) pour vider un nœud et sa sous-branche en un clic, sans
+  attendre un enregistrement. Une relation vers une fiche GWS n'est pas concernée : le choix « Non
+  renseigné » continue de désactiver la relation sans jamais supprimer la fiche Cheval référencée.
+  Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.8.0) pour le détail
+  complet.
+- 21 nouvelles assertions automatisées, suite complète toujours 100 % passante (631 assertions au
+  total) — aucune assertion affaiblie.
+
 ## 1.10.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 5 : correctif BLOQUANT (corruption Unicode des noms accentués).** La

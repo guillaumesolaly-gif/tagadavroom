@@ -9,7 +9,10 @@
  * dans le DOM. Léger, scopé à cet écran, sans erreur si JavaScript est indisponible : les deux
  * groupes de champs (GWS et externe) restent alors simplement tous deux visibles et le serveur
  * reste seul autoritaire sur ce qui est réellement enregistré (voir la sanitation par mode dans
- * includes/cheval-pedigree.php).
+ * includes/cheval-pedigree.php). Gère aussi la mise à jour en direct des intitulés contextuels du
+ * pedigree et le bouton "Supprimer cet ascendant" (correctifs post-recette) : dans les deux cas,
+ * uniquement de l'affichage ou une remise à vide de champs déjà présents dans le DOM — jamais un
+ * appel serveur, jamais une transformation de la valeur réellement envoyée au serveur.
  */
 (function () {
   'use strict';
@@ -138,6 +141,52 @@
         var motherLabel = childNodes[1].querySelector(':scope > p > strong');
         if (motherLabel) motherLabel.textContent = motherPrefix + displayName;
       }
+    });
+
+    // Suppression explicite d'un ascendant externe (correctif complémentaire post-recette) : le
+    // bouton "Supprimer cet ascendant" (classe gwseq-delete-ancestor, voir
+    // includes/cheval-pedigree.php) agit UNIQUEMENT sur le nœud le plus proche et sa sous-branche
+    // — jamais une autre branche du pedigree, jamais le cheval principal (aucun bouton de ce type
+    // n'existe en dehors d'un bloc .gwseq-ancestor-node). Il ne fait que remettre les champs à
+    // vide ; la suppression réelle en base est l'effet du nettoyage automatique appliqué par
+    // gwseq_sanitize_external_ancestor_tree() au prochain enregistrement (voir
+    // gwseq_is_external_ancestor_node_empty()) — aucun appel serveur, aucune suppression DOM,
+    // aucun système de corbeille. Une confirmation n'est demandée que si des origines enfants sont
+    // déjà renseignées (recherche récursive de tout champ non vide sous ce nœud) ; le texte de
+    // confirmation provient de l'attribut data-delete-confirm de .gwseq-pedigree-i18n, jamais codé
+    // en dur ici.
+    document.addEventListener('click', function (e) {
+      var button = e.target.closest ? e.target.closest('.gwseq-delete-ancestor') : null;
+      if (!button) return;
+      e.preventDefault();
+
+      var nodeWrap = button.closest('.gwseq-ancestor-node');
+      if (!nodeWrap) return;
+
+      var childNodes = nodeWrap.querySelectorAll(':scope > details > .gwseq-ancestor-node');
+      var hasChildData = false;
+      childNodes.forEach(function (child) {
+        child.querySelectorAll('input[type="text"], select').forEach(function (field) {
+          if (field.value.trim() !== '') hasChildData = true;
+        });
+      });
+
+      if (hasChildData) {
+        var i18nContainer = document.querySelector('.gwseq-pedigree-i18n');
+        var confirmText = i18nContainer ? (i18nContainer.getAttribute('data-delete-confirm') || '') : '';
+        if (confirmText && !window.confirm(confirmText)) return;
+      }
+
+      nodeWrap.querySelectorAll('input[type="text"]').forEach(function (input) {
+        input.value = '';
+      });
+      nodeWrap.querySelectorAll('.gwseq-external-race-select').forEach(function (select) {
+        select.value = '';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      nodeWrap.querySelectorAll('.gwseq-external-name-input').forEach(function (input) {
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
     });
   });
 })();

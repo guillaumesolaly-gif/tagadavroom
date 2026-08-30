@@ -154,7 +154,15 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   des attributs `data-*`/classes nécessaires à la mise à jour dynamique du contexte, et génération
   terminale (une chaîne GWS ET une branche externe résolues à la génération 4 n'ont plus aucune
   clé père/mère, ni même `null` — le rendu de vérification n'affiche donc plus de « Non renseigné »
-  laissant croire à tort à une génération 5 hors périmètre).
+  laissant croire à tort à une génération 5 hors périmètre). Correctif complémentaire 0.8.0
+  (suppression d'un ascendant externe vide) : un ascendant vidé (nom effacé) en restant sur le mode
+  externe supprime bien la meta stockée (`delete_post_meta()`, vérifié directement) au lieu de
+  laisser une ancienne structure JSON réapparaître, un nœud partiellement renseigné ou possédant un
+  descendant renseigné reste conservé, une autre branche du pedigree (l'autre parent) n'est jamais
+  affectée, une relation GWS désactivée ne supprime jamais la fiche Cheval référencée, le resolver
+  ne produit jamais de nœud "external" fantôme même sur une donnée héritée d'avant ce correctif, et
+  câblage du bouton explicite « Supprimer cet ascendant » (contrôle rendu, texte de confirmation
+  fourni en attribut `data-*`, écoute JS ciblant uniquement le nœud le plus proche).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -179,3 +187,7 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   (depuis 0.7.0) : réactivité perçue pendant la frappe, absence d'erreur JavaScript, confirmation
   visuelle qu'un champ Nom garde exactement la valeur tapée (accents compris) quel que soit ce qui
   s'affiche par ailleurs à l'écran.
+- Comportement navigateur réel du bouton « Supprimer cet ascendant » (depuis 0.8.0) : apparence de
+  la boîte de dialogue native `confirm()`, ressenti de la remise à vide immédiate des champs, et
+  confirmation qu'un enregistrement ultérieur reflète bien la suppression (couvert côté logique
+  serveur par les tests automatisés, mais jamais observé dans un vrai navigateur).
