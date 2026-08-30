@@ -1,5 +1,24 @@
 # Changelog — GWS Starter
 
+## 1.5.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Ajout du module métier optionnel `gws-equestrian`** (gestion et publication de contenu pour
+  les professionnels du monde équestre), développé de façon incrémentale, chaque étape recettée
+  avant la suivante — voir `wp-content/plugins/gws-core/modules/gws-equestrian/README.md` et son
+  propre `CHANGELOG.md` pour le détail. Inactif par défaut (comme tout module métier), sans
+  aucune conséquence sur un projet qui n'active pas ce module dans `config/modules.php`.
+  - Étape 1 — Fondations : trois Custom Post Types (`gwseq_prestation`, `gwseq_groupe`,
+    `gwseq_cheval`) et une taxonomie (`gwseq_categorie_cheval`), sans champ ni logique métier.
+  - Étape 2 — Composant répétable : brique interne au module pour gérer une liste ordonnée de
+    lignes structurées (futurs indices, vidéos, blocs personnalisés), sans dépendance à ACF ;
+    démonstration réservée à l'environnement local/développement.
+  - Registre des préfixes mis à jour (`wp-content/plugins/gws-core/modules/README.md`) : `gwseq_`
+    pour ce module, jamais `gws_`/`gws_core_`.
+  - Aucune modification du comportement générique du cœur ou du thème.
+- 55 nouvelles assertions automatisées (26 dans `gws-equestrian-foundations-test.php`, 29 dans
+  `gws-equestrian-repeater-logic-test.php`), toutes passées, suite existante inchangée et
+  toujours 100 % passante.
+
 ## 1.5.0
 
 Dernière passe de finition avant gel de la baseline GWS, après recette fonctionnelle réelle de

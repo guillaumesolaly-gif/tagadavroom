@@ -1,0 +1,19 @@
+/* Composant répétable GWS Equestrian — mise en forme minimale, aucune dépendance. */
+
+.gwseq-repeater__table {
+  margin-bottom: 8px;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.gwseq-repeater__table th,
+.gwseq-repeater__table td {
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.gwseq-repeater__col-actions {
+  width: 1%;
+  white-space: nowrap;
+}

@@ -28,14 +28,25 @@ function register_taxonomy($taxonomy, $object_type, $args = array()) {
   $GLOBALS['__gwseq_test_taxonomies'][$taxonomy] = array('object_type' => $object_type, 'args' => $args);
 }
 
-// Simule le hook 'init' en exécutant immédiatement le callback : suffisant ici, aucune des
-// fonctions enregistrées par ce module n'a besoin d'un contexte WordPress réel pour s'exécuter.
+// Simule le hook 'init' en exécutant immédiatement le callback : suffisant pour les fonctions
+// d'enregistrement testées ici. Les autres hooks (ex. admin_enqueue_scripts, ajoutés depuis
+// l'Étape 2 pour la démonstration QA du composant répétable) ne sont pas déclenchés par ce stub
+// : hors du périmètre de ce test, qui ne porte que sur les fondations (post types/taxonomie).
 function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {
-  if (is_callable($callback)) call_user_func($callback);
+  if ($hook === 'init' && is_callable($callback)) call_user_func($callback);
 }
+
+// Depuis l'Étape 2, module.php charge aussi le composant répétable et sa démonstration QA
+// (includes/repeater-field.php, includes/qa-repeater.php). Ce test ne porte que sur les
+// fondations (post types/taxonomie) : environnement "production" simulé pour que la
+// démonstration QA (réservée à local/development) ne s'enregistre pas et n'ajoute donc aucun
+// objet supplémentaire aux assertions ci-dessous — voir gws-equestrian-repeater-logic-test.php
+// pour les tests dédiés au composant répétable lui-même.
+function wp_get_environment_type() { return 'production'; }
 
 define('ABSPATH', __DIR__ . '/');
 define('GWS_CORE_DIR', dirname(__DIR__) . '/wp-content/plugins/gws-core/');
+define('GWS_CORE_URL', 'https://example.test/wp-content/plugins/gws-core/');
 $module_dir = GWS_CORE_DIR . 'modules/gws-equestrian/';
 
 require $module_dir . 'module.php';
@@ -84,6 +95,8 @@ $module_files = array(
   $module_dir . 'module.php',
   $module_dir . 'includes/post-types.php',
   $module_dir . 'includes/taxonomies.php',
+  $module_dir . 'includes/repeater-field.php',
+  $module_dir . 'includes/qa-repeater.php',
 );
 $prefix_violation_found = false;
 $non_gwseq_functions = array();

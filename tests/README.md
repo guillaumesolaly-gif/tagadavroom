@@ -13,6 +13,7 @@ php tests/starter-logic-test.php
 php tests/settings-helpers-logic-test.php
 php tests/schema-homepage-logic-test.php
 php tests/gws-equestrian-foundations-test.php
+php tests/gws-equestrian-repeater-logic-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -45,6 +46,13 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   modules du projet, Groupe tarifaire jamais public (pas d'archive, pas de rewrite, exclu de la
   recherche), Prestation/Cheval publics avec archive, taxonomie de catégorie de cheval non
   hiérarchique attachée au bon post type.
+- Composant répétable générique de `gws-equestrian`, Étape 2
+  (`gws-equestrian-repeater-logic-test.php`) : normalisation d'une liste de lignes (texte,
+  textarea, nombre, entier, URL), conservation stricte de l'ordre de saisie, suppression des
+  lignes entièrement vides, conservation de la valeur `0`/`"0"` sur chaque type numérique, rejet
+  silencieux des clés inattendues et des données mal formées (ligne ou tableau de lignes qui
+  n'est pas un tableau, valeur de colonne elle-même un tableau), conservation des caractères
+  spéciaux (apostrophes, accents, esperluette).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

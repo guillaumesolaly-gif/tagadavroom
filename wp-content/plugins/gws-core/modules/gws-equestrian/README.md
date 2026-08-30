@@ -7,14 +7,63 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 1 — Fondations uniquement
+## État actuel : Étape 2 — Composant répétable (Étape 1 validée)
 
-Cette étape ne prouve que l'intégration technique du module dans GWS, avant tout développement
-métier. Elle fait suite à une proposition de conception complète (modèle fonctionnel, interface,
-architecture, complexité, périmètre V1, arbitrages, plan de développement, stratégie de tests),
-validée point par point, dont les décisions structurantes ci-dessous découlent directement.
+L'Étape 1 (fondations) a été recettée en conditions réelles et validée. L'Étape 2 ajoute une
+brique technique interne — le composant répétable — sans toucher aux fondations ni construire
+encore de fonctionnalité métier. Voir `CHANGELOG.md` de ce dossier pour l'historique détaillé par
+étape, et la proposition de conception validée (modèle fonctionnel, interface, architecture,
+complexité, périmètre V1, arbitrages, plan de développement, stratégie de tests) pour le contexte
+d'ensemble.
 
-### Ce qui est réellement construit à cette étape
+### Composant répétable (Étape 2)
+
+`includes/repeater-field.php` fournit la plus petite abstraction utile pour gérer une liste
+ordonnée de lignes structurées (futurs indices de performance, URLs de vidéos, blocs éditoriaux
+personnalisés) sans réécrire trois fois la même mécanique — **ce n'est pas un mini-ACF** : pas de
+champs imbriqués, pas de types hypothétiques, pas d'exposition REST, pas de registre de types
+extensible. Voir l'en-tête de ce fichier pour la documentation complète (comment déclarer une
+structure, l'afficher, la sauvegarder, récupérer ses données). Démonstration neutre visible
+uniquement en environnement local/développement : `includes/qa-repeater.php` (voir sa procédure
+de recette ci-dessous).
+
+Types de colonnes supportés : `text`, `textarea`, `number`, `integer`, `url` — les seules
+primitives déjà nécessaires aux besoins identifiés par la conception validée. Stockage : une
+seule meta WordPress par structure répétable, valeur = tableau indexé de lignes (chaque ligne un
+tableau associatif clé de colonne => valeur sanitizée), lu et écrit avec les fonctions natives
+`get_post_meta()`/`update_post_meta()` — aucune fonction de lecture dédiée n'est nécessaire, donc
+aucune dépendance à ce fichier pour un futur consommateur (rendu front, export PDF).
+
+### Procédure de recette — Étape 2 (composant répétable)
+
+À réaliser dans WordPress Local, sans écrire de code :
+
+1. Sur un environnement dont le type est `local` ou `development`
+   (`wp_get_environment_type()`), un nouveau menu **QA — Répétable (Equestrian)** apparaît dans
+   l'administration dès que le module `gws-equestrian` est actif. **Il ne doit apparaître ni
+   exister en production.**
+2. Ajouter un élément de test : la meta box « Composant répétable — démonstration (Libellé /
+   Valeur / Année) » doit s'afficher, initialement vide.
+3. Cliquer sur « + Ajouter une ligne » : une ligne de champs doit apparaître, le focus doit se
+   poser sur son premier champ.
+4. Remplir cette ligne, cliquer une seconde fois sur « + Ajouter une ligne » pour une deuxième
+   ligne, la remplir avec des valeurs différentes (tester en particulier `0` dans le champ
+   Valeur, et des caractères spéciaux — apostrophe, accents, `&` — dans le champ Libellé).
+   Publier ou mettre à jour.
+5. Recharger la page d'édition : les deux lignes et leurs valeurs doivent être restituées à
+   l'identique, dans le même ordre, y compris le `0` et les caractères spéciaux.
+6. Supprimer une des deux lignes via son bouton « Supprimer », enregistrer, recharger : la ligne
+   supprimée ne doit plus jamais réapparaître ; l'autre reste intacte.
+7. Vérifier la console navigateur sur cet écran : aucune erreur JavaScript.
+8. Vérifier qu'aucun fichier CSS/JS de ce composant n'est chargé sur un autre écran WordPress
+   sans rapport (Tableau de bord, Articles, une Prestation, un Cheval...) — inspecter l'onglet
+   réseau du navigateur.
+9. Vérifier qu'aucun élément de test créé ici n'apparaît nulle part sur le site public (le CPT de
+   démonstration n'est jamais public).
+10. Supprimer les éléments de test créés une fois la recette terminée (aucune suppression
+    automatique n'est effectuée par le module).
+
+### Rappel — ce que l'Étape 1 a construit (toujours valide, non modifié depuis)
 
 - Trois Custom Post Types enregistrés : `gwseq_prestation`, `gwseq_groupe` (Groupe tarifaire),
   `gwseq_cheval`.
@@ -41,13 +90,14 @@ validée point par point, dont les décisions structurantes ci-dessous découlen
   la conception validée pour un usage multi-valeurs) est différé à l'étape 4, avec le reste du
   formulaire d'édition de la fiche cheval.
 
-### Ce qui n'est délibérément PAS construit à cette étape
+### Ce qui n'est délibérément PAS encore construit
 
-Conformément au périmètre strict fixé pour l'étape 1 : formulaire complet de Prestation, modèles
-de prestations préconfigurées, assistant de première configuration, glisser-déposer, moteur de
-tarification, composant de champ répétable, formulaire complet de fiche cheval, indices,
-galerie, vidéos, pedigree/relations, duplication, blocs personnalisés, export PDF, rendu front
-définitif. Ces éléments arrivent aux étapes 2 à 9 du plan de développement validé, chacune
+Conformément au périmètre strict fixé étape par étape : formulaire complet de Prestation,
+modèles de prestations préconfigurées, assistant de première configuration, glisser-déposer,
+moteur de tarification, formulaire complet de fiche cheval, indices/vidéos/blocs personnalisés
+**métier réels** (le composant répétable qui les portera existe depuis l'Étape 2, mais aucune de
+ces données métier n'est encore créée), pedigree/relations, duplication, export PDF, rendu front
+définitif. Ces éléments arrivent aux étapes 3 à 9 du plan de développement validé, chacune
 soumise à validation avant la suivante.
 
 ### Point ouvert à trancher avant l'étape 4
