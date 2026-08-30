@@ -4,14 +4,14 @@
  * Description: Données et logique métier persistantes (réglages, champs structurés, migrations, modules métier) pour les sites bâtis sur le starter GWS. Ce plugin doit rester actif quel que soit le thème utilisé.
  * Author: Tagada Vroom
  * Author URI: https://tagadavroom.fr/
- * Version: 1.6.0
+ * Version: 1.6.1
  * Requires PHP: 7.4
  * Text Domain: gws-core
  */
 
 if (!defined('ABSPATH')) exit;
 
-define('GWS_CORE_VERSION', '1.6.0');
+define('GWS_CORE_VERSION', '1.6.1');
 define('GWS_CORE_DIR', plugin_dir_path(__FILE__));
 define('GWS_CORE_URL', plugin_dir_url(__FILE__));
 

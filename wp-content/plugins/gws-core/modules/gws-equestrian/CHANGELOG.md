@@ -5,6 +5,33 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.3.1 — Étape 3 : ajustements avant recette runtime
+
+Trois corrections demandées après relecture du code, avant toute recette runtime :
+
+- **Réglage global d'affichage des prix étendu à trois modes** : TTC / HT / **Prix masqués**
+  (`gwseq_settings['price_display_mode']` accepte désormais `ttc`, `ht` ou `hidden`). En mode
+  masqué, aucun tarif n'est jamais rendu publiquement, quelle que soit la case individuelle
+  « Afficher ce tarif publiquement » d'une prestation — priorité : masque global > masque
+  individuel > rendu normal. « Sur devis » reste toujours affiché tel quel (ce n'est pas un prix
+  masqué, c'est l'absence de tarif fixe). Aucun montant stocké n'est jamais supprimé ni modifié
+  par ce réglage : uniquement une règle de présentation, réversible à tout moment.
+- **Réglage de devise** (`gwseq_settings['currency']`, EUR par défaut ; GBP/USD/CHF disponibles)
+  avec mapping local code ISO 4217 → symbole (`gwseq_currency_symbol()`), sans bibliothèque
+  externe, sans taux de change, sans calcul. `gwseq_prestation_price_summary()` ne code plus
+  jamais `€` en dur (vérifié par un test lisant directement le code source de la fonction) et
+  accepte désormais un troisième paramètre `$currency_code`.
+- **Presets reproduction corrigés** : Congélation semence → paillette (au lieu de dose),
+  Réfrigération → récolte (nouveau), Préparation doses réfrigérées → dose (confirmé inchangé),
+  Expédition → colis (nouveau), Spermogramme → étalon (nouveau). Trois nouvelles unités
+  standards ajoutées à la liste fermée : récolte, colis, étalon (+ « Autre » toujours disponible
+  pour le reste). Les autres presets existants ont été relus : aucune autre unité suggérée jugée
+  contradictoire avec son libellé.
+- Fichiers modifiés : `includes/settings.php` (réécrit), `includes/prestation-fields.php`
+  (résumé de prix, unités), `includes/presets.php` (unités suggérées).
+- 31 nouvelles assertions dans `tests/gws-equestrian-prestations-logic-test.php` (74 au total
+  pour ce fichier).
+
 ## 0.3.0 — Étape 3 : Prestations / Groupes tarifaires
 
 - **Groupe tarifaire réellement utilisable** : Nom (`post_title`), Ordre (`menu_order` natif via

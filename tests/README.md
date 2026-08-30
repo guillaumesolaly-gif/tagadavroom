@@ -68,7 +68,13 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   uniques, résolution depuis le paramètre d'URL, absence de toute création automatique de
   contenu vérifiée directement dans le code source), et sécurité de la sauvegarde (nonce
   invalide, permissions insuffisantes, autosave, révision — chacun testé isolément avec le
-  chemin réel `$_POST` → sanitation → meta).
+  chemin réel `$_POST` → sanitation → meta). Complété après relecture : réglage global
+  d'affichage des tarifs à trois modes (TTC/HT/Prix masqués, ce dernier prioritaire sur la
+  visibilité individuelle sans jamais effacer les montants stockés), réglage de devise (EUR par
+  défaut, au moins une autre devise testée, absence de symbole `€` codé en dur vérifiée
+  directement dans le code source de la fonction de résumé), unités supplémentaires
+  (récolte/colis/étalon) et presets de reproduction corrigés (congélation → paillette,
+  réfrigération → récolte, expédition → colis, spermogramme → étalon).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

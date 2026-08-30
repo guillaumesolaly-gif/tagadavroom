@@ -35,8 +35,12 @@ meta custom, WordPress gère nativement la sauvegarde des trois champs.
   famille (Pension/Travail/Cours/Élevage/Reproduction/Autres). Un modèle ne fait que préremplir le
   formulaire ; la prestation créée est immédiatement indépendante, modifiable et supprimable
   librement, jamais réécrite par une évolution future de la liste de modèles.
-- **Réglage global HT/TTC** (Prestations > Réglages) : indique uniquement la nature des montants
-  déjà saisis, aucun calcul de TVA.
+- **Réglage global d'affichage des tarifs** (Prestations > Réglages) : TTC / HT / **Prix
+  masqués** (aucun tarif public quelle que soit la case individuelle de la prestation — priorité
+  masque global > masque individuel > rendu normal ; n'efface jamais les montants stockés).
+  Indique uniquement la nature des montants déjà saisis, aucun calcul de TVA.
+- **Réglage de devise** (même écran) : EUR par défaut, GBP/USD/CHF disponibles. Mapping local
+  code → symbole (`gwseq_currency_symbol()`), aucune bibliothèque externe, aucun taux de change.
 
 ### Arbitrages techniques de l'Étape 3
 

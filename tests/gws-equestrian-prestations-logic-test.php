@@ -66,12 +66,21 @@ function wp_is_post_revision($post_id) { return $GLOBALS['__gwseq_test_security'
 function register_post_meta($object_type, $meta_key, $args = array()) {}
 function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {}
 function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
+function register_setting($group, $name, $args = array()) {}
+function add_submenu_page(...$args) {}
+
+// --- Réglages globaux (option unique, pilotable par le test) ---
+$GLOBALS['__gwseq_test_options'] = array();
+function get_option($name, $default = false) {
+  return array_key_exists($name, $GLOBALS['__gwseq_test_options']) ? $GLOBALS['__gwseq_test_options'][$name] : $default;
+}
 
 define('ABSPATH', __DIR__ . '/');
 const GWSEQ_CPT_PRESTATION = 'gwseq_prestation';
 const GWSEQ_CPT_GROUPE = 'gwseq_groupe';
 $repo_root = dirname(__DIR__);
 require $repo_root . '/wp-content/plugins/gws-core/includes/fields.php';
+require $repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/includes/settings.php';
 require $repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/includes/prestation-fields.php';
 require $repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/includes/presets.php';
 
@@ -180,6 +189,96 @@ gws_test_assert(gwseq_prestation_price_summary($tarif_autre_unite, 'ttc') === '1
 
 $tarif_no_price = array('mode' => 'unique', 'prix' => '', 'unite' => '', 'unite_autre' => '', 'prix_public' => '1');
 gws_test_assert(gwseq_prestation_price_summary($tarif_no_price, 'ttc') === '', 'Résumé : mode unique sans prix renseigné -> résumé vide, jamais "0 €"');
+
+// =====================================================================================
+// Réglage global d'affichage des prix : TTC / HT / Prix masqués (ajouté suite à la relecture)
+// =====================================================================================
+$tarif_normal = array('mode' => 'unique', 'prix' => 45.0, 'unite' => '', 'unite_autre' => '', 'prix_public' => '1');
+gws_test_assert(gwseq_prestation_price_summary($tarif_normal, 'ttc') === '45 € TTC', 'Réglage global TTC : montant et suffixe TTC affichés');
+gws_test_assert(gwseq_prestation_price_summary($tarif_normal, 'ht') === '45 € HT', 'Réglage global HT : montant et suffixe HT affichés');
+gws_test_assert(gwseq_prestation_price_summary($tarif_normal, 'hidden') === 'Tarif non affiché publiquement', 'Réglage global "Prix masqués" : aucun montant affiché, même si la case individuelle est cochée');
+
+// --- Conservation des montants : le mode global masqué est une règle de PRÉSENTATION uniquement,
+// jamais une suppression de données ---
+gws_test_assert(
+  $tarif_normal['prix'] === 45.0,
+  'Prix masqués (global) : le montant reste présent dans les données (rien n’est jamais effacé par ce réglage)'
+);
+
+// --- Interaction masque global / visibilité individuelle : le masque global l'emporte toujours,
+// mais un masque individuel seul (sans masque global) continue de fonctionner ---
+$tarif_individuel_masque = array('mode' => 'unique', 'prix' => 45.0, 'unite' => '', 'unite_autre' => '', 'prix_public' => '');
+gws_test_assert(gwseq_prestation_price_summary($tarif_individuel_masque, 'ttc') === 'Tarif non affiché publiquement', 'Masque individuel seul (réglage global TTC) : cette prestation ne montre pas son tarif');
+gws_test_assert(gwseq_prestation_price_summary($tarif_normal, 'hidden') === gwseq_prestation_price_summary($tarif_individuel_masque, 'hidden'), 'Masque global : le résultat est identique que la case individuelle soit cochée ou non');
+
+// --- "Sur devis" reste inchangé par le réglage global, y compris en mode masqué ---
+gws_test_assert(gwseq_prestation_price_summary(array('mode' => 'devis'), 'hidden') === 'Sur devis', 'Sur devis : jamais affecté par le réglage global d’affichage des prix');
+
+// =====================================================================================
+// Devise : EUR par défaut, au moins une autre devise, aucun symbole codé en dur
+// =====================================================================================
+gws_test_assert(gwseq_currency_symbol('EUR') === '€', 'Devise : EUR -> symbole €');
+gws_test_assert(gwseq_currency_symbol('GBP') === '£', 'Devise : GBP -> symbole £ (au moins une autre devise que EUR)');
+gws_test_assert(gwseq_currency_symbol('USD') === '$', 'Devise : USD -> symbole $');
+gws_test_assert(gwseq_currency_symbol('CHF') === 'CHF', 'Devise : CHF -> "CHF" (pas de symbole unicode dédié, choix assumé)');
+
+$GLOBALS['__gwseq_test_options'] = array(); // aucun réglage enregistré : valeurs par défaut pures
+gws_test_assert(gwseq_get_currency() === 'EUR', 'Devise par défaut du site : EUR sans configuration');
+gws_test_assert(gwseq_get_price_display_mode() === 'ttc', 'Mode d’affichage par défaut du site : TTC sans configuration');
+
+$GLOBALS['__gwseq_test_options'] = array('gwseq_settings' => array('currency' => 'GBP', 'price_display_mode' => 'hidden'));
+gws_test_assert(gwseq_get_currency() === 'GBP', 'Devise configurée explicitement : GBP correctement lue');
+gws_test_assert(gwseq_get_price_display_mode() === 'hidden', 'Mode d’affichage configuré explicitement : "hidden" correctement lu');
+$GLOBALS['__gwseq_test_options'] = array('gwseq_settings' => array('currency' => 'inexistante'));
+gws_test_assert(gwseq_get_currency() === 'EUR', 'Devise inconnue enregistrée (donnée corrompue) : repli sûr sur EUR');
+$GLOBALS['__gwseq_test_options'] = array();
+
+$tarif_gbp = array('mode' => 'unique', 'prix' => 45.0, 'unite' => '', 'unite_autre' => '', 'prix_public' => '1');
+gws_test_assert(gwseq_prestation_price_summary($tarif_gbp, 'ttc', 'GBP') === '45 £ TTC', 'Résumé de prix en livre sterling : symbole £ utilisé, pas €');
+gws_test_assert(gwseq_prestation_price_summary($tarif_gbp, 'ttc', 'CHF') === '45 CHF TTC', 'Résumé de prix en franc suisse : "CHF" utilisé, pas €');
+
+$tarif_cp_usd = array('mode' => 'cheval_poney', 'prix_cheval' => 45.0, 'prix_poney' => 35.0, 'unite' => '', 'unite_autre' => '', 'prix_public' => '1');
+gws_test_assert(gwseq_prestation_price_summary($tarif_cp_usd, 'ttc', 'USD') === 'Cheval 45 $ · Poney 35 $ TTC', 'Résumé Cheval/Poney en dollar : symbole $ utilisé sur les deux montants');
+
+// --- Aucun symbole € codé en dur dans la logique générique de rendu tarifaire (vérification
+// directe du code source de la fonction de résumé) ---
+$prestation_fields_source = file_get_contents($repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/includes/prestation-fields.php');
+$price_summary_source = substr(
+  $prestation_fields_source,
+  strpos($prestation_fields_source, 'function gwseq_prestation_price_summary'),
+  strpos($prestation_fields_source, 'function gwseq_add_prestation_meta_boxes') - strpos($prestation_fields_source, 'function gwseq_prestation_price_summary')
+);
+gws_test_assert(strpos($price_summary_source, '€') === false, 'Aucun symbole € codé en dur dans gwseq_prestation_price_summary() : la devise passe toujours par gwseq_currency_symbol()');
+
+// =====================================================================================
+// Unités supplémentaires (récolte / colis / étalon) et presets corrigés
+// =====================================================================================
+$unit_options = gwseq_prestation_unit_options();
+foreach (array('recolte' => 'Récolte', 'colis' => 'Colis', 'etalon' => 'Étalon') as $key => $label) {
+  gws_test_assert(array_key_exists($key, $unit_options) && $unit_options[$key] === $label, "Unité supplémentaire disponible : $key ($label)");
+}
+
+$flat_presets = gwseq_prestation_preset_flat();
+gws_test_assert(
+  ($flat_presets[sanitize_title('Semence — congélation')]['unite'] ?? null) === 'paillette',
+  'Preset Congélation : unité suggérée corrigée en "paillette" (et non plus "dose")'
+);
+gws_test_assert(
+  ($flat_presets[sanitize_title('Semence — réfrigération')]['unite'] ?? null) === 'recolte',
+  'Preset Réfrigération : unité suggérée "récolte"'
+);
+gws_test_assert(
+  ($flat_presets[sanitize_title('Semence — préparation doses réfrigérées')]['unite'] ?? null) === 'dose',
+  'Preset Préparation doses réfrigérées : unité "dose" confirmée inchangée'
+);
+gws_test_assert(
+  ($flat_presets[sanitize_title('Semence — expédition France / international')]['unite'] ?? null) === 'colis',
+  'Preset Expédition : unité suggérée "colis"'
+);
+gws_test_assert(
+  ($flat_presets[sanitize_title('Spermogramme')]['unite'] ?? null) === 'etalon',
+  'Preset Spermogramme : unité suggérée "étalon"'
+);
 
 // =====================================================================================
 // Presets : aide à la création, jamais une donnée persistante

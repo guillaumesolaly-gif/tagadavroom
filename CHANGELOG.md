@@ -1,5 +1,16 @@
 # Changelog — GWS Starter
 
+## 1.6.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 3, ajustements avant recette runtime** : réglage global d'affichage
+  des prix étendu à trois modes (TTC/HT/Prix masqués — prioritaire sur la visibilité individuelle,
+  sans jamais supprimer les montants stockés), réglage de devise (EUR par défaut, GBP/USD/CHF
+  disponibles, sans bibliothèque externe ni calcul), et correction des unités suggérées par
+  plusieurs presets de reproduction. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.3.1). Étape 3 toujours en
+  attente de recette runtime.
+- 31 nouvelles assertions automatisées, suite existante toujours 100 % passante.
+
 ## 1.6.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 3 : Prestations / Groupes tarifaires.** Gestion métier complète des

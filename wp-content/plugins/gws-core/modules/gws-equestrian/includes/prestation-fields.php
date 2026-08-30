@@ -42,8 +42,9 @@ function gwseq_prestation_tarif_mode_options() {
 
 /**
  * Unités courantes identifiées pour le secteur (pension, cours, reproduction) — liste fermée
- * volontairement limitée aux cas déjà démontrés (§9) ; "Autre" couvre le reste sans construire de
- * nomenclature supplémentaire.
+ * volontairement limitée aux cas déjà démontrés (§9, complétée après relecture avec récolte/
+ * colis/étalon pour les presets semence/expédition/spermogramme) ; "Autre" couvre le reste sans
+ * construire de nomenclature supplémentaire.
  */
 function gwseq_prestation_unit_options() {
   return array(
@@ -57,6 +58,9 @@ function gwseq_prestation_unit_options() {
     'saison' => 'Saison',
     'dose' => 'Dose',
     'paillette' => 'Paillette',
+    'recolte' => 'Récolte',
+    'colis' => 'Colis',
+    'etalon' => 'Étalon',
     'autre' => 'Autre (préciser)',
   );
 }
@@ -168,27 +172,42 @@ function gwseq_prestation_unit_label($unite, $unite_autre) {
 /**
  * Résumé texte (jamais de HTML) d'un tarif, à partir des données structurées — utilisé par la
  * liste d'administration aujourd'hui ; conçu pour rester exploitable tel quel par un futur rendu
- * web/API sans jamais avoir à parser du HTML (§28).
+ * web/API sans jamais avoir à parser du HTML (§28). Fonction pure : $price_display_mode et
+ * $currency_code sont passés explicitement (jamais lus depuis les réglages ici) pour rester
+ * testable sans dépendre de get_option().
+ *
+ * Priorité d'affichage (mode global "Prix masqués" ajouté suite à la relecture de l'Étape 3) :
+ * 1. "Sur devis" reste toujours affiché tel quel — ce n'est pas un prix masqué, c'est l'absence
+ *    de tarif fixe : le réglage global d'affichage ne s'applique pas à ce cas.
+ * 2. Prix masqués globalement (réglage du site) : aucun montant n'est jamais rendu, quelle que
+ *    soit la case individuelle de la prestation.
+ * 3. Sinon, case individuelle "Afficher ce tarif publiquement" décochée : cette seule prestation
+ *    ne montre pas son tarif.
+ * 4. Sinon, rendu normal HT/TTC selon le réglage global.
+ * Aucun de ces cas ne modifie ni ne supprime les montants stockés : c'est uniquement une règle de
+ * présentation, réversible à tout moment.
  */
-function gwseq_prestation_price_summary($tarif, $price_display_mode) {
+function gwseq_prestation_price_summary($tarif, $price_display_mode, $currency_code = 'EUR') {
   $mode = $tarif['mode'] ?? 'unique';
   if ($mode === 'devis') return 'Sur devis';
 
+  if ($price_display_mode === 'hidden') return 'Tarif non affiché publiquement';
   if (($tarif['prix_public'] ?? '') !== '1') return 'Tarif non affiché publiquement';
 
+  $currency_symbol = gwseq_currency_symbol($currency_code);
   $suffix = ($price_display_mode === 'ht') ? ' HT' : ' TTC';
   $unit_label = gwseq_prestation_unit_label($tarif['unite'] ?? '', $tarif['unite_autre'] ?? '');
   $unit_suffix = $unit_label !== '' ? ' / ' . $unit_label : '';
 
   if ($mode === 'cheval_poney') {
     $parts = array();
-    if (($tarif['prix_cheval'] ?? '') !== '') $parts[] = 'Cheval ' . gwseq_format_price_number($tarif['prix_cheval']) . ' €';
-    if (($tarif['prix_poney'] ?? '') !== '') $parts[] = 'Poney ' . gwseq_format_price_number($tarif['prix_poney']) . ' €';
+    if (($tarif['prix_cheval'] ?? '') !== '') $parts[] = 'Cheval ' . gwseq_format_price_number($tarif['prix_cheval']) . ' ' . $currency_symbol;
+    if (($tarif['prix_poney'] ?? '') !== '') $parts[] = 'Poney ' . gwseq_format_price_number($tarif['prix_poney']) . ' ' . $currency_symbol;
     return $parts ? implode(' · ', $parts) . $suffix . $unit_suffix : '';
   }
 
   if (($tarif['prix'] ?? '') === '') return '';
-  return gwseq_format_price_number($tarif['prix']) . ' €' . $suffix . $unit_suffix;
+  return gwseq_format_price_number($tarif['prix']) . ' ' . $currency_symbol . $suffix . $unit_suffix;
 }
 
 /* -------------------------------------------------------------------------------------------
@@ -319,7 +338,7 @@ function gwseq_prestation_admin_column_content($column, $post_id) {
     $groupe_id = (int) get_post_meta($post_id, '_gwseq_prestation_groupe_id', true);
     echo $groupe_id ? esc_html(get_the_title($groupe_id)) : '—';
   } elseif ($column === 'gwseq_tarif') {
-    $summary = gwseq_prestation_price_summary(gwseq_get_prestation_tarif($post_id), gwseq_get_price_display_mode());
+    $summary = gwseq_prestation_price_summary(gwseq_get_prestation_tarif($post_id), gwseq_get_price_display_mode(), gwseq_get_currency());
     echo $summary !== '' ? esc_html($summary) : '—';
   } elseif ($column === 'gwseq_ordre') {
     echo (int) get_post_field('menu_order', $post_id);
