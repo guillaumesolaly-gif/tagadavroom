@@ -1,5 +1,25 @@
 # Changelog — GWS Starter
 
+## 1.15.3 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif RÉGRESSION BLOQUANTE — diagnostic complet de l'onglet Identité vide, filets de
+  sécurité (GWS Equestrian 0.12.3).** Le correctif 0.12.2 (repli natif `.closed`) était incomplet :
+  la recette a montré une boîte Identité ENTIÈREMENT invisible (en-tête compris), symptôme que
+  `.closed` seul ne peut pas produire. Cause complète : WordPress peut masquer une meta box entière
+  via `.hide-if-js`, posée quand un utilisateur l'a masquée via "Screen Options" — une préférence
+  mémorisée par utilisateur, plausible sur une base de recette réutilisée depuis plusieurs versions
+  — via une règle CSS potentiellement `!important`, qu'un simple `style.display = ''` ne bat jamais.
+  Corrigé : le script lève désormais `.closed` ET `.hide-if-js`, vérifie RÉELLEMENT la visibilité
+  obtenue (`offsetParent`), et force l'affichage avec la même priorité `!important` si nécessaire.
+  Deux filets de sécurité génériques ajoutés : (1) chaque meta box gérée par un onglet est marquée
+  d'une classe dans le HTML réellement rendu (filtre natif `postbox_classes`) — si elle est absente,
+  aucun onglet n'est construit (jamais deux vérités indépendantes) ; (2) si une boîte reste
+  malgré tout invisible, le système d'onglets se désactive intégralement et restaure la visibilité
+  de tout — un échec du système d'onglets ne peut plus jamais rendre une donnée inaccessible. Tests
+  renforcés pour modéliser fidèlement l'effet réel de ces mécanismes WordPress plutôt qu'un DOM
+  simplifié. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.12.3) pour
+  le détail complet.
+
 ## 1.15.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif RÉGRESSION BLOQUANTE — onglet Identité vide ; Photo principale intégrée à Médias

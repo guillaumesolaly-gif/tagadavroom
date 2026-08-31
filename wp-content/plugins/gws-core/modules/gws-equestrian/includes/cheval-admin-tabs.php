@@ -96,11 +96,40 @@ function gwseq_cheval_admin_tabs_config() {
 }
 
 /**
+ * CORRECTIF RÉGRESSION (onglet Identité vide, deuxième round) — §5 de la demande : « éviter deux
+ * vérités indépendantes entre la configuration onglets et le DOM WordPress ». Marque chaque meta
+ * box gérée par les onglets d'une classe CSS `gwseq-tab-{id}` déclarant EXPLICITEMENT, dans le
+ * HTML réellement rendu, son appartenance à un onglet — dérivée de la MÊME configuration
+ * (`gwseq_cheval_admin_tabs_config()`) que celle transmise au script, jamais une seconde source.
+ * Utilise le filtre natif WordPress `postbox_classes_{page}_{id}`, appliqué par `do_meta_boxes()`
+ * pour CHAQUE boîte affichée — y compris une boîte native non enregistrée par ce plugin comme
+ * `postimagediv`. Purement un marqueur défensif/diagnostique : le script continue de résoudre les
+ * boîtes par leur identifiant réel (SEUL mécanisme nécessaire à son fonctionnement) ; cette classe
+ * ne fait que lui permettre de VÉRIFIER que ce qu'il a trouvé par identifiant correspond bien à ce
+ * que PHP attendait avant de construire quoi que ce soit (voir la vérification de cohérence dans
+ * assets/cheval-tabs-admin.js) — si elle est absente, le script n'engage aucune construction
+ * d'onglet plutôt que de risquer de masquer une boîte mal identifiée.
+ */
+function gwseq_register_cheval_admin_tab_postbox_classes() {
+  foreach (gwseq_cheval_admin_tabs_config() as $tab) {
+    foreach ($tab['boxes'] as $box_id) {
+      add_filter('postbox_classes_' . GWSEQ_CPT_CHEVAL . '_' . $box_id, function ($classes) use ($tab) {
+        $classes[] = 'gwseq-tab-' . $tab['id'];
+        return $classes;
+      });
+    }
+  }
+}
+gwseq_register_cheval_admin_tab_postbox_classes();
+
+/**
  * Assets : uniquement sur l'écran d'édition d'une fiche cheval — jamais chargés globalement dans
  * l'administration. wp_localize_script() (mécanisme natif) transmet au script la configuration
  * PHP ci-dessus ainsi que le libellé traduit de repli du bouton d'enregistrement rapide (utilisé
  * seulement si le script ne parvient pas à lire le texte du vrai bouton natif — voir
- * assets/cheval-tabs-admin.js).
+ * assets/cheval-tabs-admin.js), l'environnement (pour le message de secours dev-only) et le texte
+ * de ce message de secours (§4 : « signaler le problème en environnement local/développement »
+ * si le filet de sécurité n°2 du script se déclenche).
  */
 function gwseq_enqueue_cheval_admin_tabs_assets($hook) {
   if (!in_array($hook, array('post.php', 'post-new.php'), true)) return;
@@ -113,6 +142,8 @@ function gwseq_enqueue_cheval_admin_tabs_assets($hook) {
     'tabs' => gwseq_cheval_admin_tabs_config(),
     'saveLabelFallback' => __('Enregistrer', 'gws-core'),
     'tablistLabel' => __('Sections de la fiche cheval', 'gws-core'),
+    'isDevEnvironment' => function_exists('wp_get_environment_type') && in_array(wp_get_environment_type(), array('local', 'development'), true),
+    'fallbackNotice' => __('Navigation par onglets désactivée automatiquement : un contenu restait invisible après vérification. Toutes les données sont affichées normalement ci-dessous.', 'gws-core'),
   ));
 }
 add_action('admin_enqueue_scripts', 'gwseq_enqueue_cheval_admin_tabs_assets');

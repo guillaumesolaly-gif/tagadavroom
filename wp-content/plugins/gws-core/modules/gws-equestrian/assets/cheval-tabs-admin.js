@@ -11,6 +11,23 @@
  * Configuration (regroupement onglet -> identifiants de meta box) fournie par PHP via
  * wp_localize_script() (voir includes/cheval-admin-tabs.php) — jamais codée en dur ici, pour
  * qu'une seule source de vérité décide de cette organisation.
+ *
+ * DEUX FILETS DE SÉCURITÉ (§4/§5 du correctif suite à la régression "onglet Identité vide") —
+ * un système d'onglets ne doit JAMAIS pouvoir rendre une donnée existante inaccessible :
+ * 1. VÉRIFICATION DE COHÉRENCE PRÉALABLE (une seule vérité) : chaque boîte gérée par un onglet
+ *    doit porter la classe CSS `gwseq-tab-{id}` posée côté PHP par
+ *    gwseq_register_cheval_admin_tab_postbox_classes() (filtre natif `postbox_classes_{page}_{id}`
+ *    de WordPress, dérivé de la MÊME configuration que celle transmise ici) — si un identifiant
+ *    résolu par getElementById() ne porte pas cette classe, la configuration PHP et le DOM réel ne
+ *    concordent pas (ex. collision d'identifiant) : le script n'engage alors AUCUNE construction
+ *    d'onglet, laissant l'écran intégralement dans son état natif empilé.
+ * 2. VÉRIFICATION DE VISIBILITÉ RÉELLE APRÈS ACTIVATION : `offsetParent === null` détecte de façon
+ *    fiable qu'un élément (ou un ancêtre) reste masqué par une règle CSS quelconque, quelle qu'en
+ *    soit l'origine exacte (repli natif `.closed`, masquage Screen Options `.hide-if-js`, tout
+ *    autre mécanisme non anticipé) — y compris quand cette règle utilise `!important` et qu'un
+ *    simple `style.display = ''` ne suffit donc pas à la emporter. Si une boîte de l'onglet actif
+ *    reste invisible malgré une tentative de levée de ces mécanismes connus, le système d'onglets
+ *    se désactive intégralement et restaure la visibilité de TOUTES les boîtes gérées.
  */
 (function () {
   'use strict';
@@ -35,14 +52,22 @@
     // correspond à aucun élément (ex. la boîte "Pedigree résolu", dev-only) est simplement ignoré,
     // jamais une erreur. Un onglet qui ne recueille aucune boîte existante n'est pas affiché.
     var tabs = [];
+    var consistent = true;
     tabsConfig.forEach(function (tabDef) {
       var boxes = (tabDef.boxes || [])
         .map(function (boxId) { return document.getElementById(boxId); })
         .filter(function (el) { return el !== null; });
       if (!boxes.length) return;
+      // Filet de sécurité n°1 (voir en-tête) : chaque boîte trouvée par identifiant doit aussi
+      // porter la classe posée côté PHP pour ce même onglet — sinon la configuration transmise et
+      // le DOM réellement rendu ne concordent pas, et il est plus sûr de ne construire AUCUN
+      // onglet que de risquer de masquer une boîte mal identifiée.
+      boxes.forEach(function (box) {
+        if (!box.classList.contains('gwseq-tab-' + tabDef.id)) consistent = false;
+      });
       tabs.push({ id: tabDef.id, label: tabDef.label, boxes: boxes });
     });
-    if (!tabs.length) return;
+    if (!tabs.length || !consistent) return;
 
     // --- Construction de la barre d'onglets (§5 : de vrais contrôles accessibles, jamais une
     // rangée de <div> cliquables) — réutilise les classes natives .nav-tab-wrapper/.nav-tab de
@@ -124,34 +149,83 @@
     // sans dépendre d'une hypothèse de structure DOM erronée.
     normalSortables.insertBefore(wrapper, normalSortables.firstChild);
 
+    var fallbackTriggered = false;
+
+    // Filet de sécurité n°2 (voir en-tête) : en cas d'échec de vérification de visibilité après
+    // activation, on désactive intégralement le système d'onglets plutôt que de risquer de
+    // laisser une donnée inaccessible — retire la barre injectée et restaure la visibilité de
+    // TOUTES les boîtes gérées, exactement comme avant cet ajustement (empilées, jamais masquées).
+    function disableTabsFallback() {
+      if (fallbackTriggered) return;
+      fallbackTriggered = true;
+      tabs.forEach(function (tab) {
+        tab.boxes.forEach(function (box) {
+          box.style.display = '';
+          box.classList.remove('closed');
+          box.classList.remove('hide-if-js');
+          box.removeAttribute('hidden');
+          box.removeAttribute('role');
+          box.removeAttribute('aria-labelledby');
+        });
+      });
+      if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+      if (config.isDevEnvironment && config.fallbackNotice) {
+        var notice = document.createElement('div');
+        notice.className = 'notice notice-error gwseq-cheval-tabs__fallback-notice';
+        notice.textContent = config.fallbackNotice;
+        normalSortables.parentNode.insertBefore(notice, normalSortables);
+      }
+    }
+
     function activateTab(tabId, opts) {
       opts = opts || {};
+      var activeTab = null;
       tabs.forEach(function (tab, index) {
         var isActive = tab.id === tabId;
+        if (isActive) activeTab = tab;
         var button = tabButtons[index];
         button.classList.toggle('nav-tab-active', isActive);
         button.setAttribute('aria-selected', isActive ? 'true' : 'false');
         button.tabIndex = isActive ? 0 : -1;
         tab.boxes.forEach(function (box) {
-          box.style.display = isActive ? '' : 'none';
           if (isActive) {
             // CORRECTIF (régression signalée en recette, onglet Identité vide) : une boîte que
-            // WordPress avait laissée REPLIÉE (classe .closed, posée par son propre mécanisme
-            // natif de repli/dépli au clic sur le titre — totalement indépendant de nos onglets)
-            // resterait visuellement vide même une fois notre style.display rétabli sur le
-            // conteneur : la règle native `.postbox.closed .inside { display: none; }` cible
-            // l'enfant `.inside` (où vit tout le contenu réel de la boîte), jamais le conteneur
-            // `.postbox` lui-même — notre bascule de visibilité sur ce conteneur n'a donc aucun
-            // effet sur ce repli. Un onglet qui vient de devenir actif doit toujours montrer un
-            // contenu déplié : on lève systématiquement ce repli natif pour CHAQUE boîte de
-            // l'onglet activé (jamais pour les autres, de toute façon masquées).
+            // WordPress avait laissée masquée par un mécanisme natif — repli au clic sur le titre
+            // (classe `.closed`, qui ne masque en réalité que l'enfant `.inside`, pas la boîte
+            // elle-même) OU préférence "Screen Options" mémorisée par utilisateur (classe
+            // `.hide-if-js`, qui masque cette fois la boîte ENTIÈRE, en-tête compris, via une
+            // règle CSS pouvant être `!important` — un simple `style.display = ''` ne suffit alors
+            // JAMAIS à la emporter) — resterait invisible même une fois notre style rétabli sur le
+            // conteneur. On lève donc systématiquement ces mécanismes connus pour chaque boîte de
+            // l'onglet qui vient de s'activer (jamais pour les autres, de toute façon masquées).
             box.classList.remove('closed');
+            box.classList.remove('hide-if-js');
+            box.removeAttribute('hidden');
+            box.style.display = '';
             var toggle = box.querySelector('.handlediv');
             if (toggle) toggle.setAttribute('aria-expanded', 'true');
+          } else {
+            box.style.display = 'none';
           }
         });
         if (isActive && opts.focus) button.focus();
       });
+
+      // Vérification RÉELLE de visibilité (offsetParent est null si l'élément ou un ancêtre reste
+      // masqué par une règle CSS quelconque, y compris !important — un simple style.display=''
+      // n'y change rien) : si un mécanisme de masquage non anticipé persiste malgré la levée des
+      // mécanismes connus ci-dessus, on force explicitement l'affichage avec la même priorité
+      // qu'une règle !important ; si cela ne suffit toujours pas, filet de sécurité n°2.
+      if (activeTab) {
+        activeTab.boxes.forEach(function (box) {
+          if (box.offsetParent === null) {
+            box.style.setProperty('display', 'block', 'important');
+          }
+        });
+        var stillHidden = activeTab.boxes.some(function (box) { return box.offsetParent === null; });
+        if (stillHidden) disableTabsFallback();
+      }
+
       try {
         window.sessionStorage.setItem(STORAGE_KEY, tabId);
       } catch (e) {

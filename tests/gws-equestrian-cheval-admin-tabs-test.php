@@ -33,6 +33,17 @@ function __($text, $domain = 'default') { $GLOBALS['__gwseq_test_domains_used'][
 
 function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {}
 
+$GLOBALS['__gwseq_test_filters'] = array();
+function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {
+  $GLOBALS['__gwseq_test_filters'][$hook][] = $callback;
+}
+function gws_test_apply_filters($hook, $value) {
+  foreach ($GLOBALS['__gwseq_test_filters'][$hook] ?? array() as $callback) {
+    $value = call_user_func($callback, $value);
+  }
+  return $value;
+}
+
 $GLOBALS['__gwseq_test_screen'] = null;
 function get_current_screen() { return $GLOBALS['__gwseq_test_screen']; }
 $GLOBALS['__gwseq_enqueued'] = array();
@@ -103,6 +114,29 @@ foreach (array('gwseq-cheval-global-id-dev', 'gwseq-ordre-gwseq_cheval') as $exc
 }
 
 // =====================================================================================
+// CORRECTIF RÉGRESSION (onglet Identité vide, deuxième round, §5 de la demande : « éviter deux
+// vérités indépendantes ») — chaque meta box gérée par un onglet doit être marquée, dans le HTML
+// réellement rendu par WordPress, d'une classe CSS déclarant explicitement son appartenance
+// (filtre natif `postbox_classes_{page}_{id}`, appliqué par do_meta_boxes() pour CHAQUE boîte, y
+// compris une boîte native comme "postimagediv"). Cette classe est ensuite ce que le script vérifie
+// avant de construire quoi que ce soit (filet de sécurité n°1).
+// =====================================================================================
+
+foreach ($tabs as $tab) {
+  foreach ($tab['boxes'] as $box_id) {
+    $hook = 'postbox_classes_' . GWSEQ_CPT_CHEVAL . '_' . $box_id;
+    gws_test_assert(
+      array_key_exists($hook, $GLOBALS['__gwseq_test_filters']),
+      "Marquage : le filtre natif WordPress \"$hook\" est bien enregistré pour rattacher la boîte \"$box_id\" à son onglet"
+    );
+    gws_test_assert(
+      gws_test_apply_filters($hook, array()) === array('gwseq-tab-' . $tab['id']),
+      "Marquage : appliquer ce filtre ajoute bien la classe \"gwseq-tab-{$tab['id']}\" (dérivée de la même configuration, jamais une seconde vérité) — jamais une autre valeur"
+    );
+  }
+}
+
+// =====================================================================================
 // Chargement conditionnel des assets — uniquement sur l'écran d'édition d'une fiche cheval
 // =====================================================================================
 
@@ -125,6 +159,8 @@ gws_test_assert(in_array('gwseq-cheval-tabs-admin', $GLOBALS['__gwseq_enqueued']
 gws_test_assert(array_key_exists('gwseq-cheval-tabs-admin', $GLOBALS['__gwseq_localized']), 'Assets : la configuration est bien transmise au script via wp_localize_script() (mécanisme natif, jamais un endpoint AJAX)');
 gws_test_assert($GLOBALS['__gwseq_localized']['gwseq-cheval-tabs-admin']['object_name'] === 'gwseqChevalTabs', 'Assets : l’objet JS localisé porte bien le nom attendu par le script');
 gws_test_assert($GLOBALS['__gwseq_localized']['gwseq-cheval-tabs-admin']['data']['tabs'] === $tabs, 'Assets : la configuration transmise au script est EXACTEMENT celle de gwseq_cheval_admin_tabs_config() — une seule source de vérité');
+gws_test_assert(array_key_exists('isDevEnvironment', $GLOBALS['__gwseq_localized']['gwseq-cheval-tabs-admin']['data']), 'Assets (correctif régression) : l’indicateur d’environnement (dev/local) est bien transmis au script, pour le message de secours du filet de sécurité n°2');
+gws_test_assert(!empty($GLOBALS['__gwseq_localized']['gwseq-cheval-tabs-admin']['data']['fallbackNotice']), 'Assets (correctif régression) : le texte du message de secours (filet de sécurité n°2) est bien transmis au script, traduit via le text domain du module');
 
 $GLOBALS['__gwseq_test_screen'] = (object) array('post_type' => GWSEQ_CPT_CHEVAL);
 $GLOBALS['__gwseq_enqueued'] = array();
@@ -189,6 +225,35 @@ gws_test_assert(preg_match('/box(es)?\.remove\(\)|removeChild\(box/', $tabs_admi
 // tests/gws-equestrian-cheval-admin-tabs-runtime-test.js. ---
 gws_test_assert(strpos($tabs_admin_js_code_only, "classList.remove('closed')") !== false, 'Correctif régression : le script lève bien le repli natif (.closed) d’une boîte dès que son onglet devient actif');
 gws_test_assert(strpos($tabs_admin_js_source, "querySelector('.handlediv')") !== false, 'Correctif régression : le script retrouve bien le bouton natif de repli/dépli pour synchroniser son état ARIA (aria-expanded)');
+
+// =====================================================================================
+// CORRECTIF RÉGRESSION (onglet Identité vide, deuxième round) — la classe .closed seule ne
+// masque jamais que l'enfant .inside d'une boîte (jamais la boîte elle-même) : ce diagnostic
+// initial était incomplet. Le mécanisme réellement responsable d'une boîte ENTIÈREMENT invisible
+// (en-tête compris) est la classe `.hide-if-js` posée par WordPress pour une meta box masquée via
+// "Screen Options" par préférence utilisateur — une règle CSS potentiellement `!important`, qu'un
+// simple `style.display = ''` ne bat jamais. Le script doit donc : lever aussi cette classe,
+// vérifier RÉELLEMENT la visibilité (offsetParent), et forcer l'affichage avec la même priorité
+// !important si nécessaire — voir tests/gws-equestrian-cheval-admin-tabs-runtime-test.js pour la
+// vérification en exécution réelle de ce mécanisme.
+// =====================================================================================
+
+gws_test_assert(strpos($tabs_admin_js_code_only, "classList.remove('hide-if-js')") !== false, 'Correctif régression : le script lève bien le masquage "Screen Options" (.hide-if-js) d’une boîte dès que son onglet devient actif — cette classe masque la boîte ENTIÈRE, contrairement à .closed');
+gws_test_assert(strpos($tabs_admin_js_source, 'offsetParent') !== false, 'Correctif régression : le script vérifie la visibilité RÉELLE d’une boîte (offsetParent), pas seulement la valeur déclarée de style.display');
+gws_test_assert(strpos($tabs_admin_js_source, "setProperty('display', 'block', 'important')") !== false, 'Correctif régression : le script peut forcer l’affichage avec la priorité "important", seule façon de battre une règle !important de la feuille de style native WordPress');
+
+// --- Filet de sécurité n°2 : si une boîte de l’onglet actif reste invisible malgré tout, le
+// système d’onglets se désactive intégralement plutôt que de risquer une page vide (§4) ---
+gws_test_assert(strpos($tabs_admin_js_code_only, 'function disableTabsFallback') !== false, 'Filet de sécurité n°2 : une fonction dédiée désactive intégralement le système d’onglets en cas d’échec de vérification de visibilité');
+gws_test_assert(preg_match('/disableTabsFallback\(\)/', $tabs_admin_js_code_only) === 1, 'Filet de sécurité n°2 : cette fonction est bien appelée depuis la logique d’activation d’un onglet');
+gws_test_assert(strpos($tabs_admin_js_source, 'removeChild(wrapper)') !== false, 'Filet de sécurité n°2 : la barre d’onglets injectée est bien retirée du DOM en cas de désactivation (jamais une meta box existante, uniquement notre propre ajout)');
+gws_test_assert(strpos($tabs_admin_js_source, 'isDevEnvironment') !== false && strpos($tabs_admin_js_source, 'fallbackNotice') !== false, 'Filet de sécurité n°2 : un message signale le problème en environnement local/développement (§4), jamais un échec silencieux');
+
+// --- Filet de sécurité n°1 : cohérence entre la configuration transmise et le marquage réel du
+// DOM (classe gwseq-tab-{id} posée côté PHP) — si elle est absente, aucun onglet n’est construit
+// (§5 : jamais deux vérités indépendantes) ---
+gws_test_assert(preg_match("/classList\\.contains\\('gwseq-tab-' \\+ tabDef\\.id\\)/", $tabs_admin_js_code_only) === 1, 'Filet de sécurité n°1 : le script vérifie que chaque boîte trouvée par identifiant porte bien la classe posée côté PHP pour ce même onglet');
+gws_test_assert(strpos($tabs_admin_js_code_only, 'consistent') !== false, 'Filet de sécurité n°1 : une incohérence détectée empêche la construction de tout onglet (jamais un onglet construit sur une hypothèse non vérifiée)');
 
 // --- §5 : pattern ARIA tablist/tab/tabpanel, navigation clavier ---
 foreach (array("'role', 'tablist'", "'role', 'tab'", "'role', 'tabpanel'", 'aria-selected', 'aria-controls', 'aria-labelledby') as $aria_pattern) {

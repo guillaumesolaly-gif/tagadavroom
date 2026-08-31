@@ -5,6 +5,64 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.12.3 — Correctif RÉGRESSION BLOQUANTE — diagnostic complet de l'onglet Identité vide, filets de sécurité
+
+Le correctif 0.12.2 (repli natif `.closed`) ne résolvait PAS le problème en conditions réelles : la
+recette a montré que la boîte Identité était ENTIÈREMENT invisible, en-tête compris — un symptôme
+que `.closed` seul ne peut pas produire, puisqu'il ne masque que le contenu (`.inside`) d'une boîte,
+jamais son en-tête. Le diagnostic a donc été repris entièrement, et deux filets de sécurité
+génériques ont été ajoutés pour qu'un problème de ce type ne puisse plus jamais rendre une donnée
+inaccessible, quelle qu'en soit la cause exacte.
+
+**CAUSE RACINE COMPLÈTE** : au-delà de `.closed`, WordPress peut masquer une meta box ENTIÈRE
+(en-tête compris) via la classe `.hide-if-js`, posée lorsque l'utilisateur a masqué cette boîte via
+le panneau "Screen Options" — une préférence mémorisée par utilisateur (`metaboxhidden_{$screen}`),
+plausible ici puisque la même base de recette est réutilisée depuis plusieurs versions (un
+utilisateur ayant, à un moment, décoché "Identité" dans Screen Options — par exemple en tentant de
+diagnostiquer lui-même une version précédente encore bloquante). La règle CSS correspondante peut
+être `!important` : un simple `style.display = ''` (ce que faisait le script jusqu'ici) ne suffit
+JAMAIS à l'emporter sur une règle `!important` de la feuille de style — la boîte restait donc
+invisible même après notre correctif précédent.
+
+**CORRECTIF DIRECT** (`assets/cheval-tabs-admin.js`) : l'activation d'un onglet lève désormais
+`.closed` ET `.hide-if-js` pour chacune de ses boîtes, puis VÉRIFIE RÉELLEMENT la visibilité obtenue
+via `offsetParent` (qui vaut `null` si l'élément ou un ancêtre reste masqué par une règle CSS
+quelconque, quelle qu'en soit l'origine) — si elle reste masquée, l'affichage est forcé avec la même
+priorité `!important` (`style.setProperty('display', 'block', 'important')`), la seule façon
+garantie de l'emporter sur une règle native, quelle qu'elle soit.
+
+**FILET DE SÉCURITÉ n°1 — cohérence de mapping** (§5 de la demande) : chaque meta box gérée par un
+onglet est désormais marquée, dans le HTML RÉELLEMENT rendu par WordPress, d'une classe
+`gwseq-tab-{id}` posée via le filtre natif `postbox_classes_{page}_{id}` (nouvelle fonction
+`gwseq_register_cheval_admin_tab_postbox_classes()`, `includes/cheval-admin-tabs.php`) — dérivée de
+la MÊME configuration transmise au script, jamais une seconde vérité. Avant de construire quoi que
+ce soit, le script vérifie que chaque boîte trouvée par identifiant porte bien cette classe ; en cas
+d'écart (config PHP et DOM réel ne concordent pas — ex. collision d'identifiant), AUCUN onglet n'est
+construit et l'écran reste intégralement dans son état natif empilé.
+
+**FILET DE SÉCURITÉ n°2 — dégradation sûre** (§4 de la demande : « échec du système d'onglets ≠
+perte d'accès aux données ») : si, malgré la levée des mécanismes connus et le forçage `!important`,
+une boîte de l'onglet actif reste réellement invisible (`offsetParent` toujours `null` — un
+mécanisme non anticipé), le système d'onglets se désactive intégralement : la barre injectée est
+retirée du DOM, TOUTES les boîtes gérées retrouvent une visibilité normale (jamais une meta box
+existante supprimée, uniquement notre propre ajout). En environnement local/développement
+uniquement, un message (`.notice.notice-error`, classes natives WordPress) signale le problème
+plutôt que de le masquer silencieusement.
+
+**Renforcement méthodologique des tests** : `tests/gws-equestrian-cheval-admin-tabs-runtime-test.js`
+reproduit désormais la structure RÉELLE d'une meta box WordPress (`postbox-header`/`handlediv`/
+`inside`, avec de vrais champs à l'intérieur) et MODÉLISE l'effet réel de `.closed`/`.hide-if-js`
+sur `offsetParent` — plutôt qu'un DOM simplifié construit pour satisfaire le script. Trois scénarios
+distincts : (1) cas nominal avec une boîte Identité à la fois repliée ET masquée par Screen Options,
+vérifiant une visibilité RÉELLE (offsetParent) et la présence continue des champs historiques dans
+le DOM ; (2) une boîte durablement masquée par un ancêtre hors de portée de tout correctif connu,
+vérifiant le déclenchement du filet de sécurité n°2 ; (3) une incohérence de marquage entre la
+configuration et le DOM réel, vérifiant qu'aucun onglet n'est alors construit (filet de sécurité
+n°1). Chaque mécanisme a été vérifié indépendamment détecté par regression (désactivation
+temporaire du correctif correspondant, confirmation de l'échec du test, restauration). 35 assertions
+Node au total (+11), 8 nouvelles assertions PHP déclaratives (marquage `postbox_classes`,
+configuration localisée, présence des nouveaux mécanismes dans le code source).
+
 ## 0.12.2 — Correctif RÉGRESSION BLOQUANTE — onglet Identité vide ; intégration Photo principale dans Médias
 
 La reprise de la recette runtime après 0.12.1 a confirmé l'apparition correcte de la barre

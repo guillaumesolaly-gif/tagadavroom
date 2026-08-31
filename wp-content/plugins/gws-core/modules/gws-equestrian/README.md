@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.2 (Étape 5 — Pedigree validée)
+## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.3 (Étape 5 — Pedigree validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -284,6 +284,49 @@ Nouvelles assertions couvrant également le regroupement Photo principale + Gale
 Médias (visibilité conjointe, masquage conjoint sous tout autre onglet, absence de duplication) :
 31 assertions au total pour ce fichier (+ 4 nouvelles assertions déclaratives PHP).
 
+#### Correctif RÉGRESSION BLOQUANTE 0.12.3 — diagnostic complet, filets de sécurité
+
+Le correctif 0.12.2 (lever le repli natif `.closed`) était INCOMPLET : la reprise de la recette a
+montré que la boîte Identité restait ENTIÈREMENT invisible, en-tête compris — un symptôme que
+`.closed` seul ne peut jamais produire, puisqu'il ne masque que le contenu (`.inside`) d'une boîte,
+jamais son en-tête. Le diagnostic a été repris intégralement.
+
+**CAUSE RACINE COMPLÈTE** : WordPress peut masquer une meta box ENTIÈRE via la classe `.hide-if-js`,
+posée quand un utilisateur l'a masquée via le panneau "Screen Options" — une préférence mémorisée
+par utilisateur (`metaboxhidden_{$screen}`), un scénario plausible et normal sur une base de recette
+réutilisée depuis plusieurs versions (par exemple si un utilisateur avait, lors d'une version
+précédente encore bloquante, tenté de diagnostiquer lui-même le problème via Screen Options). La
+règle CSS correspondante peut être `!important` : un simple `style.display = ''` ne suffit jamais à
+l'emporter sur une règle `!important` — la boîte restait donc invisible malgré le correctif 0.12.2.
+
+**Correctif direct** (`assets/cheval-tabs-admin.js`) : l'activation d'un onglet lève désormais
+`.closed` ET `.hide-if-js` pour chacune de ses boîtes, puis VÉRIFIE RÉELLEMENT la visibilité
+obtenue via `offsetParent` (`null` si l'élément ou un ancêtre reste masqué par une règle CSS
+quelconque) — si elle reste masquée, l'affichage est forcé avec la même priorité `!important`
+(`style.setProperty('display', 'block', 'important')`), seule façon garantie de l'emporter.
+
+**Filet de sécurité n°1 — cohérence de mapping** (§5 : éviter deux vérités indépendantes) : chaque
+meta box gérée par un onglet est désormais marquée, dans le HTML RÉELLEMENT rendu, d'une classe
+`gwseq-tab-{id}` posée via le filtre natif WordPress `postbox_classes_{page}_{id}` (nouvelle
+fonction `gwseq_register_cheval_admin_tab_postbox_classes()`) — dérivée de la même configuration
+que celle transmise au script. Avant de construire quoi que ce soit, le script vérifie que chaque
+boîte trouvée par identifiant porte bien cette classe ; en cas d'écart, AUCUN onglet n'est construit
+et l'écran reste dans son état natif empilé.
+
+**Filet de sécurité n°2 — dégradation sûre** (§4 : « échec du système d'onglets ≠ perte d'accès aux
+données ») : si, malgré tout, une boîte de l'onglet actif reste réellement invisible, le système
+d'onglets se désactive intégralement — barre retirée du DOM, toutes les boîtes gérées restaurées à
+une visibilité normale (jamais une meta box existante supprimée). En environnement
+local/développement, un message natif (`.notice.notice-error`) signale le problème.
+
+**Tests reconstruits pour dériver du markup réel WordPress** : `tests/gws-equestrian-cheval-admin-tabs-runtime-test.js`
+reproduit désormais la structure réelle d'une meta box (`postbox-header`/`handlediv`/`inside`, avec
+de vrais champs à l'intérieur) et modélise l'effet réel de `.closed`/`.hide-if-js` sur
+`offsetParent`. Trois scénarios distincts (cas nominal avec boîte repliée+masquée ; boîte
+durablement invisible déclenchant le filet n°2 ; incohérence de marquage déclenchant le filet n°1),
+chacun vérifié indépendamment détecté par régression. 35 assertions Node au total (+ 8 nouvelles
+assertions déclaratives PHP, dont la vérification du filtre `postbox_classes`).
+
 #### Limitations connues (Étape 6)
 
 - **Aucun âge minimum de reproduction** pour les indices sportifs/génétiques ni pour le pedigree —
@@ -304,6 +347,12 @@ Médias (visibilité conjointe, masquage conjoint sous tout autre onglet, absenc
   navigateur courant — non synchronisée entre plusieurs onglets/fenêtres ouverts simultanément sur
   des chevaux différents, et perdue à la fermeture de la session navigateur. Choix assumé pour
   rester simple, comme demandé.
+- **Si une boîte reste masquée par "Screen Options"** (préférence utilisateur `metaboxhidden_{$screen}`)
+  et que le système d'onglets se désactive intégralement pour cette raison (filet de sécurité n°2,
+  0.12.3), la boîte concernée réapparaîtra bien empilée avec les autres, mais restera masquée par
+  cette préférence WordPress native tant que l'utilisateur ne la réactive pas explicitement via le
+  panneau "Options de l'écran" — aucun mécanisme ne modifie automatiquement cette préférence, par
+  cohérence avec le principe général de ne jamais toucher aux réglages natifs de WordPress.
 
 #### Pistes hors périmètre (aucun développement à ce stade)
 
@@ -370,9 +419,13 @@ onglets) :
     l'onglet actif.
 21bis. Cliquer sur l'onglet Identité : vérifier IMMÉDIATEMENT que tous les champs historiques sont
     bien visibles et saisissables (sexe, année de naissance, robe, race/stud-book, taille, éleveur,
-    propriétaire, SIRE, UELN) — et non une zone vide. Si la boîte a été repliée manuellement au
-    préalable (clic sur son titre), vérifier qu'elle réapparaît bien dépliée en revenant sur cet
-    onglet (correctif 0.12.2).
+    propriétaire, SIRE, UELN) — et non une zone vide, ni même une boîte réduite à son seul en-tête.
+    Si la boîte a été repliée manuellement au préalable (clic sur son titre), vérifier qu'elle
+    réapparaît bien dépliée en revenant sur cet onglet (correctif 0.12.2). Ouvrir le panneau
+    « Options de l'écran » (en haut à droite de l'écran) et vérifier que la case « Identité » y est
+    bien cochée ; si elle avait été décochée par le passé (ce qui masquerait la boîte ENTIÈRE, en
+    plus du système d'onglets), la recocher puis recharger la page pour confirmer que l'onglet
+    Identité redevient normalement exploitable (correctif 0.12.3).
 21ter. Cliquer sur l'onglet Médias : vérifier que la Photo principale (aperçu de l'image à la une,
     boutons natifs pour la définir/remplacer/retirer) apparaît bien aux côtés de Galerie et Vidéos.
     Modifier la Photo principale depuis cet onglet, enregistrer, recharger : vérifier la
