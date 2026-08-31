@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.5 (Étape 5 — Pedigree validée)
+## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.6 (Étape 5 — Pedigree validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -404,6 +404,43 @@ nœud DOM, absence de toute trace dans la colonne latérale, héritage automatiq
 fil des changements d'onglet, restauration à la position native au filet de sécurité n°2) et 5
 nouvelles assertions déclaratives PHP.
 
+#### Diagnostic et correctif 0.12.6 — contenu de la Photo principale invisible après déplacement
+
+Le déplacement réel de 0.12.5 restait non fonctionnel côté utilisateur : dans l'onglet Médias,
+seul le titre « Photo principale » apparaissait, sans aucun contrôle ni aucune image en dessous —
+alors que la Galerie, elle, fonctionnait normalement.
+
+**Démarche de diagnostic (avant tout nouveau correctif)** : un déplacement de nœud DOM
+(`appendChild()`) ne peut PAS, par garantie de la spécification DOM, effacer son propre contenu —
+cette hypothèse a donc été écartée en premier, puis VÉRIFIÉE plutôt que supposée : un test
+d'exécution réelle a été écrit avec le markup EXACT que WordPress produit pour `#postimagediv`
+(`post_thumbnail_meta_box()`/`_wp_post_thumbnail_html()` : nonce, lien « Définir la photo
+principale » à vide, ou vignette + lien « Supprimer » avec une photo déjà définie), dans les DEUX
+états demandés, confirmant que le contenu de `.inside` survit intact au déplacement effectué par
+notre script — **écartant avec certitude le code de déplacement lui-même comme cause**.
+
+**Cause probable identifiée** : WordPress ne prévoit JAMAIS qu'un `.postbox` soit imbriqué à
+l'intérieur d'un autre `.postbox` — cette forme de DOM n'existe nulle part ailleurs dans
+l'administration native. Le déplacement de 0.12.5 crée précisément cette situation inédite, en
+insérant `#postimagediv` (qui reste un `.postbox` complet) à l'intérieur de `.inside` de la boîte
+Médias (elle-même un `.postbox`). L'administration WordPress est susceptible de cibler ce cas avec
+une règle CSS défensive masquant les `.postbox` imbriqués, expliquant que le contenu — bien que
+réellement déplacé et intact dans le DOM — restait invisible à l'écran.
+
+**Correctif CSS ciblé** (`assets/cheval-tabs.css`), aucun changement JavaScript : une règle scopée
+à l'emplacement dédié (`#postimagediv` et tous ses descendants, uniquement à l'intérieur de
+`.gwseq-cheval-media__photo-principale-slot`) applique `display: revert !important` — cette valeur
+réinitialise CHAQUE élément à SA PROPRE valeur `display` par défaut du navigateur (bloc pour un
+`<div>`/`<p>`, en ligne pour un `<a>`/`<img>`...), sans qu'il soit nécessaire de connaître
+l'identité exacte d'une éventuelle règle contraire, et sans aucun effet si une telle règle
+n'existait pas réellement sur une installation donnée — aucune régression possible ailleurs.
+
+**Tests** : nouveau scénario dans le test d'exécution réelle reproduisant le markup RÉEL de
+`#postimagediv` dans ses deux états (avec/sans photo principale déjà définie), vérifiant champ par
+champ (nonce, lien « Définir », vignette, lien « Supprimer ») que le contenu de `.inside` survit
+intact au déplacement ET reste réellement visible (`offsetParent`) une fois l'onglet Médias actif —
+13 nouvelles assertions Node, 2 nouvelles assertions PHP déclaratives.
+
 #### Limitations connues (Étape 6)
 
 - **Aucun âge minimum de reproduction** pour les indices sportifs/génétiques ni pour le pedigree —
@@ -503,10 +540,12 @@ onglets) :
     bien cochée ; si elle avait été décochée par le passé (ce qui masquerait la boîte ENTIÈRE, en
     plus du système d'onglets), la recocher puis recharger la page pour confirmer que l'onglet
     Identité redevient normalement exploitable (correctif 0.12.3).
-21ter. Cliquer sur l'onglet Médias : vérifier que la vraie boîte native « Image à la une »
-    (aperçu, boutons natifs pour la définir/remplacer/retirer) apparaît RÉELLEMENT à l'intérieur de
-    cet onglet, aux côtés de Galerie et Vidéos — et non plus un texte renvoyant vers la colonne de
-    droite (correctif 0.12.5). Vérifier qu'elle a bien disparu de la colonne latérale (jamais
+21ter. Cliquer sur l'onglet Médias : vérifier que sous le titre « Photo principale » apparaissent
+    RÉELLEMENT un contrôle et/ou une image — jamais une zone vide sous ce seul titre (régression
+    0.12.5, corrigée en 0.12.6). Sur un cheval SANS photo principale : le lien natif « Définir la
+    photo principale » doit être visible et cliquable, ouvrant la médiathèque native. Sur un cheval
+    AVEC une photo principale déjà définie : sa vignette doit être visible, avec un contrôle natif
+    pour la remplacer/retirer. Vérifier qu'elle a bien disparu de la colonne latérale (jamais
     affichée à deux endroits à la fois) quand l'onglet Médias est actif, et qu'elle y réapparaît en
     changeant d'onglet (Identité, Commercial...). Modifier la Photo principale depuis son nouvel
     emplacement (médiathèque native, remplacement, retrait), enregistrer, recharger : vérifier la

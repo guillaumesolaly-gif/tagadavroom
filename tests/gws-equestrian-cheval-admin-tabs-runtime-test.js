@@ -223,6 +223,66 @@ function makeBox(id, insideFieldIds) {
   return box;
 }
 
+/**
+ * Reproduit le markup RÉEL produit par WordPress pour la boîte native "Image à la une"
+ * (post_thumbnail_meta_box() / _wp_post_thumbnail_html()) dans ses deux états — plutôt qu'une
+ * boîte vide générique — afin de vérifier littéralement que le CONTENU RÉEL (lien "Définir"/
+ * vignette + lien "Supprimer", nonce) survit au déplacement, dans les deux cas demandés.
+ */
+function makePostimagediv(hasImage) {
+  const box = new FakeElement('div');
+  box.id = 'postimagediv';
+  box.className = 'postbox';
+
+  const header = new FakeElement('div');
+  header.className = 'postbox-header';
+  const hndle = new FakeElement('h2');
+  hndle.className = 'hndle';
+  hndle.textContent = 'Image à la une';
+  header.appendChild(hndle);
+  box.appendChild(header);
+
+  const inside = new FakeElement('div');
+  inside.className = 'inside';
+
+  const nonce = new FakeElement('input');
+  nonce.setAttribute('type', 'hidden');
+  nonce.setAttribute('name', '_wpnonce_set_post_thumbnail');
+  nonce.setAttribute('value', 'stub-nonce');
+  inside.appendChild(nonce);
+
+  if (hasImage) {
+    const thumbP = new FakeElement('p');
+    thumbP.className = 'hide-if-no-js';
+    const img = new FakeElement('img');
+    img.className = 'attachment-post-thumbnail';
+    img.setAttribute('src', 'https://example.test/photo.jpg');
+    thumbP.appendChild(img);
+    inside.appendChild(thumbP);
+
+    const removeP = new FakeElement('p');
+    removeP.className = 'hide-if-no-js';
+    const removeLink = new FakeElement('a');
+    removeLink.id = 'remove-post-thumbnail';
+    removeLink.setAttribute('href', '#');
+    removeLink.textContent = 'Supprimer la photo principale';
+    removeP.appendChild(removeLink);
+    inside.appendChild(removeP);
+  } else {
+    const setP = new FakeElement('p');
+    setP.className = 'hide-if-no-js';
+    const setLink = new FakeElement('a');
+    setLink.id = 'set-post-thumbnail';
+    setLink.setAttribute('href', '#');
+    setLink.textContent = 'Définir la photo principale';
+    setP.appendChild(setLink);
+    inside.appendChild(setP);
+  }
+
+  box.appendChild(inside);
+  return box;
+}
+
 function walk(node, id) {
   if (!node) return null;
   if (node.id === id) return node;
@@ -249,7 +309,8 @@ function applyTabMarkerClasses(rootElement, tabsConfig) {
   });
 }
 
-function buildRealisticChevalEditScreen() {
+function buildRealisticChevalEditScreen(options) {
+  options = options || {};
   // Reproduit wp-admin/edit-form-advanced.php : #post-body-content, #postbox-container-1 et
   // #postbox-container-2 sont trois enfants DISTINCTS de #post-body — jamais l'un dans l'autre.
   const postBody = new FakeElement('div');
@@ -273,7 +334,7 @@ function buildRealisticChevalEditScreen() {
 
   const sideSortables = new FakeElement('div');
   sideSortables.id = 'side-sortables';
-  const postimagediv = makeBox('postimagediv');
+  const postimagediv = options.postimagediv || makeBox('postimagediv');
   const globalIdDev = makeBox('gwseq-cheval-global-id-dev');
   const production = makeBox('gwseq-cheval-production');
   const pedigreePreview = makeBox('gwseq-cheval-pedigree-preview');
@@ -594,9 +655,72 @@ function runMismatchScenario() {
   );
 }
 
+/* =============================================================================================
+ * SCÉNARIO 4 — CONTENU RÉEL DE LA PHOTO PRINCIPALE APRÈS DÉPLACEMENT (recette : le titre
+ * apparaissait dans l'onglet Médias, mais aucun contrôle ni aucune image dessous). Utilise le
+ * markup RÉEL de WordPress pour #postimagediv (nonce + lien "Définir"/vignette + lien
+ * "Supprimer"), dans les DEUX états demandés, et vérifie que ce contenu survit intact au
+ * déplacement DOM et reste réellement visible une fois l'onglet Médias actif — pas seulement
+ * supposé, littéralement vérifié champ par champ.
+ * ========================================================================================== */
+function runPhotoPrincipaleContentScenario(hasImage) {
+  const label = hasImage ? 'avec photo principale déjà définie' : 'sans photo principale définie';
+  const screen = buildRealisticChevalEditScreen({ postimagediv: makePostimagediv(hasImage) });
+  applyTabMarkerClasses(screen.root, MAIN_TABS_CONFIG);
+
+  const { thrown } = runScript(screen.root, MAIN_TABS_CONFIG);
+  ok('Scénario contenu Photo principale (' + label + ') : exécution réelle sans exception', thrown === null);
+  if (thrown) {
+    console.log('     -> exception : ' + thrown.name + ': ' + thrown.message);
+    return;
+  }
+
+  const postimagediv = screen.boxes.postimagediv;
+  ok(
+    'Contenu Photo principale (' + label + ') : la boîte déplacée est bien devenue enfant de l’emplacement dédié dans la boîte Médias',
+    screen.boxes.photoPrincipaleSlot.children.indexOf(postimagediv) !== -1
+  );
+
+  const inside = postimagediv.children.filter(function (c) { return c.className === 'inside'; })[0];
+  ok('Contenu Photo principale (' + label + ') : la boîte déplacée conserve bien son .inside (jamais vidé par le déplacement)', !!inside);
+
+  const nonceSurvived = !!inside && inside.children.some(function (c) { return c.getAttribute('name') === '_wpnonce_set_post_thumbnail'; });
+  ok('Contenu Photo principale (' + label + ') : le champ nonce natif de .inside est bien préservé', nonceSurvived);
+
+  if (hasImage) {
+    const imgSurvived = !!inside && inside.children.some(function (p) {
+      return p.children.some(function (c) { return c.tagName === 'img' && c.className === 'attachment-post-thumbnail'; });
+    });
+    ok('Contenu Photo principale (' + label + ') : la VIGNETTE de la photo déjà définie est bien préservée après déplacement', imgSurvived);
+    const removeLinkSurvived = !!inside && inside.children.some(function (p) {
+      return p.children.some(function (c) { return c.id === 'remove-post-thumbnail'; });
+    });
+    ok('Contenu Photo principale (' + label + ') : le contrôle natif "Supprimer la photo principale" est bien préservé après déplacement', removeLinkSurvived);
+  } else {
+    const setLinkSurvived = !!inside && inside.children.some(function (p) {
+      return p.children.some(function (c) { return c.id === 'set-post-thumbnail'; });
+    });
+    ok('Contenu Photo principale (' + label + ') : le contrôle natif "Définir la photo principale" est bien préservé après déplacement', setLinkSurvived);
+  }
+
+  // Activer l'onglet Médias et vérifier que le contenu réel devient RÉELLEMENT visible et
+  // utilisable (offsetParent non nul sur .inside elle-même, pas seulement sur le conteneur).
+  const wrapper = screen.normalSortables.children[0];
+  const tablist = wrapper && wrapper.className === 'gwseq-cheval-tabs' ? wrapper.children[0] : null;
+  const tabButtons = tablist ? tablist.children : [];
+  if (tabButtons.length === 6) tabButtons[4].click();
+
+  ok(
+    'Contenu Photo principale (' + label + ') : une fois l’onglet Médias actif, .inside (le contenu réel) est RÉELLEMENT visible, pas seulement le conteneur',
+    !!inside && inside.offsetParent !== null
+  );
+}
+
 runMainScenario();
 runFallbackScenario();
 runMismatchScenario();
+runPhotoPrincipaleContentScenario(false);
+runPhotoPrincipaleContentScenario(true);
 
 if (failureCount > 0) {
   console.log('\n' + failureCount + ' assertion(s) EN ÉCHEC sur ' + assertionCount + '.');

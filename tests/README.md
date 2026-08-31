@@ -261,7 +261,7 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   sur deux meta boxes distinctes (Présentation / Informations complémentaires) ; escaping ;
   persistance et compatibilité avec une fiche jamais enregistrée ; chemin programmatique.
 - Navigation par onglets de la fiche Cheval, ajustement UX post-recette de l'Étape 6
-  (`gws-equestrian-cheval-admin-tabs-test.php`, 0.12.0 à 0.12.5) : configuration PHP du
+  (`gws-equestrian-cheval-admin-tabs-test.php`, 0.12.0 à 0.12.6) : configuration PHP du
   regroupement onglet → meta boxes (les 6 onglets attendus, avec exactement les bonnes boîtes
   chacun — en particulier l'onglet Pedigree qui regroupe Pedigree, Production calculée et l'aperçu
   développeur). L'onglet Médias ne référence QUE la boîte "gwseq-cheval-media" — "postimagediv"
@@ -292,7 +292,7 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   feuille de style native), présence de la fonction `disableTabsFallback()` et de son appel
   (filet de sécurité n°2), et présence de la vérification de cohérence `gwseq-tab-{id}` avant toute
   construction d'onglet (filet de sécurité n°1).
-  **Complété par `gws-equestrian-cheval-admin-tabs-runtime-test.js`** (40 assertions, via `node` —
+  **Complété par `gws-equestrian-cheval-admin-tabs-runtime-test.js`** (53 assertions, via `node` —
   voir la section « Exécuter » ci-dessus) : ce fichier va au-delà de la lecture déclarative en
   EXÉCUTANT réellement `cheval-tabs-admin.js` contre une reproduction fidèle du DOM et du markup
   RÉEL d'une meta box WordPress (`postbox-header`/`handlediv`/`inside`, avec de vrais champs à
@@ -313,7 +313,17 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   n°2 (barre retirée, toutes les boîtes restaurées, message de secours en environnement dev, **et la
   Photo principale restaurée à sa position native exacte, 0.12.5**) ; (3) une incohérence entre la
   configuration transmise et le marquage réel du DOM, vérifiant qu'aucun onglet n'est alors
-  construit et qu'aucune boîte n'est masquée (filet de sécurité n°1).
+  construit et qu'aucune boîte n'est masquée (filet de sécurité n°1) ; **(4) contenu réel de la
+  Photo principale après déplacement (0.12.6)**, ajouté après un signalement en recette où seul le
+  titre apparaissait dans l'onglet Médias, sans aucun contrôle ni aucune image en dessous — reproduit
+  le markup EXACT que WordPress produit pour `#postimagediv` (`post_thumbnail_meta_box()` :
+  nonce, lien natif « Définir la photo principale », ou vignette + lien « Supprimer » avec une
+  photo déjà définie) dans les DEUX états, et vérifie champ par champ que ce contenu survit intact
+  au déplacement DOM et reste RÉELLEMENT visible (`offsetParent` sur `.inside` elle-même, pas
+  seulement le conteneur) une fois l'onglet Médias actif — ce test a permis d'écarter avec
+  certitude le code de déplacement (`appendChild()`, qui ne peut par construction jamais effacer
+  le contenu d'un nœud déplacé) comme cause du signalement, orientant le diagnostic vers une
+  cause CSS plutôt que DOM (voir le CHANGELOG du module pour le détail).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -359,7 +369,7 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   Informations complémentaires, Étape 6) : ordre visuel des blocs, lisibilité pour un professionnel
   non expert WordPress, largeur des champs `<textarea>`.
 - Comportement navigateur RÉEL de la navigation par onglets de la fiche Cheval (ajustement UX
-  post-recette, 0.12.0 à 0.12.5) : depuis 0.12.1, `gws-equestrian-cheval-admin-tabs-runtime-test.js`
+  post-recette, 0.12.0 à 0.12.6) : depuis 0.12.1, `gws-equestrian-cheval-admin-tabs-runtime-test.js`
   exécute réellement le script contre un DOM simulé fidèle et vérifie la bascule de panneau au
   clic/clavier, la mémorisation dans `sessionStorage`, l'absence d'exception, une visibilité
   RÉELLEMENT vérifiée (`offsetParent`) d'une boîte repliée et/ou masquée par Screen Options, les

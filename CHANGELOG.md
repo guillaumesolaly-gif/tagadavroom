@@ -1,5 +1,23 @@
 # Changelog — GWS Starter
 
+## 1.15.6 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Diagnostic et correctif : contenu de la Photo principale invisible après déplacement (GWS
+  Equestrian 0.12.6).** Le déplacement réel de 0.12.5 restait non fonctionnel : seul le titre
+  apparaissait dans l'onglet Médias, sans aucun contrôle ni aucune image en dessous. Diagnostic
+  avant correctif : un test d'exécution réelle avec le markup exact de WordPress pour
+  `#postimagediv` (nonce, liens natifs, vignette) a confirmé, dans les deux états (avec/sans photo
+  déjà définie), que le contenu survit intact au déplacement — écartant avec certitude le code de
+  déplacement lui-même comme cause. Cause probable identifiée : WordPress ne prévoit jamais qu'un
+  `.postbox` soit imbriqué dans un autre `.postbox` (la forme de DOM inédite créée par le
+  déplacement de 0.12.5), une situation que l'administration WordPress est susceptible de masquer
+  par une règle CSS défensive. Correctif : une règle CSS scopée (`display: revert !important`)
+  réinitialise chaque élément déplacé à sa valeur par défaut, sans hypothèse sur l'identité exacte
+  d'une éventuelle règle contraire — aucun changement JavaScript, aucune régression possible pour
+  les installations non concernées. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.12.6) pour le détail complet
+  de la démarche de diagnostic et des tests renforcés.
+
 ## 1.15.5 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Intégration réelle de la Photo principale dans l'onglet Médias (GWS Equestrian 0.12.5).** Le

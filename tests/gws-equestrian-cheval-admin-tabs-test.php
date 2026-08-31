@@ -309,5 +309,22 @@ gws_test_assert(strpos($tabs_admin_js_source, 'nav-tab-wrapper') !== false && pr
 gws_test_assert(strpos($tabs_css_source, '@media') !== false, 'Responsive : une règle @media est bien présente pour l’adaptation sur écran étroit');
 gws_test_assert(strpos($tabs_css_source, 'flex-wrap') !== false, 'Responsive : la disposition permet un repli des éléments (flex-wrap) sur écran étroit');
 
+// --- CORRECTIF DIAGNOSTIC (le contenu de la Photo principale restait invisible après
+// déplacement, malgré un déplacement DOM par ailleurs réussi et vérifié) : WordPress ne prévoit
+// jamais qu'un .postbox soit imbriqué dans un autre .postbox — une règle CSS d'administration
+// défensive pourrait cibler spécifiquement ce cas. `revert`, scopé au seul emplacement dédié,
+// réinitialise chaque élément déplacé à sa valeur display par défaut, sans hypothèse sur
+// l'identité exacte d'une éventuelle règle contraire, et sans effet si aucune n'existait
+// réellement. Vérifié en exécution réelle (préservation du contenu) par
+// tests/gws-equestrian-cheval-admin-tabs-runtime-test.js. ---
+gws_test_assert(
+  strpos($tabs_css_source, '.gwseq-cheval-media__photo-principale-slot #postimagediv') !== false,
+  'Correctif diagnostic : une règle CSS scopée cible bien la boîte Photo principale une fois déplacée dans son emplacement dédié'
+);
+gws_test_assert(
+  preg_match('/display:\s*revert\s*!important/', $tabs_css_source) === 1,
+  'Correctif diagnostic : cette règle force bien "display: revert !important", pour contrer toute règle d’administration masquant un .postbox imbriqué dans un autre, quelle qu’en soit l’origine exacte'
+);
+
 echo ($failures === 0 ? 'Tous les tests sont passés.' : "$failures test(s) en échec.") . "\n";
 exit($failures === 0 ? 0 : 1);

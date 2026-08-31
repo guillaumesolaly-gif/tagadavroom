@@ -47,3 +47,19 @@
   border: none;
   box-shadow: none;
 }
+
+/* CORRECTIF DIAGNOSTIC (recette : le contenu de la Photo principale restait invisible après
+   déplacement, malgré un déplacement DOM par ailleurs réussi et vérifié) : WordPress ne prévoit
+   JAMAIS qu'un `.postbox` soit imbriqué à l'intérieur d'un autre `.postbox` — cette forme de DOM
+   n'existe nulle part ailleurs dans l'admin natif. Le thème/l'administration WordPress est donc
+   susceptible de cibler spécifiquement ce cas avec une règle `display:none` défensive (par
+   exemple `.postbox .postbox`), qui s'appliquerait ici sans qu'aucune règle propre à ce plugin ne
+   soit en cause. `revert` réinitialise CHAQUE élément à SA PROPRE valeur `display` par défaut du
+   navigateur (bloc pour un <div>/<p>, en ligne pour un <a>/<img>...), quelle que soit la règle
+   d'auteur qui la fixait ailleurs — sans qu'il soit nécessaire de connaître l'identité exacte de
+   cette règle, et sans aucun effet si une telle règle n'existait pas réellement sur l'installation
+   concernée. */
+.gwseq-cheval-media__photo-principale-slot #postimagediv,
+.gwseq-cheval-media__photo-principale-slot #postimagediv * {
+  display: revert !important;
+}

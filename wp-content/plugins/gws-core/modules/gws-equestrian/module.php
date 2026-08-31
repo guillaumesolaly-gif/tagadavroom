@@ -24,7 +24,7 @@ const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
 // Version propre au module (distincte de la version du plugin gws-core qui l'héberge) : suit
 // l'avancement des étapes du plan de développement, voir CHANGELOG.md de ce dossier. Atteindra
 // 1.0.0 au gel de la V1 (fin de l'étape 9).
-define('GWSEQ_MODULE_VERSION', '0.12.5');
+define('GWSEQ_MODULE_VERSION', '0.12.6');
 define('GWSEQ_MODULE_URL', GWS_CORE_URL . 'modules/gws-equestrian/');
 
 require_once __DIR__ . '/includes/post-types.php';

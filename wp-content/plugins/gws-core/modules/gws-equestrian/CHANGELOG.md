@@ -5,6 +5,45 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.12.6 — Diagnostic et correctif : contenu de la Photo principale invisible après déplacement
+
+Le déplacement réel de 0.12.5 restait non fonctionnel côté utilisateur : dans l'onglet Médias,
+seul le titre « Photo principale » apparaissait, sans aucun contrôle ni aucune image en dessous —
+alors que la Galerie, elle, fonctionnait normalement.
+
+**Démarche de diagnostic** : avant tout nouveau correctif, vérification que le déplacement DOM
+lui-même (`appendChild()`) ne pouvait PAS être la cause — un déplacement de nœud ne supprime
+jamais son contenu, par garantie de la spécification DOM. Un test d'exécution réelle a été écrit
+avec le markup EXACT que WordPress produit pour `#postimagediv` (`post_thumbnail_meta_box()` /
+`_wp_post_thumbnail_html()` : nonce, lien « Définir la photo principale » à vide, ou vignette +
+lien « Supprimer » avec une photo déjà définie) et a confirmé, dans les deux états, que le
+contenu de `.inside` survit intact au déplacement effectué par notre script. **Cause écartée avec
+certitude : notre code de déplacement ne détruit rien.**
+
+**Cause probable identifiée** : WordPress ne prévoit JAMAIS qu'un `.postbox` soit imbriqué à
+l'intérieur d'un autre `.postbox` — cette forme de DOM n'existe nulle part ailleurs dans
+l'administration native (notre déplacement de 0.12.5 crée précisément cette situation inédite, en
+insérant `#postimagediv`, qui reste un `.postbox` complet, à l'intérieur de `.inside` de la boîte
+Médias, elle-même un `.postbox`). L'administration WordPress est susceptible de cibler ce cas avec
+une règle CSS défensive masquant les `.postbox` imbriqués — expliquant que le contenu, bien que
+réellement déplacé et intact dans le DOM, restait invisible à l'écran.
+
+- **Correctif CSS ciblé** (`assets/cheval-tabs.css`) : une règle scopée à l'emplacement dédié
+  (`.gwseq-cheval-media__photo-principale-slot #postimagediv` et tous ses descendants) applique
+  `display: revert !important` — cette valeur réinitialise CHAQUE élément à SA PROPRE valeur
+  `display` par défaut du navigateur (bloc pour un `<div>`/`<p>`, en ligne pour un `<a>`/`<img>`...),
+  sans qu'il soit nécessaire de connaître l'identité exacte d'une éventuelle règle contraire, et
+  sans aucun effet si une telle règle n'existait pas réellement sur une installation donnée —
+  aucune régression possible pour les installations où le problème ne se manifestait pas.
+- **Aucun changement JavaScript** : le mécanisme de déplacement lui-même (0.12.5) était déjà
+  correct et reste inchangé — seule une règle CSS défensive supplémentaire a été ajoutée.
+- **Tests** : nouveau scénario dans le test d'exécution réelle reproduisant le markup RÉEL de
+  `#postimagediv` dans ses deux états (avec/sans photo principale déjà définie) et vérifiant,
+  champ par champ (nonce, lien « Définir », vignette, lien « Supprimer »), que le contenu de
+  `.inside` survit intact au déplacement ET reste réellement visible (`offsetParent`) une fois
+  l'onglet Médias actif — 13 nouvelles assertions Node, 2 nouvelles assertions PHP déclaratives
+  vérifiant la présence de la règle CSS. Suite complète : 1104 assertions PHP + 53 assertions Node.
+
 ## 0.12.5 — Intégration réelle de la Photo principale dans l'onglet Médias
 
 La recette a montré que le simple masquage/affichage EN PLACE de `postimagediv` (comme pour
