@@ -21,6 +21,10 @@
     var tabsConfig = Array.isArray(config.tabs) ? config.tabs : [];
     if (!tabsConfig.length) return;
 
+    // Garde défensive : #post-body-content confirme qu'on est bien sur l'écran classique en deux
+    // colonnes (édition par blocs désactivée pour Cheval, voir includes/cheval-editor.php) — mais
+    // n'est PAS un ancêtre DOM de #normal-sortables (ce sont deux enfants distincts de #post-body,
+    // #normal-sortables vivant dans #postbox-container-2 : voir correctif ci-dessous).
     var postbody = document.getElementById('post-body-content');
     var normalSortables = document.getElementById('normal-sortables');
     if (!postbody || !normalSortables) return; // écran non standard (ex. éditeur par blocs) : rien à faire, blocs empilés normalement
@@ -107,7 +111,18 @@
     }
     wrapper.appendChild(saveButton);
 
-    postbody.insertBefore(wrapper, normalSortables);
+    // CORRECTIF BLOQUANT (régression post-livraison) : #post-body-content et #normal-sortables ne
+    // sont PAS dans une relation parent/enfant sur l'écran classique de WordPress (ce sont deux
+    // enfants distincts de #post-body — #normal-sortables vit dans #postbox-container-2, une boîte
+    // séparée de la colonne principale, voir wp-admin/edit-form-advanced.php). Un
+    // `postbody.insertBefore(wrapper, normalSortables)` lève donc systématiquement une
+    // `DOMException` (le nœud de référence n'est pas un enfant du nœud appelant), ce qui arrêtait
+    // l'exécution du script AVANT même l'insertion de la barre d'onglets : aucun onglet
+    // n'apparaissait jamais. On insère désormais la barre comme PREMIER enfant de
+    // #normal-sortables lui-même — l'élément qui contient réellement toutes les boîtes de la
+    // colonne principale que les onglets pilotent — ce qui la place bien en haut de cette colonne,
+    // sans dépendre d'une hypothèse de structure DOM erronée.
+    normalSortables.insertBefore(wrapper, normalSortables.firstChild);
 
     function activateTab(tabId, opts) {
       opts = opts || {};

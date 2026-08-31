@@ -1,5 +1,22 @@
 # Changelog — GWS Starter
 
+## 1.15.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif RÉGRESSION BLOQUANTE — navigation par onglets (GWS Equestrian 0.12.1).** La recette
+  runtime de 1.15.0 a échoué immédiatement : la barre d'onglets n'apparaissait jamais (le script
+  appelait `insertBefore()` avec un nœud de référence qui n'est pas un enfant réel du nœud
+  appelant sur l'écran classique de WordPress — une `DOMException` systématique, jamais détectée
+  par des tests qui ne faisaient que scanner le texte source du script sans jamais l'exécuter), et
+  un changement de contexte de deux meta boxes (`'side'` → `'normal'`) exposait un risque connu de
+  WordPress de perte d'affichage d'une meta box pour un utilisateur ayant déjà un ordre de boîtes
+  enregistré sur cet écran. Les deux causes sont corrigées : insertion de la barre au bon endroit
+  du DOM, et contexte `'side'` restauré pour ces deux boîtes (le regroupement visuel sous l'onglet
+  Pedigree ne dépend jamais de leur position DOM). Nouveau test d'exécution réelle du script contre
+  un DOM fidèle à l'écran WordPress (`tests/gws-equestrian-cheval-admin-tabs-runtime-test.js`, 24
+  assertions via `node`, aucune dépendance ajoutée). Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.12.1) pour le détail complet
+  de la cause racine.
+
 ## 1.15.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 6 : ajustements UX post-recette (CD à deux décimales, navigation par

@@ -22,10 +22,21 @@ php tests/gws-equestrian-cheval-indices-logic-test.php
 php tests/gws-equestrian-cheval-media-logic-test.php
 php tests/gws-equestrian-cheval-editorial-logic-test.php
 php tests/gws-equestrian-cheval-admin-tabs-test.php
+node tests/gws-equestrian-cheval-admin-tabs-runtime-test.js
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
 un processus PHP séparé — il peut aussi être lancé seul.)
+
+**`gws-equestrian-cheval-admin-tabs-runtime-test.js`** est le SEUL fichier de ce dossier qui ne
+s'exécute pas via `php` : il nécessite `node` (aucune dépendance npm, aucun `package.json` — un
+script Node autonome). Contrairement aux autres fichiers, qui ne peuvent que scanner le TEXTE
+SOURCE d'un script JavaScript (présence de motifs, jamais son exécution réelle), celui-ci exécute
+réellement `assets/cheval-tabs-admin.js` contre une reproduction fidèle et minimale du DOM produit
+par l'écran classique d'édition de WordPress (colonnes latérale/principale bien distinctes, avec le
+vrai bouton `#publish`) — c'est ce type de test qui a permis de détecter puis de corriger la
+régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basées sur du texte de
+`gws-equestrian-cheval-admin-tabs-test.php`.
 
 ## Ce qui est couvert
 
@@ -240,25 +251,36 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   sur deux meta boxes distinctes (Présentation / Informations complémentaires) ; escaping ;
   persistance et compatibilité avec une fiche jamais enregistrée ; chemin programmatique.
 - Navigation par onglets de la fiche Cheval, ajustement UX post-recette de l'Étape 6
-  (`gws-equestrian-cheval-admin-tabs-test.php`, 0.12.0) : configuration PHP du regroupement
+  (`gws-equestrian-cheval-admin-tabs-test.php`, 0.12.0/0.12.1) : configuration PHP du regroupement
   onglet → meta boxes (les 6 onglets attendus, avec exactement les bonnes boîtes chacun — en
   particulier l'onglet Pedigree qui regroupe Pedigree, Production calculée et l'aperçu
   développeur), photo principale/Global ID dev-only/boîte "Ordre" volontairement rattachés à aucun
   onglet, chargement conditionnel des assets (uniquement sur l'écran Cheval, pas sur un autre
   écran ni un autre post type), configuration transmise au script via `wp_localize_script()`
-  identique à la source de vérité PHP, changement de contexte `'side'` → `'normal'` des meta boxes
-  Production/aperçu développeur vérifié par lecture directe de `cheval-pedigree.php`. Le
-  JavaScript lui-même, non exécutable par un script PHP autonome, est vérifié par lecture
-  déclarative directe de son code (même méthodologie que pour `cheval-admin.js`/
-  `repeater-field.js`, hors commentaires pour éviter tout faux positif) : aucun appel AJAX, aucune
-  meta box jamais déplacée dans le DOM (seul son `style.display` change), aucune donnée jamais
-  retirée du DOM, bouton d'enregistrement rapide déclenchant un clic sur le vrai `#publish` natif
-  (jamais `form.submit()` direct), attributs ARIA `tablist`/`tab`/`tabpanel`/`aria-selected`/
-  `aria-controls`/`aria-labelledby`, navigation clavier complète (flèches, Début/Fin, tabindex
-  mobile), réutilisation des classes natives `.nav-tab-wrapper`/`.nav-tab`, dégradation
-  silencieuse si `sessionStorage` est indisponible ou si la structure d'écran attendue est absente,
-  et filtrage silencieux d'un identifiant de boîte qui ne correspond à aucun élément réel (ex.
-  l'aperçu développeur en production).
+  identique à la source de vérité PHP, contexte `'side'` des meta boxes Production/aperçu
+  développeur (restauré par le correctif de régression 0.12.1 — voir plus bas) vérifié par lecture
+  directe de `cheval-pedigree.php`. Le JavaScript est vérifié par lecture déclarative directe de
+  son code (même méthodologie que pour `cheval-admin.js`/`repeater-field.js`, hors commentaires
+  pour éviter tout faux positif) : aucun appel AJAX, aucune meta box jamais déplacée dans le DOM
+  (seul son `style.display` change), aucune donnée jamais retirée du DOM, bouton d'enregistrement
+  rapide déclenchant un clic sur le vrai `#publish` natif (jamais `form.submit()` direct),
+  attributs ARIA `tablist`/`tab`/`tabpanel`/`aria-selected`/`aria-controls`/`aria-labelledby`,
+  navigation clavier complète (flèches, Début/Fin, tabindex mobile), réutilisation des classes
+  natives `.nav-tab-wrapper`/`.nav-tab`, dégradation silencieuse si `sessionStorage` est
+  indisponible ou si la structure d'écran attendue est absente, filtrage silencieux d'un
+  identifiant de boîte qui ne correspond à aucun élément réel (ex. l'aperçu développeur en
+  production), et absence du pattern d'insertion DOM fautif ayant causé la régression 0.12.1.
+  **Complété par `gws-equestrian-cheval-admin-tabs-runtime-test.js`** (24 assertions, via `node` —
+  voir la section « Exécuter » ci-dessus) : ce fichier va au-delà de la lecture déclarative en
+  EXÉCUTANT réellement `cheval-tabs-admin.js` contre une reproduction fidèle du DOM de l'écran
+  classique de WordPress (colonnes latérale/principale distinctes, vrai bouton `#publish`) —
+  c'est ce type de test, absent avant 0.12.1, qui aurait immédiatement détecté la régression
+  bloquante de 0.12.0 (le script levait une `DOMException` et ne construisait jamais la barre
+  d'onglets). Il vérifie : absence de toute exception à l'exécution, insertion réelle de la barre
+  au bon endroit du DOM, rendu effectif des 6 onglets, regroupement Pedigree/Production/aperçu
+  fonctionnel même si ces boîtes vivent dans des colonnes DOM différentes, bascule réelle de
+  visibilité au clic et à la navigation clavier, persistance dans `sessionStorage`, absence de
+  retrait du DOM d'une meta box, et déclenchement réel du bouton natif par le bouton rapide.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -303,10 +325,16 @@ un processus PHP séparé — il peut aussi être lancé seul.)
 - Rendu navigateur réel des nouvelles meta boxes de la fiche Cheval (Indices, Médias, Présentation,
   Informations complémentaires, Étape 6) : ordre visuel des blocs, lisibilité pour un professionnel
   non expert WordPress, largeur des champs `<textarea>`.
-- Comportement navigateur réel de la navigation par onglets de la fiche Cheval (ajustement UX
-  post-recette, 0.12.0) : apparence visuelle effective des onglets natifs `.nav-tab` (couleurs,
-  état actif), bascule réelle de panneau au clic et à la navigation clavier (flèches, Home/End),
-  visibilité du focus clavier, persistance de l'onglet actif via `sessionStorage` d'un rechargement
-  à l'autre, ressenti du bouton d'enregistrement rapide (libellé, clic déclenchant bien la
-  sauvegarde native), disposition et utilisabilité sur un écran étroit (≤ 782 px), et utilisabilité
-  complète de la fiche sans JavaScript (blocs simplement empilés, formulaire toujours soumissible).
+- Comportement navigateur RÉEL de la navigation par onglets de la fiche Cheval (ajustement UX
+  post-recette, 0.12.0/0.12.1) : depuis 0.12.1, `gws-equestrian-cheval-admin-tabs-runtime-test.js`
+  exécute réellement le script contre un DOM simulé fidèle et vérifie la bascule de panneau au
+  clic/clavier, la mémorisation dans `sessionStorage`, et l'absence d'exception — mais UN VRAI
+  NAVIGATEUR reste seul juge de : l'apparence visuelle effective des onglets natifs `.nav-tab`
+  (couleurs, état actif) telle que rendue par le vrai CSS d'administration WordPress, la
+  visibilité concrète du focus clavier à l'écran, la persistance de l'onglet actif via
+  `sessionStorage` d'un VRAI rechargement de page à l'autre, le ressenti du bouton d'enregistrement
+  rapide (libellé affiché, clic déclenchant bien la sauvegarde native), la disposition et
+  l'utilisabilité sur un écran étroit (≤ 782 px), et l'absence de toute erreur JavaScript en
+  conditions réelles (autres scripts admin, extensions, thème). L'utilisabilité complète de la
+  fiche sans JavaScript (blocs simplement empilés, formulaire toujours soumissible) reste elle
+  aussi à confirmer en conditions réelles (navigateur avec JS désactivé).

@@ -5,6 +5,53 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.12.1 — Correctif RÉGRESSION BLOQUANTE — navigation par onglets inopérante, meta boxes à risque
+
+La recette runtime de 0.12.0 a échoué immédiatement : la navigation par onglets n'apparaissait pas
+du tout, et l'écran d'édition d'une fiche cheval risquait de perdre l'accès visuel à des meta boxes
+existantes. Deux causes racines distinctes, corrigées ici, aucun nouveau développement.
+
+- **CAUSE 1 (bloquante, systématique) — mauvaise cible DOM pour l'insertion de la barre
+  d'onglets** : le script (`assets/cheval-tabs-admin.js`) appelait
+  `postbody.insertBefore(wrapper, normalSortables)`, où `postbody` référence `#post-body-content`.
+  Or sur l'écran classique de WordPress (`wp-admin/edit-form-advanced.php`), `#post-body-content`
+  et `#normal-sortables` (qui contient les meta boxes de la colonne principale, à l'intérieur de
+  `#postbox-container-2`) sont deux enfants DISTINCTS de `#post-body` — jamais l'un dans l'autre.
+  Un `insertBefore()` dont le nœud de référence n'est pas un enfant réel du nœud appelant lève
+  systématiquement une `DOMException` dans tout navigateur conforme à la spécification DOM : le
+  script s'arrêtait donc à cette ligne, AVANT même de construire la barre d'onglets — d'où son
+  absence totale et systématique en recette. **Correctif** : la barre est désormais insérée comme
+  premier enfant de `#normal-sortables` lui-même, son véritable ancêtre DOM direct, plaçant la
+  navigation en haut de la colonne principale sans dépendre d'une hypothèse de structure erronée.
+- **CAUSE 2 (risque de disparition de meta boxes existantes) — changement de contexte
+  `add_meta_box()` non nécessaire** : 0.12.0 avait fait passer les meta boxes Production (calculée)
+  et « Pedigree résolu » (dev-only) du contexte `'side'` à `'normal'` (`includes/cheval-pedigree.php`)
+  pour les regrouper visuellement avec Pedigree sous l'onglet correspondant. Ce changement de
+  contexte d'une version à l'autre expose un piège connu de WordPress : l'ordre des meta boxes par
+  écran est mémorisé par utilisateur (`meta-box-order_{$screen}`), associé à un COUPLE
+  identifiant/contexte précis — un changement de contexte peut alors faire perdre le rattachement
+  réel d'une boîte lors de la fusion interne de `add_meta_box()` pour un utilisateur ayant déjà
+  navigué sur cet écran avant la mise à jour, la boîte concernée n'étant alors plus jamais rendue.
+  **Correctif** : contexte `'side'` restauré pour ces deux boîtes, exactement comme avant l'Étape 6
+  — sans aucune conséquence sur le regroupement fonctionnel sous l'onglet Pedigree, qui ne dépend
+  jamais de la position DOM des boîtes (le script les retrouve par identifiant HTML, où qu'elles
+  soient physiquement) : seule leur COLONNE d'apparition change (colonne latérale au lieu de
+  colonne principale) quand l'onglet Pedigree est actif.
+- **Aucune donnée, règle métier ou mécanisme de sauvegarde affecté par ces deux correctifs** —
+  strictement des corrections de câblage DOM/PHP de la couche de présentation ajoutée en 0.12.0.
+- **Renforcement des tests** : les 73 assertions de `gws-equestrian-cheval-admin-tabs-test.php`
+  n'avaient pas détecté la régression bloquante — elles ne font que scanner le TEXTE SOURCE du
+  script, jamais l'exécuter. Nouveau fichier `tests/gws-equestrian-cheval-admin-tabs-runtime-test.js`
+  (24 assertions, exécuté via `node`, aucune dépendance npm ajoutée) : reproduit fidèlement la
+  structure DOM réelle de l'écran classique d'édition (colonnes latérale/principale bien
+  distinctes, avec le vrai bouton `#publish`), exécute réellement `cheval-tabs-admin.js` dans ce
+  DOM simulé (module `vm` de Node), et vérifie le câblage effectif : aucune exception levée,
+  insertion réelle de la barre au bon endroit, regroupement Pedigree/Production/aperçu même à
+  cheval sur deux colonnes physiques, bascule effective de visibilité au clic et au clavier, aucune
+  meta box jamais retirée du DOM, bouton rapide déclenchant réellement le bouton natif. Deux
+  nouvelles assertions déclaratives complètent aussi le fichier de test existant (contexte `'side'`
+  restauré ; absence du pattern d'insertion fautif).
+
 ## 0.12.0 — Étape 6 : ajustements UX post-recette — CD à deux décimales, navigation par onglets
 
 Correctifs suite à la première recette runtime de l'Étape 6 : l'écran d'édition d'une fiche cheval

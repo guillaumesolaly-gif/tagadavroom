@@ -131,20 +131,26 @@ foreach ($GLOBALS['__gwseq_test_domains_used'] as $domain) {
 }
 
 // =====================================================================================
-// Contexte des meta boxes Production / Aperçu pedigree — déplacées de 'side' à 'normal' pour
-// rejoindre la colonne principale, seule couverte par les onglets (§2, vérification déclarative
-// directe sur cheval-pedigree.php)
+// Contexte des meta boxes Production / Aperçu pedigree — CORRECTIF RÉGRESSION (0.12.1) : un
+// premier essai de l'ajustement onglets les avait fait passer de 'side' à 'normal' pour rejoindre
+// visuellement la colonne principale ; la recette runtime a révélé que ce changement de contexte
+// pouvait faire disparaître des meta boxes existantes pour un utilisateur ayant déjà un ordre de
+// boîtes enregistré sur cet écran (voir cheval-pedigree.php pour le détail exact du mécanisme
+// WordPress en cause). Contexte 'side' restauré, exactement comme avant l'Étape 6 — le
+// regroupement sous l'onglet Pedigree reste garanti par gwseq_cheval_admin_tabs_config() et le
+// script (identification des boîtes par ID, jamais par position DOM), vérifié par ailleurs par
+// tests/gws-equestrian-cheval-admin-tabs-runtime-test.js (exécution réelle du script).
 // =====================================================================================
 
 gws_test_assert(
-  preg_match("/add_meta_box\\('gwseq-cheval-production'.*'normal'/", $cheval_pedigree_source) === 1,
-  'Placement : la meta box "Production" est bien enregistrée en contexte "normal" (colonne principale, couverte par l’onglet Pedigree)'
+  preg_match("/add_meta_box\\('gwseq-cheval-production'.*'side'/", $cheval_pedigree_source) === 1,
+  'Placement (correctif régression) : la meta box "Production" reste enregistrée en contexte "side", exactement comme avant l’Étape 6'
 );
 gws_test_assert(
-  preg_match("/add_meta_box\\('gwseq-cheval-pedigree-preview'.*'normal'/", $cheval_pedigree_source) === 1,
-  'Placement : la meta box "Pedigree résolu" (dev-only) est bien enregistrée en contexte "normal"'
+  preg_match("/add_meta_box\\('gwseq-cheval-pedigree-preview'.*'side'/", $cheval_pedigree_source) === 1,
+  'Placement (correctif régression) : la meta box "Pedigree résolu" (dev-only) reste enregistrée en contexte "side"'
 );
-gws_test_assert(strpos($cheval_pedigree_source, "'gwseq-cheval-production', __('Production', 'gws-core'), 'gwseq_render_cheval_offspring_box', GWSEQ_CPT_CHEVAL, 'side'") === false, 'Placement : la meta box "Production" n’est plus jamais enregistrée en contexte "side"');
+gws_test_assert(strpos($cheval_pedigree_source, "'gwseq-cheval-production', __('Production', 'gws-core'), 'gwseq_render_cheval_offspring_box', GWSEQ_CPT_CHEVAL, 'normal'") === false, 'Placement (correctif régression) : la meta box "Production" n’est plus jamais enregistrée en contexte "normal"');
 
 // =====================================================================================
 // Garanties comportementales du script (vérification déclarative directe du code source — un
@@ -183,6 +189,17 @@ gws_test_assert(strpos($tabs_admin_js_source, 'tabIndex') !== false, 'Navigation
 // structure attendue de l'écran (#post-body-content / #normal-sortables) est absente ---
 gws_test_assert(strpos($tabs_admin_js_source, 'try {') !== false && strpos($tabs_admin_js_source, 'sessionStorage') !== false, 'Robustesse : l’accès à sessionStorage est protégé (try/catch), jamais une erreur bloquante si indisponible');
 gws_test_assert(strpos($tabs_admin_js_source, "getElementById('post-body-content')") !== false && strpos($tabs_admin_js_source, "getElementById('normal-sortables')") !== false, 'Robustesse : le script vérifie la présence des conteneurs attendus avant toute manipulation, jamais une erreur si l’écran a une structure inattendue');
+
+// --- CORRECTIF RÉGRESSION BLOQUANTE (0.12.1) : #post-body-content et #normal-sortables sont deux
+// enfants DISTINCTS de #post-body sur l'écran classique WordPress (jamais l'un dans l'autre) — un
+// insertBefore(wrapper, normalSortables) appelé sur #post-body-content lève donc systématiquement
+// une DOMException dans un vrai navigateur (le nœud de référence n'est pas un enfant du nœud
+// appelant), ce qui empêchait TOUJOURS l'apparition de la barre d'onglets en recette runtime. La
+// barre doit désormais être insérée comme premier enfant de #normal-sortables lui-même — le seul
+// élément qui soit réellement un ancêtre direct des boîtes qu'elle pilote. Vérifié en exécution
+// réelle par tests/gws-equestrian-cheval-admin-tabs-runtime-test.js (à exécuter via `node`).
+gws_test_assert(strpos($tabs_admin_js_code_only, 'postbody.insertBefore(wrapper, normalSortables)') === false, 'Correctif régression : le script n’appelle plus jamais insertBefore sur #post-body-content avec #normal-sortables comme référence (ce n’est pas un ancêtre direct, cela levait systématiquement une DOMException dans un vrai navigateur)');
+gws_test_assert(strpos($tabs_admin_js_source, 'normalSortables.insertBefore(wrapper, normalSortables.firstChild)') !== false, 'Correctif régression : la barre d’onglets est bien insérée comme premier enfant de #normal-sortables, son véritable ancêtre DOM direct');
 gws_test_assert(strpos($tabs_admin_js_source, 'gwseqChevalTabs') !== false && strpos($tabs_admin_js_source, 'undefined') !== false, 'Robustesse : le script ne fait rien si la configuration localisée est absente (ex. script chargé sur un écran inattendu)');
 
 // --- Une boîte absente de l'écran (ex. l'aperçu développeur, jamais enregistré en production)

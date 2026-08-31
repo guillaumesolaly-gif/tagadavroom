@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.0 (Étape 5 — Pedigree validée)
+## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.1 (Étape 5 — Pedigree validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -20,8 +20,11 @@ effective d'un ascendant externe vidé, intégrité père/mère, filtrage sexe/a
 photos et des vidéos, et du contenu éditorial de présentation — sans toucher au socle des Étapes 4
 et 5 (voir plus bas). Une première recette runtime a débuté sur les indices ; elle a révélé une
 fiche devenue trop longue à faire défiler, d'où l'ajustement UX post-recette 0.12.0 (présentation
-du CD des indices génétiques à deux décimales, navigation par onglets — voir plus bas) livré avant
-la reprise de cette recette dans la nouvelle interface.
+du CD des indices génétiques à deux décimales, navigation par onglets — voir plus bas). La reprise
+de la recette sur cette nouvelle interface a immédiatement révélé une régression bloquante
+(navigation par onglets inopérante, risque de disparition de meta boxes existantes), corrigée en
+0.12.1 (voir « Correctif RÉGRESSION BLOQUANTE 0.12.1 » plus bas) avant nouvelle reprise de la
+recette.
 
 ### Indices, médias et présentation (Étape 6)
 
@@ -163,12 +166,13 @@ AJAX, aucune donnée absente du DOM. Techniquement, le JavaScript ne déplace JA
 dans le DOM : il bascule uniquement leur `style.display`, chaque bouton d'onglet référençant les
 `id` HTML réels des boîtes concernées (`aria-controls`, qui accepte nativement une liste d'IDs
 séparés par des espaces — ce qui permet à l'onglet Pedigree de contrôler ses trois boîtes sans
-créer de conteneur supplémentaire). Les boîtes Production et aperçu pedigree sont passées du
-contexte WordPress `'side'` à `'normal'` (paramètre de `add_meta_box()`) — un pur changement de
-PLACEMENT visuel pour rejoindre la colonne principale où vit la navigation, sans aucun effet sur
-les données ou la sauvegarde. Restent volontairement HORS du système d'onglets, toujours visibles
-dans la colonne latérale : l'image à la une native de WordPress, la boîte de développement Global
-Horse ID, et « Ordre d'affichage ».
+créer de conteneur supplémentaire). Les boîtes Production et aperçu pedigree restent enregistrées dans leur
+contexte WordPress d'origine (`'side'`, colonne latérale — voir le correctif 0.12.1 ci-dessous) :
+le regroupement fonctionnel sous l'onglet Pedigree ne dépend jamais de leur position DOM, seule
+leur COLONNE d'apparition diffère de celle de la boîte Pedigree elle-même quand cet onglet est
+actif. Restent volontairement HORS du système d'onglets, toujours visibles dans la colonne
+latérale : l'image à la une native de WordPress, la boîte de développement Global Horse ID, et
+« Ordre d'affichage ».
 
 Réutilise les classes CSS natives de WordPress (`.nav-tab-wrapper`/`.nav-tab`/`.nav-tab-active`,
 déjà utilisées par les écrans de réglages du cœur WP) plutôt que d'inventer un habillage visuel
@@ -183,6 +187,49 @@ mémorisé en session (`sessionStorage`, une seule clé partagée, volontairemen
 persister d'une navigation à l'autre sans infrastructure complexe. **Sans JavaScript**, la fiche
 reste entièrement utilisable et enregistrable : toutes les boîtes s'affichent simplement empilées
 dans l'ordre natif WordPress, comme avant cet ajustement.
+
+#### Correctif RÉGRESSION BLOQUANTE 0.12.1 — navigation par onglets inopérante
+
+La reprise de la recette runtime a échoué immédiatement après 0.12.0 : la navigation par onglets
+n'apparaissait pas du tout, et l'écran risquait de perdre l'accès visuel à des meta boxes
+existantes. Deux causes racines distinctes, corrigées sans aucun nouveau développement.
+
+**CAUSE 1 (bloquante, systématique) — mauvaise cible DOM pour l'insertion de la barre** : le
+script appelait `postbody.insertBefore(wrapper, normalSortables)`, où `postbody` référence
+`#post-body-content`. Sur l'écran classique de WordPress
+(`wp-admin/edit-form-advanced.php`), `#post-body-content` et `#normal-sortables` (qui contient les
+meta boxes de la colonne principale, dans `#postbox-container-2`) sont deux enfants DISTINCTS de
+`#post-body` — jamais l'un dans l'autre. `insertBefore()` exige que son second argument soit un
+enfant réel du nœud appelant ; sinon, la spécification DOM impose la levée d'une `DOMException`
+dans tout navigateur — ce qui arrêtait le script à cette ligne précise, avant même de construire la
+barre d'onglets. **Correctif** : la barre est désormais insérée comme premier enfant de
+`#normal-sortables` lui-même, son véritable ancêtre DOM direct.
+
+**CAUSE 2 (risque de disparition de meta boxes) — changement de contexte non nécessaire** : 0.12.0
+avait fait passer Production et l'aperçu pedigree du contexte `'side'` à `'normal'` pour les
+regrouper visuellement avec Pedigree. Un changement de contexte `add_meta_box()` d'une version à
+l'autre expose un piège connu de WordPress : l'ordre des meta boxes par écran est mémorisé par
+utilisateur (`meta-box-order_{$screen}`), associé à un COUPLE identifiant/contexte précis — un
+changement de contexte peut faire perdre le rattachement réel d'une boîte lors de la fusion interne
+de `add_meta_box()` pour un utilisateur ayant déjà navigué sur cet écran avant la mise à jour, la
+boîte concernée n'étant alors plus jamais rendue. **Correctif** : contexte `'side'` restauré pour
+ces deux boîtes, exactement comme avant l'Étape 6 — sans aucune conséquence sur le regroupement
+sous l'onglet Pedigree (voir plus haut).
+
+**Aucune donnée, règle métier ou mécanisme de sauvegarde n'a été affecté par ces deux correctifs** —
+strictement des corrections de câblage DOM/PHP de la couche de présentation ajoutée en 0.12.0.
+
+**Renforcement méthodologique des tests** : les 73 assertions dédiées aux onglets n'avaient pas
+détecté la régression bloquante, car elles ne font que scanner le TEXTE SOURCE du script JavaScript
+— jamais l'exécuter. Nouveau fichier `tests/gws-equestrian-cheval-admin-tabs-runtime-test.js`
+(24 assertions, exécuté via `node`, aucune dépendance npm ajoutée au projet) : reproduit fidèlement
+la structure DOM réelle de l'écran classique d'édition (colonnes latérale/principale bien
+distinctes, avec le vrai bouton `#publish`), exécute réellement le script dans ce DOM simulé
+(module `vm` de Node), et vérifie le câblage effectif — absence d'exception, insertion réelle au
+bon endroit, regroupement Pedigree/Production/aperçu fonctionnel même à cheval sur deux colonnes
+physiques, bascule effective de visibilité au clic et au clavier, aucune meta box jamais retirée du
+DOM, bouton rapide déclenchant réellement le bouton natif. Ce type de test, absent avant 0.12.1,
+aurait immédiatement détecté cette régression.
 
 #### Limitations connues (Étape 6)
 
@@ -260,10 +307,12 @@ réservation/paiement, logique conditionnelle selon le type de cheval.
 onglets) :
 
 21. Vérifier l'apparition des six onglets (Identité, Commercial, Pedigree, Indices, Médias,
-    Présentation) en haut de la fiche Cheval, avec le bon regroupement de boîtes sous chacun —
-    notamment Production et l'aperçu pedigree (dev/local) bien regroupés sous « Pedigree ».
-    Vérifier que l'image à la une, la boîte Global Horse ID (dev/local) et « Ordre d'affichage »
-    restent visibles dans la colonne latérale, hors du système d'onglets.
+    Présentation) en haut de la colonne principale de la fiche Cheval, avec le bon regroupement de
+    boîtes sous chacun — notamment Production et l'aperçu pedigree (dev/local), qui apparaissent
+    dans la COLONNE LATÉRALE (comme avant l'Étape 6) mais uniquement quand l'onglet « Pedigree »
+    est actif, en même temps que la boîte Pedigree de la colonne principale. Vérifier que l'image à
+    la une, la boîte Global Horse ID (dev/local) et « Ordre d'affichage » restent visibles en
+    permanence dans la colonne latérale, hors du système d'onglets, quel que soit l'onglet actif.
 22. Cliquer sur chaque onglet : vérifier que seules les boîtes du groupe correspondant s'affichent,
     sans perte visuelle de contenu déjà saisi, et que les boîtes gardent leur comportement natif
     (repli/dépli au clic sur leur propre titre).
