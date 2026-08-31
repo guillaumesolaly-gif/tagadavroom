@@ -27,18 +27,22 @@
  * avant cet ajustement, empilée verticalement (§3 : « sans JavaScript, la fiche doit rester
  * utilisable »).
  *
- * PLACEMENT DE LA PHOTO PRINCIPALE (image à la une native, correctif régression post-recette) :
- * regroupée avec Galerie/Vidéos sous l'onglet "Médias" — EXACTEMENT comme Production/aperçu
- * pedigree sont déjà regroupés sous "Pedigree" (voir cheval-pedigree.php) : la boîte native
- * `postimagediv` n'est JAMAIS déplacée dans le DOM ni ré-enregistrée par ce plugin (elle reste
- * exactement celle de WordPress, dans sa colonne native), seule sa VISIBILITÉ est désormais gérée
- * par le même mécanisme d'onglets que les autres boîtes — masquée sous tout autre onglet, visible
- * uniquement sous "Médias", aux côtés de la boîte Galerie/Vidéos du plugin. Aucun second champ,
- * aucun second attachment ID, aucune synchronisation : la Featured Image de WordPress reste
- * l'unique source de vérité, lue/modifiée par sa propre interface native (`wp.media()` intégré à
- * WordPress), jamais dupliquée. Le Global Horse ID (dev-only) et la boîte "Ordre d'affichage"
- * restent dans la colonne latérale, en dehors du système d'onglets — ce sont des utilitaires
- * annexes, jamais le cœur du contenu que les onglets cherchent à désencombrer.
+ * PLACEMENT DE LA PHOTO PRINCIPALE (image à la une native, correctif post-recette) : EXCEPTION
+ * ASSUMÉE à la règle « jamais déplacer une meta box dans le DOM » ci-dessus — un premier essai en
+ * masquant/affichant `postimagediv` EN PLACE (sa colonne latérale native) laissait, dans l'onglet
+ * "Médias", un simple texte renvoyant vers une boîte physiquement ailleurs à l'écran, jugé non
+ * satisfaisant en recette. La boîte native est donc RÉELLEMENT réinsérée (assets/cheval-tabs-admin.js,
+ * un déplacement DOM natif via `appendChild` — le même mécanisme que le glisser-déposer natif de
+ * WordPress entre colonnes, jamais une destruction/recréation, donc aucun gestionnaire d'événement
+ * perdu) dans un emplacement dédié À L'INTÉRIEUR de la boîte Médias
+ * (`#gwseq-cheval-media-photo-principale-slot`, voir `cheval-media.php`) : elle n'apparaît alors
+ * plus jamais simultanément dans la colonne latérale, et hérite automatiquement de la visibilité de
+ * la boîte Médias (elle en devient un DESCENDANT — aucune logique de visibilité séparée). Restaurée
+ * à sa position native si le système d'onglets se désactive (filet de sécurité n°2). Aucun second
+ * champ, aucun second attachment ID, aucune synchronisation : c'est le MÊME nœud DOM, donc la
+ * Featured Image de WordPress reste l'unique source de vérité, lue/modifiée par sa propre interface
+ * native (`wp.media()`), jamais dupliquée. Le Global Horse ID (dev-only) et la boîte "Ordre
+ * d'affichage" restent dans la colonne latérale, en dehors du système d'onglets.
  *
  * BOUTON D'ENREGISTREMENT RAPIDE (§4) : le script ajoute, dans la barre d'onglets, un bouton qui
  * ne fait que déclencher un clic PROGRAMMATIQUE sur le vrai bouton de soumission natif de
@@ -82,10 +86,13 @@ function gwseq_cheval_admin_tabs_config() {
     array(
       'id' => 'medias',
       'label' => __('Médias', 'gws-core'),
-      // 'postimagediv' : boîte NATIVE WordPress de l'image à la une (Photo principale), jamais
-      // enregistrée par ce plugin — voir le correctif ci-dessus pour le détail de ce regroupement
-      // (source de vérité unique : Featured Image de WordPress, jamais un second champ).
-      'boxes' => array('postimagediv', 'gwseq-cheval-media'),
+      // La boîte NATIVE "postimagediv" (Photo principale) n'apparaît PAS ici : elle n'est plus
+      // pilotée par le mécanisme générique de visibilité par onglet (masquer/afficher EN PLACE) —
+      // elle est RÉELLEMENT déplacée dans le DOM par assets/cheval-tabs-admin.js jusqu'à un
+      // emplacement dédié à l'intérieur même de cette boîte (voir le correctif en tête de fichier
+      // et cheval-media.php), et hérite donc automatiquement de la visibilité de "gwseq-cheval-media"
+      // en devenant simplement son descendant — aucune entrée séparée n'est nécessaire.
+      'boxes' => array('gwseq-cheval-media'),
     ),
     array(
       'id' => 'presentation',

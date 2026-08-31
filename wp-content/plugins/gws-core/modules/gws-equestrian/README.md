@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.4 (Étape 5 — Pedigree validée)
+## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.5 (Étape 5 — Pedigree validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -170,11 +170,14 @@ créer de conteneur supplémentaire). Les boîtes Production et aperçu pedigree
 contexte WordPress d'origine (`'side'`, colonne latérale — voir le correctif 0.12.1 ci-dessous) :
 le regroupement fonctionnel sous l'onglet Pedigree ne dépend jamais de leur position DOM, seule
 leur COLONNE d'apparition diffère de celle de la boîte Pedigree elle-même quand cet onglet est
-actif. Depuis le correctif 0.12.2, l'image à la une native de WordPress (`postimagediv`) est
-regroupée de la même façon sous l'onglet « Médias », aux côtés de Galerie/Vidéos — voir « Correctif
-RÉGRESSION BLOQUANTE 0.12.2 » plus bas. Restent volontairement HORS du système d'onglets, toujours
-visibles dans la colonne latérale : la boîte de développement Global Horse ID et « Ordre
-d'affichage ».
+actif. **Exception assumée pour la Photo principale** (`postimagediv`, correctif 0.12.5) : un
+simple masquage/affichage en place, comme pour Production/aperçu pedigree, s'est révélé
+insuffisant en recette — la boîte native restait visible dans la colonne latérale, l'onglet Médias
+ne présentant qu'un texte y renvoyant. Elle est donc RÉELLEMENT déplacée dans le DOM jusqu'à un
+emplacement dédié à l'intérieur de la boîte Médias (voir « Intégration réelle de la Photo
+principale 0.12.5 » plus bas) — la SEULE boîte de tout ce système à subir un déplacement DOM réel.
+Restent volontairement HORS du système d'onglets, toujours visibles dans la colonne latérale : la
+boîte de développement Global Horse ID et « Ordre d'affichage ».
 
 Réutilise les classes CSS natives de WordPress (`.nav-tab-wrapper`/`.nav-tab`/`.nav-tab-active`,
 déjà utilisées par les écrans de réglages du cœur WP) plutôt que d'inventer un habillage visuel
@@ -364,6 +367,43 @@ si une boîte reste invisible) restent en place — ce nettoyage traite la cause
 jamais touché, absence d'erreur sans utilisateur connecté, réactivation ciblée dans Screen Options,
 idempotence, retrait d'une entrée héritée hors `'normal'`, ordre déjà correct jamais modifié).
 
+#### Intégration réelle de la Photo principale 0.12.5
+
+La recette a montré que le simple masquage/affichage EN PLACE de `postimagediv` (le mécanisme déjà
+utilisé pour Production/aperçu pedigree sous Pedigree) était insuffisant pour la Photo principale :
+la vraie boîte native restait visible dans la colonne latérale, et l'onglet Médias ne présentait
+qu'un texte y renvoyant — pas ce qui était demandé (« Photo principale, puis Galerie et Vidéos, au
+même endroit »).
+
+**Correctif** (`assets/cheval-tabs-admin.js`) : `postimagediv` est désormais RÉELLEMENT déplacée
+dans un emplacement dédié à l'intérieur de la boîte Médias
+(`#gwseq-cheval-media-photo-principale-slot`, réservé par `cheval-media.php`) — une SEULE
+exception, explicitement assumée et documentée en tête de fichier, à la règle générale de ce
+script (jamais déplacer une boîte, seulement la masquer/afficher en place). Le déplacement utilise
+`appendChild()` sur le nœud EXISTANT (jamais un clone, jamais une recréation) — exactement le
+mécanisme du glisser-déposer natif de WordPress entre colonnes — donc aucun gestionnaire
+d'événement déjà attaché par WordPress (`wp.media()`) n'est perdu. **Aucune donnée dupliquée** :
+même nœud DOM, même `attachment_id`, la Featured Image de WordPress reste l'unique source de
+vérité. Une fois déplacée, elle n'apparaît plus jamais dans la colonne latérale (le déplacement,
+pas une simple duplication de visibilité, le garantit structurellement), et hérite automatiquement
+de la visibilité de la boîte Médias en en devenant DESCENDANTE — aucune logique de visibilité
+séparée n'est nécessaire pour elle ; `gwseq_cheval_admin_tabs_config()` ne référence donc plus
+`postimagediv` du tout. Restaurée à sa position native si le système d'onglets se désactive
+intégralement (filet de sécurité n°2).
+
+**Texte devenu inutile retiré** (`cheval-media.php`) : « Utilise l'image à la une de cette fiche
+(voir l'encadré « Photo principale » dans la colonne de droite)... » a été supprimé, remplacé par
+l'emplacement d'accueil vide. **Sans JavaScript**, cet emplacement reste simplement vide et la
+Photo principale demeure modifiable normalement via l'encadré natif de la colonne latérale, à sa
+place habituelle — aucune régression du parcours sans JS. **Léger ajustement visuel**
+(`cheval-tabs.css`) : la boîte native, une fois nichée dans la boîte Médias, perd son propre
+encadrement (bordure/ombre) pour éviter une boîte visuellement imbriquée dans une boîte.
+
+**Tests** : 5 nouvelles assertions dans le test d'exécution réelle (déplacement effectif du même
+nœud DOM, absence de toute trace dans la colonne latérale, héritage automatique de la visibilité au
+fil des changements d'onglet, restauration à la position native au filet de sécurité n°2) et 5
+nouvelles assertions déclaratives PHP.
+
 #### Limitations connues (Étape 6)
 
 - **Aucun âge minimum de reproduction** pour les indices sportifs/génétiques ni pour le pedigree —
@@ -463,9 +503,13 @@ onglets) :
     bien cochée ; si elle avait été décochée par le passé (ce qui masquerait la boîte ENTIÈRE, en
     plus du système d'onglets), la recocher puis recharger la page pour confirmer que l'onglet
     Identité redevient normalement exploitable (correctif 0.12.3).
-21ter. Cliquer sur l'onglet Médias : vérifier que la Photo principale (aperçu de l'image à la une,
-    boutons natifs pour la définir/remplacer/retirer) apparaît bien aux côtés de Galerie et Vidéos.
-    Modifier la Photo principale depuis cet onglet, enregistrer, recharger : vérifier la
+21ter. Cliquer sur l'onglet Médias : vérifier que la vraie boîte native « Image à la une »
+    (aperçu, boutons natifs pour la définir/remplacer/retirer) apparaît RÉELLEMENT à l'intérieur de
+    cet onglet, aux côtés de Galerie et Vidéos — et non plus un texte renvoyant vers la colonne de
+    droite (correctif 0.12.5). Vérifier qu'elle a bien disparu de la colonne latérale (jamais
+    affichée à deux endroits à la fois) quand l'onglet Médias est actif, et qu'elle y réapparaît en
+    changeant d'onglet (Identité, Commercial...). Modifier la Photo principale depuis son nouvel
+    emplacement (médiathèque native, remplacement, retrait), enregistrer, recharger : vérifier la
     persistance, et que l'image à la une du site (front, autres écrans admin) reflète bien ce
     changement — une seule et même donnée, jamais un second champ.
 22. Cliquer sur chaque onglet : vérifier que seules les boîtes du groupe correspondant s'affichent,

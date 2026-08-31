@@ -3,10 +3,14 @@
  * JavaScript natif, aucune dépendance. Construit la barre d'onglets au chargement de la page et
  * se contente de masquer/afficher les meta boxes déjà présentes dans le DOM, SANS JAMAIS LES
  * DÉPLACER : leur position réelle dans l'arbre ne change jamais, ce qui préserve intégralement le
- * comportement natif de WordPress sur ces boîtes (repliage au clic sur le titre, etc.).
+ * comportement natif de WordPress sur ces boîtes (repliage au clic sur le titre, etc.). SEULE
+ * EXCEPTION, assumée : la boîte native "Image à la une" (`#postimagediv`) est RÉELLEMENT déplacée
+ * dans l'onglet Médias (voir plus bas) — un simple masquage/affichage en place laissait un texte
+ * renvoyant vers une boîte physiquement ailleurs, jugé non satisfaisant en recette.
  *
- * SANS JAVASCRIPT : ce script ne s'exécute jamais, donc aucune boîte n'est jamais masquée — la
- * fiche reste utilisable exactement comme avant cet ajustement (blocs empilés normalement).
+ * SANS JAVASCRIPT : ce script ne s'exécute jamais, donc aucune boîte n'est jamais masquée ni
+ * déplacée — la fiche reste utilisable exactement comme avant cet ajustement (blocs empilés
+ * normalement, Photo principale modifiable dans sa colonne latérale native).
  *
  * Configuration (regroupement onglet -> identifiants de meta box) fournie par PHP via
  * wp_localize_script() (voir includes/cheval-admin-tabs.php) — jamais codée en dur ici, pour
@@ -149,6 +153,30 @@
     // sans dépendre d'une hypothèse de structure DOM erronée.
     normalSortables.insertBefore(wrapper, normalSortables.firstChild);
 
+    // --- Intégration réelle de la Photo principale dans l'onglet Médias (ajustement demandé après
+    // retour de recette) : EXCEPTION ASSUMÉE à la règle générale de ce script (jamais déplacer une
+    // boîte, seulement la masquer/afficher en place) — un premier essai en masquant/affichant
+    // #postimagediv EN PLACE (sa colonne latérale native) laissait, sous l'onglet Médias, un simple
+    // texte renvoyant vers une boîte physiquement ailleurs à l'écran, jugé non satisfaisant. La
+    // boîte native est donc RÉELLEMENT réinsérée, une seule fois, dans un emplacement dédié à
+    // l'intérieur de la boîte Médias (#gwseq-cheval-media-photo-principale-slot, voir
+    // includes/cheval-media.php) — un simple appendChild() qui déplace le nœud EXISTANT (jamais un
+    // clone, jamais une recréation) : exactement le même mécanisme que le glisser-déposer natif de
+    // WordPress entre colonnes, qui ne perd donc aucun gestionnaire d'événement déjà attaché
+    // (wp.media()). AUCUNE DONNÉE DUPLIQUÉE : même nœud DOM, même attachment_id, la Featured Image
+    // de WordPress reste l'unique source de vérité. Une fois déplacée, elle n'apparaît plus jamais
+    // dans la colonne latérale, et hérite automatiquement de la visibilité de la boîte Médias (elle
+    // en devient un DESCENDANT) — aucune logique de visibilité séparée n'est nécessaire pour elle.
+    var photoPrincipaleSlot = document.getElementById('gwseq-cheval-media-photo-principale-slot');
+    var postimagediv = document.getElementById('postimagediv');
+    var postimagedivOriginalParent = null;
+    var postimagedivOriginalNextSibling = null;
+    if (photoPrincipaleSlot && postimagediv) {
+      postimagedivOriginalParent = postimagediv.parentNode;
+      postimagedivOriginalNextSibling = postimagediv.nextSibling;
+      photoPrincipaleSlot.appendChild(postimagediv);
+    }
+
     var fallbackTriggered = false;
 
     // Filet de sécurité n°2 (voir en-tête) : en cas d'échec de vérification de visibilité après
@@ -168,6 +196,13 @@
           box.removeAttribute('aria-labelledby');
         });
       });
+      // La Photo principale, si réellement déplacée dans l'onglet Médias, est restaurée à sa
+      // position native (colonne latérale) — la désactivation du système d'onglets doit rendre
+      // l'écran exactement tel qu'avant son intervention, jamais une boîte laissée à un endroit
+      // qui n'a de sens que si les onglets fonctionnent.
+      if (postimagedivOriginalParent && postimagediv) {
+        postimagedivOriginalParent.insertBefore(postimagediv, postimagedivOriginalNextSibling);
+      }
       if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
       if (config.isDevEnvironment && config.fallbackNotice) {
         var notice = document.createElement('div');

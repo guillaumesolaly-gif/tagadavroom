@@ -261,16 +261,19 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   sur deux meta boxes distinctes (Présentation / Informations complémentaires) ; escaping ;
   persistance et compatibilité avec une fiche jamais enregistrée ; chemin programmatique.
 - Navigation par onglets de la fiche Cheval, ajustement UX post-recette de l'Étape 6
-  (`gws-equestrian-cheval-admin-tabs-test.php`, 0.12.0 à 0.12.3) : configuration PHP du
+  (`gws-equestrian-cheval-admin-tabs-test.php`, 0.12.0 à 0.12.5) : configuration PHP du
   regroupement onglet → meta boxes (les 6 onglets attendus, avec exactement les bonnes boîtes
   chacun — en particulier l'onglet Pedigree qui regroupe Pedigree, Production calculée et l'aperçu
-  développeur, et l'onglet Médias qui regroupe la boîte NATIVE "postimagediv" — Photo principale —
-  avec Galerie/Vidéos), "postimagediv" vérifié présent dans EXACTEMENT un seul onglet (jamais
-  dupliqué), Global ID dev-only/boîte "Ordre" volontairement rattachés à aucun onglet, chargement
-  conditionnel des assets, configuration transmise au script via `wp_localize_script()` identique à
-  la source de vérité PHP (y compris `isDevEnvironment`/`fallbackNotice`, 0.12.3), contexte `'side'`
-  des meta boxes Production/aperçu développeur (restauré par le correctif 0.12.1) vérifié par
-  lecture directe de `cheval-pedigree.php`, et — nouveau en 0.12.3 — enregistrement effectif du
+  développeur). L'onglet Médias ne référence QUE la boîte "gwseq-cheval-media" — "postimagediv"
+  (Photo principale) n'apparaît dans AUCUNE configuration d'onglet depuis 0.12.5 : il n'est plus
+  piloté par le mécanisme générique de visibilité, mais RÉELLEMENT déplacé dans le DOM par le
+  script jusqu'à un emplacement dédié à l'intérieur de "gwseq-cheval-media" — vérifié absent de
+  toute configuration d'onglet, jamais dupliqué. Global ID dev-only/boîte "Ordre" volontairement
+  rattachés à aucun onglet, chargement conditionnel des assets, configuration transmise au script
+  via `wp_localize_script()` identique à la source de vérité PHP (y compris
+  `isDevEnvironment`/`fallbackNotice`, 0.12.3), contexte `'side'` des meta boxes Production/aperçu
+  développeur (restauré par le correctif 0.12.1) vérifié par lecture directe de
+  `cheval-pedigree.php`, et enregistrement effectif du
   filtre natif WordPress `postbox_classes_{page}_{id}` pour CHAQUE boîte gérée par un onglet
   (`gwseq_register_cheval_admin_tab_postbox_classes()`) : appliquer ce filtre doit retourner
   exactement `array('gwseq-tab-{id}')`, jamais une autre valeur — la même configuration PHP est
@@ -289,24 +292,28 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   feuille de style native), présence de la fonction `disableTabsFallback()` et de son appel
   (filet de sécurité n°2), et présence de la vérification de cohérence `gwseq-tab-{id}` avant toute
   construction d'onglet (filet de sécurité n°1).
-  **Complété par `gws-equestrian-cheval-admin-tabs-runtime-test.js`** (35 assertions, via `node` —
+  **Complété par `gws-equestrian-cheval-admin-tabs-runtime-test.js`** (40 assertions, via `node` —
   voir la section « Exécuter » ci-dessus) : ce fichier va au-delà de la lecture déclarative en
   EXÉCUTANT réellement `cheval-tabs-admin.js` contre une reproduction fidèle du DOM et du markup
   RÉEL d'une meta box WordPress (`postbox-header`/`handlediv`/`inside`, avec de vrais champs à
   l'intérieur), et MODÉLISE l'effet réel des classes `.closed`/`.hide-if-js` sur `offsetParent` —
-  c'est ce type de test qui a permis de détecter, puis de corriger, deux régressions bloquantes
+  c'est ce type de test qui a permis de détecter, puis de corriger, plusieurs régressions bloquantes
   successives (0.12.1 : `DOMException` sur `insertBefore`, jamais de barre d'onglets ; 0.12.3 : une
   boîte masquée par `.hide-if-js` restait invisible malgré un correctif partiel `.closed`-only,
-  invisible aux 73+ assertions basées sur du texte). Trois scénarios distincts, chacun vérifié
+  invisible aux assertions basées sur du texte). Trois scénarios distincts, chacun vérifié
   indépendamment détecté par régression (désactivation temporaire du correctif testé, confirmation
-  de l'échec, restauration) : (1) cas nominal avec une boîte Identité à la fois repliée ET masquée
-  par Screen Options, vérifiant une visibilité RÉELLE (`offsetParent`, pas seulement un
-  `style.display` déclaré) et la présence continue de champs historiques représentatifs dans le
-  DOM ; (2) une boîte durablement masquée par un ancêtre hors de portée de tout correctif connu,
-  vérifiant le déclenchement du filet de sécurité n°2 (barre retirée, toutes les boîtes restaurées,
-  message de secours en environnement dev) ; (3) une incohérence entre la configuration transmise
-  et le marquage réel du DOM, vérifiant qu'aucun onglet n'est alors construit et qu'aucune boîte
-  n'est masquée (filet de sécurité n°1).
+  de l'échec, restauration) : (1) cas nominal — boîte Identité à la fois repliée ET masquée par
+  Screen Options, vérifiant une visibilité RÉELLE (`offsetParent`, pas seulement un `style.display`
+  déclaré) et la présence continue de champs historiques représentatifs dans le DOM ; **déplacement
+  réel de la Photo principale (0.12.5)** : `#postimagediv` réellement réinséré dans l'emplacement
+  dédié à l'intérieur de la boîte Médias (identité d'objet du nœud DOM vérifiée, jamais un clone),
+  absence de toute trace dans sa colonne latérale native, et héritage automatique de la visibilité
+  de sa nouvelle boîte hôte au fil des changements d'onglet ; (2) une boîte durablement masquée par
+  un ancêtre hors de portée de tout correctif connu, vérifiant le déclenchement du filet de sécurité
+  n°2 (barre retirée, toutes les boîtes restaurées, message de secours en environnement dev, **et la
+  Photo principale restaurée à sa position native exacte, 0.12.5**) ; (3) une incohérence entre la
+  configuration transmise et le marquage réel du DOM, vérifiant qu'aucun onglet n'est alors
+  construit et qu'aucune boîte n'est masquée (filet de sécurité n°1).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -352,20 +359,22 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   Informations complémentaires, Étape 6) : ordre visuel des blocs, lisibilité pour un professionnel
   non expert WordPress, largeur des champs `<textarea>`.
 - Comportement navigateur RÉEL de la navigation par onglets de la fiche Cheval (ajustement UX
-  post-recette, 0.12.0 à 0.12.3) : depuis 0.12.1, `gws-equestrian-cheval-admin-tabs-runtime-test.js`
+  post-recette, 0.12.0 à 0.12.5) : depuis 0.12.1, `gws-equestrian-cheval-admin-tabs-runtime-test.js`
   exécute réellement le script contre un DOM simulé fidèle et vérifie la bascule de panneau au
-  clic/clavier, la mémorisation dans `sessionStorage`, l'absence d'exception, et (depuis 0.12.3) une
-  visibilité RÉELLEMENT vérifiée (`offsetParent`) d'une boîte repliée et/ou masquée par Screen
-  Options, ainsi que les deux filets de sécurité (mapping incohérent, boîte durablement invisible)
-  — mais UN VRAI NAVIGATEUR reste seul juge de :
-  l'apparence visuelle effective des onglets natifs `.nav-tab` (couleurs, état actif) telle que
-  rendue par le vrai CSS d'administration WordPress, la visibilité concrète du focus clavier à
-  l'écran, la persistance de l'onglet actif via `sessionStorage` d'un VRAI rechargement de page à
-  l'autre, le ressenti du bouton d'enregistrement rapide (libellé affiché, clic déclenchant bien la
-  sauvegarde native), l'ergonomie réelle de la Photo principale regroupée dans l'onglet Médias
-  (ouverture de la médiathèque native, remplacement de l'image, cohabitation visuelle avec
-  Galerie/Vidéos), la disposition et l'utilisabilité sur un écran étroit (≤ 782 px), et l'absence de
-  toute erreur JavaScript en conditions réelles (autres scripts admin, extensions, thème).
+  clic/clavier, la mémorisation dans `sessionStorage`, l'absence d'exception, une visibilité
+  RÉELLEMENT vérifiée (`offsetParent`) d'une boîte repliée et/ou masquée par Screen Options, les
+  deux filets de sécurité (mapping incohérent, boîte durablement invisible), et (depuis 0.12.5) le
+  déplacement RÉEL de `#postimagediv` vers l'intérieur de la boîte Médias — mais UN VRAI NAVIGATEUR
+  reste seul juge de : l'apparence visuelle effective des onglets natifs `.nav-tab` (couleurs, état
+  actif) telle que rendue par le vrai CSS d'administration WordPress, la visibilité concrète du
+  focus clavier à l'écran, la persistance de l'onglet actif via `sessionStorage` d'un VRAI
+  rechargement de page à l'autre, le ressenti du bouton d'enregistrement rapide (libellé affiché,
+  clic déclenchant bien la sauvegarde native), le rendu visuel réel de la Photo principale une fois
+  nichée dans la boîte Médias (ouverture de la médiathèque native `wp.media()`, définition/
+  remplacement/retrait de l'image, absence d'erreur JS liée à ce déplacement DOM, apparence de la
+  boîte imbriquée sans son propre encadrement — voir la règle CSS dédiée), la disposition et
+  l'utilisabilité sur un écran étroit (≤ 782 px), et l'absence de toute erreur JavaScript en
+  conditions réelles (autres scripts admin, extensions, thème).
   L'utilisabilité complète de la
   fiche sans JavaScript (blocs simplement empilés, formulaire toujours soumissible) reste elle
   aussi à confirmer en conditions réelles (navigateur avec JS désactivé).

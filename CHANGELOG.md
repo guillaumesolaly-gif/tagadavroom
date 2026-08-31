@@ -1,5 +1,19 @@
 # Changelog — GWS Starter
 
+## 1.15.5 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Intégration réelle de la Photo principale dans l'onglet Médias (GWS Equestrian 0.12.5).** Le
+  simple masquage/affichage en place de la boîte native "Image à la une" (`postimagediv`) était
+  insuffisant : elle restait visible dans la colonne latérale, et l'onglet Médias ne présentait
+  qu'un texte y renvoyant. Elle est désormais RÉELLEMENT déplacée (via `appendChild()` sur le nœud
+  existant, jamais un clone) dans un emplacement dédié à l'intérieur de la boîte Médias, aux côtés
+  de Galerie/Vidéos — n'apparaît donc plus jamais dans la colonne latérale, hérite automatiquement
+  de la visibilité de sa nouvelle boîte hôte, et reste restaurée à sa position native si le système
+  d'onglets se désactive. Aucune donnée dupliquée : même nœud DOM, même `attachment_id`, la
+  Featured Image de WordPress reste l'unique source de vérité. Le texte devenu inutile a été
+  retiré. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.12.5) pour le
+  détail complet.
+
 ## 1.15.4 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Nettoyage de l'état WordPress hérité sur la meta box Identité (GWS Equestrian 0.12.4).** La

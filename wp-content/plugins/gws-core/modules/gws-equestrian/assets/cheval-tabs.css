@@ -36,3 +36,14 @@
     width: 100%;
   }
 }
+
+/* La boîte native "Image à la une" (#postimagediv), une fois réellement déplacée dans l'onglet
+   Médias (voir assets/cheval-tabs-admin.js), vit désormais À L'INTÉRIEUR d'une autre boîte
+   (Médias) plutôt que dans sa colonne native — on retire uniquement son propre encadrement pour
+   éviter une boîte visuellement imbriquée dans une boîte, sans toucher à rien d'autre de son
+   fonctionnement natif (le sélecteur .postbox reste réutilisé tel quel par WordPress). */
+.gwseq-cheval-media__photo-principale-slot .postbox {
+  margin-bottom: 0;
+  border: none;
+  box-shadow: none;
+}

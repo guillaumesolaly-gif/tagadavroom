@@ -101,7 +101,22 @@ class FakeElement {
   }
   removeAttribute(name) { delete this._attributes[name]; }
   get firstChild() { return this.children.length ? this.children[0] : null; }
+  // Reproduit la sémantique RÉELLE de re-parentage du DOM : appendChild()/insertBefore() sur un
+  // nœud DÉJÀ présent ailleurs dans l'arbre le RETIRENT D'ABORD de son parent actuel (jamais un
+  // clone, jamais deux parents à la fois) — indispensable pour modéliser fidèlement le
+  // déplacement réel de #postimagediv vers l'onglet Médias (voir cheval-tabs-admin.js).
+  _detachFromCurrentParent(node) {
+    if (!node.parentNode) return;
+    const idx = node.parentNode.children.indexOf(node);
+    if (idx !== -1) node.parentNode.children.splice(idx, 1);
+  }
+  get nextSibling() {
+    if (!this.parentNode) return null;
+    const idx = this.parentNode.children.indexOf(this);
+    return (idx === -1 || idx === this.parentNode.children.length - 1) ? null : this.parentNode.children[idx + 1];
+  }
   appendChild(child) {
+    this._detachFromCurrentParent(child);
     child.parentNode = this;
     this.children.push(child);
     return child;
@@ -119,8 +134,10 @@ class FakeElement {
       err.name = 'NotFoundError';
       throw err;
     }
+    this._detachFromCurrentParent(newNode);
+    const indexAfterDetach = this.children.indexOf(refNode);
     newNode.parentNode = this;
-    this.children.splice(index, 0, newNode);
+    this.children.splice(indexAfterDetach, 0, newNode);
     return newNode;
   }
   removeChild(child) {
@@ -286,6 +303,12 @@ function buildRealisticChevalEditScreen() {
   const pedigree = makeBox('gwseq-cheval-pedigree');
   const indices = makeBox('gwseq-cheval-indices');
   const media = makeBox('gwseq-cheval-media');
+  // Reproduit l'emplacement réservé par cheval-media.php pour accueillir la véritable boîte
+  // native "Image à la une" (voir includes/cheval-media.php) — vide au départ, exactement comme
+  // dans le vrai rendu PHP tant que le script ne l'a pas remplie.
+  const photoPrincipaleSlot = new FakeElement('div');
+  photoPrincipaleSlot.id = 'gwseq-cheval-media-photo-principale-slot';
+  media.children[1].appendChild(photoPrincipaleSlot); // media.children[1] = son .inside (voir makeBox)
   const presentation = makeBox('gwseq-cheval-presentation');
   const infosComplementaires = makeBox('gwseq-cheval-infos-complementaires');
   [identite, commercialisation, pedigree, indices, media, presentation, infosComplementaires]
@@ -304,7 +327,7 @@ function buildRealisticChevalEditScreen() {
     publishButton,
     boxes: {
       identite, commercialisation, pedigree, indices, media, presentation, infosComplementaires,
-      production, pedigreePreview, postimagediv, globalIdDev, ordre,
+      production, pedigreePreview, postimagediv, globalIdDev, ordre, photoPrincipaleSlot,
     },
   };
 }
@@ -314,7 +337,10 @@ const MAIN_TABS_CONFIG = [
   { id: 'commercial', label: 'Commercial', boxes: ['gwseq-cheval-commercialisation'] },
   { id: 'pedigree', label: 'Pedigree', boxes: ['gwseq-cheval-pedigree', 'gwseq-cheval-production', 'gwseq-cheval-pedigree-preview'] },
   { id: 'indices', label: 'Indices', boxes: ['gwseq-cheval-indices'] },
-  { id: 'medias', label: 'Médias', boxes: ['postimagediv', 'gwseq-cheval-media'] },
+  // 'postimagediv' n'apparaît PLUS ici (correctif intégration Photo principale) : il n'est plus
+  // piloté par le mécanisme générique de visibilité par onglet, mais réellement déplacé dans le
+  // DOM par le script jusqu'à l'intérieur même de "gwseq-cheval-media" (voir photoPrincipaleSlot).
+  { id: 'medias', label: 'Médias', boxes: ['gwseq-cheval-media'] },
   { id: 'presentation', label: 'Présentation', boxes: ['gwseq-cheval-presentation', 'gwseq-cheval-infos-complementaires'] },
 ];
 
@@ -398,6 +424,23 @@ function runMainScenario() {
     return;
   }
 
+  // --- Intégration réelle de la Photo principale dans l'onglet Médias : la vraie boîte native
+  // #postimagediv doit être RÉELLEMENT déplacée (une seule fois, dès l'initialisation, jamais
+  // seulement masquée/affichée en place dans sa colonne native) dans l'emplacement dédié à
+  // l'intérieur de la boîte Médias — et ne plus jamais apparaître dans la colonne latérale. ---
+  ok(
+    'Intégration Photo principale : la vraie boîte native #postimagediv a été réellement déplacée dans l’emplacement dédié à l’intérieur de la boîte Médias',
+    boxes.photoPrincipaleSlot.children.indexOf(boxes.postimagediv) !== -1
+  );
+  ok(
+    'Intégration Photo principale : elle a bien quitté sa colonne latérale native — plus jamais affichée à deux endroits à la fois',
+    screen.sideSortables.children.indexOf(boxes.postimagediv) === -1
+  );
+  ok(
+    'Intégration Photo principale : c’est le MÊME nœud DOM (identité d’objet), jamais un clone — aucune donnée dupliquée, aucun second attachment ID',
+    boxes.postimagediv.tagName === 'div' && boxes.photoPrincipaleSlot.children[0] === boxes.postimagediv
+  );
+
   // --- CORRECTIF (onglet Identité vide, deuxième round) : la boîte est repliée ET masquée par
   // Screen Options au chargement — l'activation de son onglet doit lever CES DEUX mécanismes et
   // la rendre RÉELLEMENT visible (offsetParent non nul), pas seulement lui appliquer un
@@ -419,15 +462,17 @@ function runMainScenario() {
     boxes.identite.querySelector('.handlediv').getAttribute('aria-expanded') === 'true'
   );
 
-  // --- Photo principale regroupée dans l'onglet Médias : la boîte native #postimagediv n'est ni
-  // déplacée ni dupliquée — seule sa visibilité suit désormais l'onglet actif. ---
+  // --- Photo principale intégrée à l'onglet Médias : #postimagediv, désormais DESCENDANT de la
+  // boîte Médias, hérite automatiquement de sa visibilité — aucune logique de visibilité séparée
+  // n'est nécessaire, ni testée ici, pour cette boîte précise. ---
+  ok('L\'onglet "Médias" (index 4) référence bien la boîte Galerie/Vidéos via aria-controls (qui contient désormais la Photo principale)', tabButtons[4].getAttribute('aria-controls') === 'gwseq-cheval-media');
+  ok('Au chargement (onglet Identité actif), la Photo principale — devenue descendante de Médias — est masquée avec elle, EN HÉRITANT de la visibilité de sa boîte hôte', boxes.postimagediv.offsetParent === null);
   tabButtons[4].click();
-  ok('L\'onglet "Médias" (index 4) référence bien la Photo principale ET la boîte Galerie/Vidéos via aria-controls', tabButtons[4].getAttribute('aria-controls') === 'postimagediv gwseq-cheval-media');
-  ok('Après clic sur "Médias", la boîte native Photo principale (colonne latérale) devient RÉELLEMENT visible', boxes.postimagediv.offsetParent !== null);
-  ok('Après clic sur "Médias", la boîte Galerie/Vidéos (colonne principale) est visible avec elle, dans la même zone logique', boxes.media.offsetParent !== null);
+  ok('Après clic sur "Médias", la Photo principale devient RÉELLEMENT visible EN HÉRITANT de la visibilité de la boîte Médias qui la contient désormais', boxes.postimagediv.offsetParent !== null);
+  ok('Après clic sur "Médias", la boîte Galerie/Vidéos (colonne principale) est visible, dans la même zone logique que la Photo principale', boxes.media.offsetParent !== null);
   ok('Après clic sur "Médias", la boîte Identité (onglet précédent) est de nouveau masquée', boxes.identite.style.display === 'none');
   tabButtons[0].click();
-  ok('En revenant sur "Identité", la boîte Photo principale (regroupée sous Médias) est de nouveau masquée', boxes.postimagediv.style.display === 'none');
+  ok('En revenant sur "Identité", la Photo principale (désormais à l’intérieur de Médias) est de nouveau masquée avec sa boîte hôte', boxes.postimagediv.offsetParent === null);
   ok('En revenant sur "Identité", elle redevient RÉELLEMENT visible (pas seulement repliée à nouveau)', boxes.identite.offsetParent !== null);
 
   // --- Clic sur l'onglet Pedigree : regroupement Pedigree + Production + aperçu, même si ces
@@ -512,6 +557,10 @@ function runFallbackScenario() {
   ok(
     'Filet de sécurité n°2 (environnement dev) : un message signale le problème plutôt que de le masquer silencieusement',
     screen.normalSortables.parentNode.children.some(function (c) { return c.className && c.className.indexOf('gwseq-cheval-tabs__fallback-notice') !== -1; })
+  );
+  ok(
+    'Filet de sécurité n°2 : la Photo principale, réellement déplacée dans l’onglet Médias avant la désactivation, est restaurée à sa position native exacte (colonne latérale)',
+    screen.sideSortables.children.indexOf(screen.boxes.postimagediv) !== -1 && screen.boxes.photoPrincipaleSlot.children.indexOf(screen.boxes.postimagediv) === -1
   );
 }
 

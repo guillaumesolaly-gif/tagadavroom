@@ -7,7 +7,11 @@
  * relabelling en "Photo principale"). Ce fichier n'enregistre AUCUN second champ de photo
  * principale : gwseq_get_cheval_photo_principale_id() ci-dessous n'est qu'un alias nommé de
  * get_post_thumbnail_id(), pour la seule cohérence de nommage avec les autres accesseurs de ce
- * fichier — aucune nouvelle donnée, aucune duplication.
+ * fichier — aucune nouvelle donnée, aucune duplication. La boîte de rendu ci-dessous
+ * (`gwseq_render_cheval_media_box()`) ne fait que réserver un emplacement vide
+ * (`#gwseq-cheval-media-photo-principale-slot`) : c'est `assets/cheval-tabs-admin.js` qui y
+ * réinsère RÉELLEMENT la véritable boîte native WordPress `#postimagediv` (correctif post-recette
+ * de l'ajustement onglets — voir `includes/cheval-admin-tabs.php`), jamais un nouveau champ.
  *
  * GALERIE (§5) : jusqu'à GWSEQ_CHEVAL_GALERIE_MAX (9) photos complémentaires, en plus de la photo
  * principale (10 au total). Stockée en UN SEUL tableau ORDONNÉ d'identifiants d'attachement WordPress
@@ -215,7 +219,18 @@ function gwseq_render_cheval_media_box($post) {
   $galerie = gwseq_get_cheval_galerie($post->ID);
   ?>
   <h4><?php esc_html_e('Photo principale', 'gws-core'); ?></h4>
-  <p class="description"><?php esc_html_e('Utilise l’image à la une de cette fiche (voir l’encadré « Photo principale » dans la colonne de droite) — aucun champ séparé ici, pour ne jamais dupliquer cette donnée.', 'gws-core'); ?></p>
+  <?php
+  /**
+   * Emplacement d'accueil de la véritable boîte native "Image à la une" (#postimagediv),
+   * réinsérée ici par assets/cheval-tabs-admin.js (voir includes/cheval-admin-tabs.php pour le
+   * détail du mécanisme) — jamais un second champ : c'est le MÊME nœud DOM, avec les mêmes
+   * gestionnaires wp.media() déjà attachés par WordPress, donc la même Featured Image, l'unique
+   * source de vérité. Reste vide (donc invisible) tant que JavaScript ne l'a pas rempli : SANS
+   * JAVASCRIPT, cet emplacement ne contient simplement rien, et la Photo principale demeure
+   * modifiable normalement via l'encadré natif de la colonne latérale, à sa place habituelle.
+   */
+  ?>
+  <div id="gwseq-cheval-media-photo-principale-slot" class="gwseq-cheval-media__photo-principale-slot"></div>
 
   <h4><?php esc_html_e('Galerie', 'gws-core'); ?></h4>
   <div class="gwseq-galerie" data-gwseq-galerie-max="<?php echo esc_attr(GWSEQ_CHEVAL_GALERIE_MAX); ?>">

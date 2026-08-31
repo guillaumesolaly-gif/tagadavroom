@@ -94,23 +94,23 @@ gws_test_assert(
 );
 gws_test_assert($tabs_by_id['indices']['boxes'] === array('gwseq-cheval-indices'), 'Onglet Indices : contient bien la boîte Indices (ISO/ICC/IDR/BSO/BCC/BDR y sont tous rendus)');
 gws_test_assert(
-  $tabs_by_id['medias']['boxes'] === array('postimagediv', 'gwseq-cheval-media'),
-  'Onglet Médias (correctif régression) : contient bien la boîte NATIVE "postimagediv" (Photo principale) ET la boîte Médias (galerie + vidéos) — regroupement fonctionnel, aucun second champ créé'
+  $tabs_by_id['medias']['boxes'] === array('gwseq-cheval-media'),
+  'Onglet Médias (correctif intégration Photo principale) : contient uniquement la boîte Médias — "postimagediv" n’est plus piloté par le mécanisme générique de visibilité, il est RÉELLEMENT déplacé dans le DOM par le script et hérite de la visibilité de cette boîte en en devenant descendant'
 );
 gws_test_assert(
   $tabs_by_id['presentation']['boxes'] === array('gwseq-cheval-presentation', 'gwseq-cheval-infos-complementaires'),
   'Onglet Présentation : contient les deux boîtes éditoriales, y compris "Informations complémentaires" (Ostéo-articulaire)'
 );
 
-// --- "postimagediv" n'apparaît que sous l'onglet Médias, jamais rattaché à un second onglet (une
-// seule source de vérité, jamais deux mécanismes de gestion de la Featured Image en parallèle) —
-// et le Global Horse ID (dev-only) et la boîte "Ordre d'affichage" restent volontairement
-// rattachés à AUCUN onglet ---
+// --- "postimagediv" n'apparaît dans AUCUNE configuration d'onglet (correctif intégration Photo
+// principale) : il n'est plus piloté par le mécanisme générique de visibilité par onglet, mais
+// réellement déplacé dans le DOM par le script — une seule source de vérité, jamais deux
+// mécanismes de gestion de la Featured Image en parallèle. Le Global Horse ID (dev-only) et la
+// boîte "Ordre d'affichage" restent eux aussi volontairement rattachés à AUCUN onglet ---
 $all_configured_boxes = array();
 foreach ($tabs as $tab) { $all_configured_boxes = array_merge($all_configured_boxes, $tab['boxes']); }
-gws_test_assert(array_count_values($all_configured_boxes)['postimagediv'] === 1, 'Onglets : "postimagediv" (Photo principale) apparaît dans EXACTEMENT un seul onglet (Médias) — jamais dupliqué entre plusieurs onglets');
-foreach (array('gwseq-cheval-global-id-dev', 'gwseq-ordre-gwseq_cheval') as $excluded_box_id) {
-  gws_test_assert(!in_array($excluded_box_id, $all_configured_boxes, true), "Onglets : \"$excluded_box_id\" n’est rattaché à aucun onglet — reste dans la colonne latérale, hors du système d’onglets");
+foreach (array('postimagediv', 'gwseq-cheval-global-id-dev', 'gwseq-ordre-gwseq_cheval') as $excluded_box_id) {
+  gws_test_assert(!in_array($excluded_box_id, $all_configured_boxes, true), "Onglets : \"$excluded_box_id\" n’est rattaché à aucun onglet dans la configuration — reste hors du mécanisme générique de visibilité par onglet");
 }
 
 // =====================================================================================
@@ -254,6 +254,21 @@ gws_test_assert(strpos($tabs_admin_js_source, 'isDevEnvironment') !== false && s
 // (§5 : jamais deux vérités indépendantes) ---
 gws_test_assert(preg_match("/classList\\.contains\\('gwseq-tab-' \\+ tabDef\\.id\\)/", $tabs_admin_js_code_only) === 1, 'Filet de sécurité n°1 : le script vérifie que chaque boîte trouvée par identifiant porte bien la classe posée côté PHP pour ce même onglet');
 gws_test_assert(strpos($tabs_admin_js_code_only, 'consistent') !== false, 'Filet de sécurité n°1 : une incohérence détectée empêche la construction de tout onglet (jamais un onglet construit sur une hypothèse non vérifiée)');
+
+// =====================================================================================
+// CORRECTIF INTÉGRATION PHOTO PRINCIPALE — un simple masquage/affichage EN PLACE de
+// "postimagediv" (comme pour Production/aperçu sous Pedigree) laissait, dans l'onglet Médias, un
+// texte renvoyant vers une boîte physiquement ailleurs (colonne latérale), jugé non satisfaisant
+// en recette. La boîte native est désormais RÉELLEMENT déplacée dans un emplacement dédié à
+// l'intérieur de la boîte Médias — SEULE exception à la règle générale "jamais déplacer une
+// boîte" de ce script, explicitement assumée et documentée en tête de fichier.
+// =====================================================================================
+
+gws_test_assert(strpos($tabs_admin_js_source, "getElementById('gwseq-cheval-media-photo-principale-slot')") !== false, 'Intégration Photo principale : le script cible bien l’emplacement dédié réservé dans la boîte Médias (cheval-media.php)');
+gws_test_assert(strpos($tabs_admin_js_source, "getElementById('postimagediv')") !== false, 'Intégration Photo principale : le script cible bien la vraie boîte native WordPress "postimagediv", jamais un second champ');
+gws_test_assert(strpos($tabs_admin_js_code_only, 'photoPrincipaleSlot.appendChild(postimagediv)') !== false, 'Intégration Photo principale : le script déplace réellement le nœud existant (appendChild, jamais un clone ni une recréation) — les gestionnaires wp.media() déjà attachés par WordPress ne sont donc jamais perdus');
+gws_test_assert(strpos($tabs_admin_js_code_only, 'postimagedivOriginalParent') !== false && strpos($tabs_admin_js_code_only, 'postimagedivOriginalNextSibling') !== false, 'Intégration Photo principale : la position native d’origine (parent + frère suivant) est mémorisée avant le déplacement');
+gws_test_assert(strpos($tabs_admin_js_code_only, 'postimagedivOriginalParent.insertBefore(postimagediv, postimagedivOriginalNextSibling)') !== false, 'Intégration Photo principale : en cas de désactivation du système d’onglets (filet de sécurité n°2), la boîte est restaurée à sa position native exacte, jamais laissée à un endroit qui n’a de sens que si les onglets fonctionnent');
 
 // --- §5 : pattern ARIA tablist/tab/tabpanel, navigation clavier ---
 foreach (array("'role', 'tablist'", "'role', 'tab'", "'role', 'tabpanel'", 'aria-selected', 'aria-controls', 'aria-labelledby') as $aria_pattern) {

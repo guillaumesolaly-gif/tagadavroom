@@ -5,6 +5,46 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.12.5 — Intégration réelle de la Photo principale dans l'onglet Médias
+
+La recette a montré que le simple masquage/affichage EN PLACE de `postimagediv` (comme pour
+Production/aperçu sous Pedigree) était insuffisant pour la Photo principale : la vraie boîte
+restait dans la colonne latérale, et l'onglet Médias ne présentait qu'un texte renvoyant vers
+elle — pas ce qui était attendu (« la Photo principale, puis Galerie et Vidéos, au même endroit »).
+
+- **`postimagediv` est désormais RÉELLEMENT déplacée** (`assets/cheval-tabs-admin.js`) dans un
+  emplacement dédié à l'intérieur même de la boîte Médias
+  (`#gwseq-cheval-media-photo-principale-slot`, réservé par `cheval-media.php`) — une SEULE
+  exception, explicitement assumée et documentée, à la règle générale de ce script (jamais déplacer
+  une boîte, seulement la masquer/afficher en place). Le déplacement utilise `appendChild()` sur le
+  nœud EXISTANT (jamais un clone, jamais une recréation) — exactement le mécanisme du
+  glisser-déposer natif de WordPress entre colonnes — donc aucun gestionnaire d'événement déjà
+  attaché par WordPress (`wp.media()`) n'est perdu. **Aucune donnée dupliquée** : même nœud DOM,
+  même `attachment_id`, la Featured Image de WordPress reste l'unique source de vérité.
+- **Elle n'apparaît plus jamais dans la colonne latérale** une fois intégrée à Médias : le
+  déplacement, pas une simple duplication de visibilité, garantit structurellement qu'elle n'est
+  jamais visible à deux endroits à la fois.
+- **Héritage automatique de la visibilité** : devenue DESCENDANTE de la boîte Médias, elle suit
+  désormais sa visibilité sans logique supplémentaire — masquée avec elle sous tout autre onglet,
+  visible avec elle sous "Médias", aux côtés de Galerie/Vidéos, dans la même zone logique. La
+  configuration des onglets (`gwseq_cheval_admin_tabs_config()`) ne référence donc plus
+  `postimagediv` du tout — elle n'est plus soumise au mécanisme générique de visibilité par onglet.
+- **Texte de remplacement retiré** (`cheval-media.php`) : « Utilise l'image à la une de cette fiche
+  (voir l'encadré « Photo principale » dans la colonne de droite)... » est devenu inutile et a été
+  supprimé, remplacé par l'emplacement d'accueil vide.
+- **Restaurée à sa position native** si le système d'onglets se désactive intégralement (filet de
+  sécurité n°2, 0.12.3) — jamais laissée à un endroit qui n'a de sens que si les onglets
+  fonctionnent réellement.
+- **Sans JavaScript**, l'emplacement réservé reste simplement vide et la Photo principale demeure
+  modifiable normalement via l'encadré natif de la colonne latérale, à sa place habituelle —
+  aucune régression du parcours sans JS.
+- **Léger ajustement visuel** (`cheval-tabs.css`) : la boîte native, une fois nichée dans la boîte
+  Médias, perd son propre encadrement (bordure/ombre) pour éviter une boîte visuellement imbriquée
+  dans une boîte — aucun autre style natif WordPress modifié.
+- **Tests** : 5 nouvelles assertions dans le test d'exécution réelle (déplacement effectif, absence
+  de duplication, héritage de visibilité, restauration au filet de sécurité n°2) et 5 nouvelles
+  assertions déclaratives PHP. Suite complète : 1102 assertions PHP + 40 assertions Node.
+
 ## 0.12.4 — Nettoyage de l'état WordPress hérité sur la meta box Identité
 
 Complément demandé après 0.12.3 : au-delà des filets de sécurité runtime (JS), un nettoyage
