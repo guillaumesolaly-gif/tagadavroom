@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 7 — Import IFCE (PDF), 0.13.0, EN ATTENTE DE RECETTE (Étape 6 — Indices/médias/présentation validée)
+## État actuel : Étape 7 — Import IFCE (PDF), 0.13.1, EN ATTENTE DE RECETTE (Étape 6 — Indices/médias/présentation validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -23,12 +23,18 @@ fiche devenue trop longue à faire défiler, d'où l'ajustement UX post-recette 
 du CD des indices génétiques à deux décimales, navigation par onglets — voir plus bas), suivi de
 plusieurs allers-retours de recette (0.12.1 à 0.12.6, voir plus bas) désormais **validés**.
 
-**Étape 7 (0.13.0, EN ATTENTE DE RECETTE)** : premier import intelligent d'une fiche Cheval depuis
+**Étape 7 (0.13.1, EN ATTENTE DE RECETTE)** : premier import intelligent d'une fiche Cheval depuis
 une fiche de synthèse IFCE / Info Chevaux au format PDF, pour supprimer la ressaisie manuelle — en
-particulier le pedigree. Voir la section « Import IFCE (Étape 7) » plus bas pour le détail complet
-(architecture, données supportées, structure intermédiaire, mapping, limitations — en particulier
-**l'absence de validation contre un PDF IFCE réel**, faute d'accès réseau). Conformément à la
-demande, cette étape n'a volontairement PAS été suivie d'une étape suivante avant recette runtime.
+particulier le pedigree. La première recette runtime (0.13.0) a révélé un bug bloquant — le vrai PDF
+de Jamerose de Félines était rejeté — diagnostiqué et corrigé en 0.13.1 (voir « Import IFCE (Étape 7)
+» plus bas et `CHANGELOG.md` pour le détail complet du diagnostic et du correctif) : l'extraction
+PDF a été réécrite pour résoudre les objets compressés (`/Type/ObjStm`) et décoder la police
+composite Identity-H via sa table ToUnicode, désormais validée contre le VRAI PDF de Jamerose. Cette
+même recette a également porté sur l'écran « Ajouter un cheval » (désormais un choix explicite entre
+import IFCE et création manuelle, corrigé en 0.13.1) et sur le verrouillage de la Photo principale
+dans Médias (contrôles natifs de réordonnancement/repli, devenus obsolètes une fois la boîte fixée
+dans l'onglet, désormais masqués — voir la section Étape 6 plus bas). Conformément à la demande,
+cette étape n'a volontairement PAS été suivie d'une étape suivante avant nouvelle recette runtime.
 
 ### Indices, médias et présentation (Étape 6)
 
@@ -445,6 +451,36 @@ champ (nonce, lien « Définir », vignette, lien « Supprimer ») que le conten
 intact au déplacement ET reste réellement visible (`offsetParent`) une fois l'onglet Médias actif —
 13 nouvelles assertions Node, 2 nouvelles assertions PHP déclaratives.
 
+#### Verrouillage de la Photo principale 0.13.1 — contrôles natifs faisant disparaître la boîte
+
+La recette a montré que la boîte, bien qu'enfin visible avec son contenu (0.12.6), conservait ses
+contrôles natifs de réordonnancement (Monter/Descendre, accessibilité clavier de WordPress pour le
+glisser-déposer des metaboxes) et de repli/dépli. Utiliser le contrôle « Descendre » faisait
+**disparaître la Photo principale de l'onglet Médias** : WordPress réordonne en présumant des
+frères et sœurs qui sont eux-mêmes des metaboxes de premier niveau, une hypothèse qui ne tient plus
+une fois la boîte imbriquée dans `.inside` de la boîte Médias — et pouvait persister un ordre/une
+visibilité incohérents dans les préférences WordPress de l'utilisateur (`meta-box-order_{$screen}`)
+pour les prochains chargements.
+
+- **`assets/cheval-tabs-admin.js`** : pose la classe `gwseq-cheval-media__locked` sur
+  `#postimagediv` au moment de son déplacement dans Médias ; la retire si le filet de sécurité n°2
+  restaure la boîte à sa position native.
+- **`assets/cheval-tabs.css`** : cette classe masque les trois contrôles interactifs devenus
+  obsolètes (Monter/Descendre/Replier) — un bouton non affiché ne peut plus être cliqué ni atteint
+  au clavier. Le glisser-déposer natif (jQuery UI Sortable) était déjà structurellement impossible
+  (il n'agit que sur les enfants directs de `#normal-sortables`/`#side-sortables`, que
+  `#postimagediv` n'est plus une fois déplacé) — aucune règle supplémentaire n'était nécessaire.
+- **`includes/cheval-media.php`** : `gwseq_cleanup_legacy_postimagediv_metabox_user_state()` (même
+  mécanisme que le nettoyage Identité de l'Étape 6, hooké sur `current_screen`) répare l'état déjà
+  corrompu par le contrôle natif utilisé pendant la recette — retire `postimagediv` de
+  `metaboxhidden_{$screen}` et de TOUS les contextes de `meta-box-order_{$screen}` où il
+  apparaîtrait, sans jamais toucher aux autres préférences de l'utilisateur, sans jamais demander de
+  passer par Options de l'écran.
+- **Aucun nouveau champ, aucune duplication** : la Featured Image native reste l'unique source de
+  vérité — seuls la présentation et le comportement d'interaction de la vraie boîte changent. Sans
+  JavaScript, elle reste utilisable normalement dans sa colonne native (aucun mécanisme de
+  verrouillage ne s'applique, puisque le script qui le pose ne s'exécute jamais).
+
 #### Limitations connues (Étape 6)
 
 - **Aucun âge minimum de reproduction** pour les indices sportifs/génétiques ni pour le pedigree —
@@ -585,8 +621,10 @@ supprimer la ressaisie manuelle, en particulier pour le pedigree.
 
 ### Parcours utilisateur
 
-Depuis l'écran « Ajouter un cheval », un avis visible propose le lien « Importer une fiche IFCE »
-(sous-menu du CPT Cheval, `edit.php?post_type=gwseq_cheval&page=gwseq-ifce-import`) :
+Depuis l'écran « Ajouter un cheval », un écran de choix (0.13.1, correctif post-recette) présente
+à égalité les deux chemins — « Importer depuis l'IFCE » et « Créer manuellement » — AVANT tout
+formulaire (toute requête vers l'écran natif est interceptée et redirigée vers cet écran de choix ;
+« Créer manuellement » y ajoute simplement `gwseq_manual=1` pour atteindre le vrai formulaire) :
 
 1. L'utilisateur téléverse le PDF **complet** tel que téléchargé depuis Info Chevaux (jamais
    seulement la première page) ;
@@ -603,14 +641,22 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
 
 ### Architecture (4 fichiers, aucune modification du parcours manuel existant)
 
-- **`includes/ifce-pdf-text.php`** — extracteur PDF minimal en PHP pur (aucune dépendance
-  Composer/npm dans ce projet, aucun accès réseau disponible pour en installer une) :
-  localisation des blocs `stream...endstream`, décompression `/FlateDecode` via `gzuncompress()`
-  (zlib natif PHP — le filtre FlateDecode de la spécification PDF est précisément un flux
-  zlib/RFC1950), lecture des opérateurs `Tj`/`TJ` (texte affiché) et `Td`/`TD`/`T*` (traités comme
-  sauts de ligne), décodage des échappements de chaîne PDF (`\n`, `\(`, `\)`, `\\`, séquences
-  octales). Ne gère pas les dictionnaires d'objet imbriqués ni les tables d'encodage de police
-  (voir Limitations).
+- **`includes/ifce-pdf-text.php`** — extracteur PDF en PHP pur (aucune dépendance Composer/npm
+  dans ce projet, aucun accès réseau disponible pour en installer une), réécrit en 0.13.1 après
+  diagnostic du rejet du vrai PDF de Jamerose de Félines (voir `CHANGELOG.md` pour le détail exact
+  du diagnostic) : index d'objets couvrant à la fois les objets PDF classiques ET ceux compressés
+  dans un flux `/Type/ObjStm` (mécanisme PDF 1.5+ très répandu, utilisé par le générateur du vrai
+  PDF testé) ; résolution, pour chaque page, des polices utilisées via son `/Resources/Font` —
+  police composite `/Type0`/Identity-H décodée via sa table `/ToUnicode` (CMap
+  `beginbfchar`/`beginbfrange`), police simple via une table WinAnsiEncoding standard ;
+  reconstruction de ligne par changement de coordonnée Y (issue des matrices `cm`/`Tm`) plutôt que
+  par les opérateurs `Td`/`TD`/`T*`, jamais utilisés par ce type de générateur de rapports. Seule la
+  PREMIÈRE page est décodée (§3 : zone de synthèse principale) — un choix délibéré, les pages
+  suivantes du vrai document contenant le détail de production de chaque ascendant avec ses propres
+  indices, qui contamineraient sinon ceux de la fiche importée. Repli automatique sur l'ancien
+  mécanisme (scan naïf de tous les blocs `stream...endstream`) si aucune page exploitable n'est
+  trouvée (cas d'un PDF minimal sans arbre de pages complet, comme celui utilisé pour les tests de
+  mécanique de base).
 - **`includes/ifce-import-parser.php`** — reconnaissance du document (marqueur d'en-tête
   IFCE/Info Chevaux ET ligne d'identité valide, tous deux exigés — §10 de la demande) puis
   extraction vers une structure normalisée fermée `{valid, identity, indices, pedigree}`. Ne touche
@@ -662,46 +708,49 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
   jamais créée automatiquement pour un ascendant, aucune tentative de rapprochement/déduplication
   par nom avec une fiche GWS existante.
 
-### Convention de lecture assumée (à confronter à un PDF réel en recette)
+### Convention de lecture — validée contre le vrai PDF IFCE de Jamerose de Félines
 
-Faute d'un exemplaire réel de fiche IFCE à disposition, le parseur assume une convention de
-lecture précise, documentée en tête de `includes/ifce-import-parser.php` : la ligne d'identité est
-repérée par la présence du jeton Sexe (Mâle/Femelle/Hongre) parmi 5 valeurs séparées par des
-virgules, le nom du cheval étant la ligne non vide qui la précède immédiatement ; le pedigree est
-repéré par un titre de section (« Généalogie »/« Pedigree »/« Origines ») suivi d'au plus 14 lignes
-non vides consécutives, dans l'ordre universel de lecture d'un tableau généalogique à 3 générations
-(branche Père d'abord, de haut en bas) — convention vérifiée comme correspondant exactement à
-l'exemple Jamerose de Félines fourni (14 ascendants, ordre et comptage exacts).
+La convention de lecture assumée, documentée en tête de `includes/ifce-import-parser.php`, a été
+confrontée au vrai PDF de Jamerose de Félines lors de la recette 0.13.1 (voir
+`tests/fixtures/ifce-jamerose-de-felines.pdf`) et confirmée exacte : la ligne d'identité est repérée
+par la présence du jeton Sexe (Mâle/Femelle/Hongre) parmi 5 valeurs séparées par des virgules, le nom
+du cheval étant la ligne non vide qui la précède immédiatement ; le pedigree est repéré par un titre
+de section (« Généalogie »/« Pedigree »/« Origines ») suivi d'un bloc CONTIGU de lignes non vides
+(le bloc s'arrête à la première ligne vide rencontrée après le premier ascendant), plafonné à 14
+lignes, dans l'ordre universel de lecture d'un tableau généalogique à 3 générations (branche Père
+d'abord, de haut en bas) — confirmé exact (14 ascendants, ordre et comptage exacts). Le vrai document
+a également révélé trois cas particuliers désormais gérés explicitement (voir
+`gwseq_ifce_parse_pedigree_entry_line()`) : une mention "Alias ..." (nom d'enregistrement alternatif)
+est retirée ; une ligne composée uniquement d'une année à 4 chiffres est traitée comme la
+continuation visuelle de la ligne précédente (libellé trop long pour tenir sur une ligne) ; un nom se
+terminant par un chiffre romain (« HORS LA LOI II ») n'est jamais confondu avec un code de stud-book.
 
 ### Limitations connues (Étape 7)
 
-- **AUCUNE VALIDATION CONTRE UN PDF IFCE RÉEL** : faute d'accès réseau pour en télécharger un
-  exemplaire, cet import n'a pu être testé que contre un PDF minimal auto-généré (mécanique
-  d'extraction) et une fixture texte reproduisant fidèlement l'exemple fourni dans la demande
-  (reconnaissance/analyse). La convention de lecture ci-dessus n'a pas pu être confrontée à la
-  mise en page réelle d'une fiche IFCE (colonnes, labels intercalés, pagination éventuellement
-  différents). C'est précisément pour cette raison que la prévisualisation obligatoire avant
-  écriture reste la garantie réelle contre une donnée mal interprétée.
-- **Aucun décodage des tables d'encodage de police** (WinAnsiEncoding, Identity-H/CID,
-  ToUnicode) dans l'extracteur PDF : des caractères accentués d'un PDF réel utilisant un encodage
-  de police non trivial pourraient être mal extraits. La correspondance race/robe reste
-  insensible aux accents (même mécanisme que la fiche manuelle), ce qui atténue partiellement ce
-  risque pour ces deux champs, mais pas pour le nom du cheval, les noms d'ascendants ou le
-  naisseur/éleveur.
-- **Zone de synthèse principale uniquement** (§3/§14) : le PDF complet est accepté et peut être lu
-  dans son ensemble, mais seule l'information explicitement supportée ci-dessus est exploitée —
-  jamais une donnée devinée. Volontairement hors périmètre V1 : production détaillée des
-  ascendants, collatéraux, descendants, résultats exhaustifs, toute information sans emplacement
-  dans le modèle GWS actuel.
+- **Un seul niveau de flux d'objets compressés résolu** : l'extracteur PDF ne gère pas des flux
+  `/Type/ObjStm` imbriqués les uns dans les autres — suffisant pour tous les générateurs PDF usuels
+  rencontrés (dont celui du vrai PDF testé).
+- **`/Resources` hérité d'un ancêtre `/Pages` non résolu** : chaque page doit porter directement ses
+  propres `/Resources` (cas du vrai document testé, le plus courant chez les générateurs de
+  rapports) — un PDF où les ressources sont héritées d'un nœud `/Pages` ancêtre ne serait pas
+  reconnu correctement.
+- **Zone de synthèse principale uniquement** (§3/§14) : le PDF complet est accepté, mais seule sa
+  PREMIÈRE PAGE est décodée (choix délibéré, voir Architecture ci-dessus) et seule l'information
+  explicitement supportée y est exploitée — jamais une donnée devinée. Volontairement hors périmètre
+  V1 : production détaillée des ascendants, collatéraux, descendants, résultats exhaustifs, toute
+  information sans emplacement dans le modèle GWS actuel.
+- **SIRE/UELN non présents sur la fiche réelle testée** : leur extraction est implémentée et testée,
+  mais la zone exploitée du vrai PDF de Jamerose ne les affiche pas explicitement — non confirmé sur
+  un document qui les présenterait.
 - **Aucun rapprochement avec une fiche GWS existante** : une évolution future pourra proposer un
   appariement (par nom, SIRE...) contre les chevaux déjà enregistrés, non nécessaire pour cette V1.
 - **Aucune conservation du PDF** (§11) : le fichier temporaire est supprimé immédiatement après
   extraction du texte, que l'analyse réussisse ou échoue — ce n'est qu'une source d'import, jamais
   une nouvelle source de vérité stockée sur la fiche.
 - **Parcours navigateur complet non exercé** : le pipeline (extraction → analyse → mapping) est
-  testé automatiquement de bout en bout, mais le vrai parcours de téléversement HTTP dans un
-  navigateur (sélection de fichier, écran de prévisualisation réel, redirections) n'a pas pu être
-  exercé dans cet environnement — à valider en recette runtime.
+  testé automatiquement de bout en bout à partir du vrai PDF, mais le vrai parcours de téléversement
+  HTTP dans un navigateur (sélection de fichier, écran de choix, écran de prévisualisation réel,
+  redirections) n'a pas pu être exercé dans cet environnement — à valider en recette runtime.
 
 Voir `tests/README.md` pour le détail complet de la couverture de tests et de ses limites.
 

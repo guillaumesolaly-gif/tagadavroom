@@ -1,17 +1,20 @@
 <?php
 /**
- * Vérifie l'import IFCE (Étape 7 de la demande) : extraction de texte PDF (mécanique minimale,
- * PDF synthétique auto-généré), reconnaissance/analyse du texte vers une structure normalisée
- * (fixture texte reproduisant exactement l'exemple Jamerose de Félines fourni dans la demande),
- * mapping vers les fonctions métier existantes (jamais un accès direct aux post meta), et contrôle
- * déclaratif de la glue d'administration (sécurité du téléversement, aucune écriture avant
- * validation, ascendants toujours externes, aucun PDF conservé).
+ * Vérifie l'import IFCE (Étape 7 de la demande) : extraction de texte PDF (mécanique de base
+ * contre un PDF minimal auto-généré, PUIS pipeline complet — extraction + reconnaissance + analyse
+ * + mapping — contre le VRAI PDF de la fiche de synthèse IFCE de Jamerose de Félines, tel que
+ * téléchargé depuis Info Chevaux), mapping vers les fonctions métier existantes (jamais un accès
+ * direct aux post meta), et contrôle déclaratif de la glue d'administration (sécurité du
+ * téléversement, aucune écriture avant validation, ascendants toujours externes, aucun PDF
+ * conservé).
  *
- * N'a PAS pu être validé contre un PDF IFCE réel (aucun accès réseau pour en télécharger un) — le
- * pipeline d'extraction PDF est testé contre un PDF minimal auto-généré pour ce fichier ; la
- * reconnaissance/l'analyse du texte est testée séparément contre une fixture texte reproduisant
- * fidèlement l'exemple fourni dans la demande. Voir le CR de livraison pour le détail de cette
- * limitation assumée.
+ * DEPUIS LA RECETTE RUNTIME (Étape 7) : le vrai PDF (`tests/fixtures/ifce-jamerose-de-felines.pdf`)
+ * est désormais LA fixture de référence pour la reconnaissance/l'analyse — plus seulement un texte
+ * pré-extrait artificiellement. Le test appelle exactement le même pipeline que le runtime
+ * WordPress : `gwseq_ifce_extract_pdf_text()` (lecture du fichier réel) ->
+ * `gwseq_ifce_parse_text()` -> `gwseq_ifce_map_import()`. Voir `ifce-pdf-text.php` pour le diagnostic
+ * complet de la cause exacte de l'échec initial sur ce PDF (objets compressés `/Type/ObjStm`, police
+ * composite Identity-H sans laquelle le texte n'était pas décodable) et le correctif retenu.
  *
  * Ne fait pas partie des paquets livrés (gws-core.zip / gws-starter.zip).
  */
@@ -231,77 +234,73 @@ gws_test_assert(gwseq_ifce_decode_pdf_literal_string('a\\nb') === "a\nb", 'Déco
 gws_test_assert(gwseq_ifce_decode_pdf_literal_string('a\\\\b') === 'a\\b', 'Décodage chaîne PDF : antislash échappé');
 
 // =====================================================================================
-// 2. Reconnaissance et analyse du texte — fixture reproduisant l'exemple Jamerose de Félines
-//    fourni dans la demande (§4-6, avec accents réels pour valider la robustesse des expressions
-//    régulières indépendamment de la limitation d'encodage du PDF)
+// 2. Extraction + reconnaissance + analyse — VRAI PDF de la fiche de synthèse IFCE de Jamerose de
+//    Félines, tel que téléchargé depuis Info Chevaux (recette runtime, Étape 7). Exécute le MÊME
+//    pipeline que le runtime WordPress : gwseq_ifce_extract_pdf_text() (lecture du vrai fichier) ->
+//    gwseq_ifce_parse_text(). Un texte pré-extrait artificiellement n'est plus considéré comme
+//    suffisant pour cette section (voir le CR de livraison).
 // =====================================================================================
 
-$jamerose_text = implode("\n", array(
-  'FICHE DE SYNTHESE - IFCE',
-  'JAMEROSE DE FELINES',
-  'Selle Français, Femelle, Gris, 1m68, née en 2019',
-  'Naisseur : Haras de Félines',
-  'SIRE : 05123456A',
-  'UELN : 250012345678901',
-  'ISO 115 (0.70) (2023)',
-  'ICC 108 (0.65) (2022)',
-  'BSO +12 (0.59)',
-  'BCC -3 (0.45)',
-  'Généalogie',
-  'UNTOUCHABLE', 'HORS LA LOI II', 'PAPILLON ROUGE', 'ARIANE DU PLESSIS II',
-  'PROMESSE', 'HEARTBREAKER', 'CHABLIS',
-  'NATIVE DE FELINES', 'ROSIRE', 'URIEL', 'EOLIENNE',
-  'FALINE GENEVRIS', 'PEGASE GERBAUX', 'LOUVE VARFEUIL',
-));
+$jamerose_pdf_path = __DIR__ . '/fixtures/ifce-jamerose-de-felines.pdf';
+gws_test_assert(is_readable($jamerose_pdf_path), 'Fixture : le vrai PDF de Jamerose de Félines est bien présent dans tests/fixtures/');
 
-$jamerose_parsed = gwseq_ifce_parse_text($jamerose_text);
-gws_test_assert($jamerose_parsed['valid'] === true, 'Reconnaissance : la fixture Jamerose est bien reconnue comme une fiche IFCE');
+$jamerose_real_text = gwseq_ifce_extract_pdf_text($jamerose_pdf_path);
+gws_test_assert($jamerose_real_text !== '', 'Extraction PDF réelle : du texte est bien extrait du vrai PDF IFCE (pipeline structuré — objets compressés + police Identity-H/ToUnicode)');
+gws_test_assert(strpos($jamerose_real_text, 'JAMEROSE DE FELINES') !== false, 'Extraction PDF réelle : le nom du cheval est retrouvé, caractère par caractère, dans le texte du VRAI PDF');
+
+$jamerose_parsed = gwseq_ifce_parse_text($jamerose_real_text);
+gws_test_assert($jamerose_parsed['valid'] === true, 'Reconnaissance : le VRAI PDF IFCE de Jamerose est bien reconnu comme une fiche IFCE (correctif d’extraction post-recette)');
 
 $identity = $jamerose_parsed['identity'];
-gws_test_assert($identity['nom'] === 'JAMEROSE DE FELINES', 'Identité : nom exact');
-gws_test_assert($identity['race'] === 'selle_francais' && $identity['race_autre'] === '', 'Identité : race reconnue et mappée au code canonique "selle_francais"');
-gws_test_assert($identity['sexe'] === 'female', 'Identité : sexe "Femelle" mappé à "female"');
-gws_test_assert($identity['robe'] === 'gris', 'Identité : robe "Gris" mappée au code canonique');
-gws_test_assert($identity['taille_cm'] === 168, 'Identité : taille "1m68" convertie en 168 cm');
-gws_test_assert($identity['annee_naissance'] === 2019, 'Identité : année de naissance exacte');
-gws_test_assert($identity['eleveur'] === 'Haras de Félines', 'Identité : naisseur/éleveur exact (avec accents préservés)');
-gws_test_assert($identity['sire'] === '05123456A', 'Identité : numéro SIRE exact');
-gws_test_assert($identity['ueln'] === '250012345678901', 'Identité : UELN exact');
+gws_test_assert($identity['nom'] === 'JAMEROSE DE FELINES', 'Identité (vrai PDF) : nom exact');
+gws_test_assert($identity['race'] === 'selle_francais' && $identity['race_autre'] === '', 'Identité (vrai PDF) : race "Selle Francais" reconnue et mappée au code canonique "selle_francais"');
+gws_test_assert($identity['sexe'] === 'female', 'Identité (vrai PDF) : sexe "Femelle" mappé à "female"');
+gws_test_assert($identity['robe'] === 'gris', 'Identité (vrai PDF) : robe "Gris" mappée au code canonique');
+gws_test_assert($identity['taille_cm'] === 168, 'Identité (vrai PDF) : taille "1m68" convertie en 168 cm');
+gws_test_assert($identity['annee_naissance'] === 2019, 'Identité (vrai PDF) : année de naissance exacte (« né(e) en 2019 »)');
+gws_test_assert(strpos($identity['eleveur'], 'Haras De Felines') !== false, 'Identité (vrai PDF) : naisseur/éleveur identifié (raison sociale réelle du document, « Naisseur: S.a.s. Haras De Felines... »)');
+gws_test_assert($identity['sire'] === '' && $identity['ueln'] === '', 'Identité (vrai PDF) : SIRE/UELN absents de la zone exploitée de cette fiche réelle -> restent vides, jamais devinés (le mot « SIRE » apparaît dans l’en-tête du document sans numéro associé, correctement ignoré)');
 
 $indices = $jamerose_parsed['indices'];
-gws_test_assert($indices['iso']['valeur'] === 115 && $indices['iso']['cd'] === 0.7 && $indices['iso']['annee'] === 2023, 'Indices : ISO 115 (CD 0.70) (2023) — exemple exact de la demande, valeur/CD/année stockés séparément');
-gws_test_assert($indices['icc']['valeur'] === 108 && $indices['icc']['cd'] === 0.65 && $indices['icc']['annee'] === 2022, 'Indices : ICC également reconnu indépendamment de l’ISO');
-gws_test_assert($indices['idr']['valeur'] === '', 'Indices : IDR absent du texte -> resté vide, jamais deviné');
-gws_test_assert($indices['bso']['valeur'] === 12.0 && $indices['bso']['cd'] === 0.59, 'Indices : BSO +12 (CD 0.59) — exemple exact de la demande, sans année (indice génétique)');
-gws_test_assert($indices['bcc']['valeur'] === -3.0 && $indices['bcc']['cd'] === 0.45, 'Indices : BCC négatif reconnu avec son signe');
-gws_test_assert($indices['bdr']['valeur'] === '', 'Indices : BDR absent du texte -> resté vide');
-gws_test_assert(!array_key_exists('annee', $indices['bso']), 'Indices : aucune clé "annee" n’existe pour un indice génétique (jamais confondu avec un indice sportif)');
+gws_test_assert($indices['iso']['valeur'] === 115 && $indices['iso']['cd'] === 0.7 && $indices['iso']['annee'] === 2023, 'Indices (vrai PDF) : ISO 115 (CD 0.70) (2023) — exemple exact de la demande, retrouvé dans le vrai document');
+gws_test_assert($indices['icc']['valeur'] === '' && $indices['idr']['valeur'] === '', 'Indices (vrai PDF) : ICC/IDR absents de cette fiche réelle -> restent vides, jamais devinés');
+gws_test_assert($indices['bso']['valeur'] === 12.0 && $indices['bso']['cd'] === 0.59, 'Indices (vrai PDF) : BSO +12 (CD 0.59) — exemple exact de la demande, retrouvé dans le vrai document');
+gws_test_assert($indices['bcc']['valeur'] === '' && $indices['bdr']['valeur'] === '', 'Indices (vrai PDF) : BCC/BDR absents de cette fiche réelle -> restent vides');
 
 $pedigree = $jamerose_parsed['pedigree'];
-gws_test_assert($pedigree['count'] === 14, 'Pedigree : exactement 14 ascendants détectés, comme dans l’exemple de la demande');
+gws_test_assert($pedigree['count'] === 14, 'Pedigree (vrai PDF) : exactement 14 ascendants détectés, comme annoncé dans la demande');
 
 $father = $pedigree['father'];
 $mother = $pedigree['mother'];
-gws_test_assert($father['name'] === 'UNTOUCHABLE', 'Pedigree : Père exact (UNTOUCHABLE)');
-gws_test_assert($father['father']['name'] === 'HORS LA LOI II', 'Pedigree : Père du Père exact (HORS LA LOI II)');
-gws_test_assert($father['father']['father']['name'] === 'PAPILLON ROUGE', 'Pedigree : Père du Père du Père exact (PAPILLON ROUGE)');
-gws_test_assert($father['father']['mother']['name'] === 'ARIANE DU PLESSIS II', 'Pedigree : Mère du Père du Père exacte (ARIANE DU PLESSIS II)');
-gws_test_assert($father['mother']['name'] === 'PROMESSE', 'Pedigree : Mère du Père exacte (PROMESSE)');
-gws_test_assert($father['mother']['father']['name'] === 'HEARTBREAKER', 'Pedigree : Père de la Mère du Père exact (HEARTBREAKER)');
-gws_test_assert($father['mother']['mother']['name'] === 'CHABLIS', 'Pedigree : Mère de la Mère du Père exacte (CHABLIS)');
-gws_test_assert($mother['name'] === 'NATIVE DE FELINES', 'Pedigree : Mère exacte (NATIVE DE FELINES)');
-gws_test_assert($mother['father']['name'] === 'ROSIRE', 'Pedigree : Père de la Mère exact (ROSIRE)');
-gws_test_assert($mother['father']['father']['name'] === 'URIEL', 'Pedigree : Père du Père de la Mère exact (URIEL)');
-gws_test_assert($mother['father']['mother']['name'] === 'EOLIENNE', 'Pedigree : Mère du Père de la Mère exacte (EOLIENNE)');
-gws_test_assert($mother['mother']['name'] === 'FALINE GENEVRIS', 'Pedigree : Mère de la Mère exacte (FALINE GENEVRIS)');
-gws_test_assert($mother['mother']['father']['name'] === 'PEGASE GERBAUX', 'Pedigree : Père de la Mère de la Mère exact (PEGASE GERBAUX)');
-gws_test_assert($mother['mother']['mother']['name'] === 'LOUVE VARFEUIL', 'Pedigree : Mère de la Mère de la Mère exacte (LOUVE VARFEUIL)');
-gws_test_assert($father['father']['father']['father'] === null && $father['father']['father']['mother'] === null, 'Pedigree : la dernière génération détectée n’a jamais de sous-branche inventée (null, pas un nœud vide)');
+gws_test_assert($father['name'] === 'UNTOUCHABLE', 'Pedigree (vrai PDF) : Père exact (UNTOUCHABLE — mention "Alias UNTOUCHABLE 27 (NLD)" correctement retirée)');
+gws_test_assert($father['father']['name'] === 'HORS LA LOI II' && $father['father']['race'] === 'autre' && $father['father']['race_autre'] === 'SFA', 'Pedigree (vrai PDF) : Père du Père exact (HORS LA LOI II), stud-book "SFA" non canonique conservé via "Autre"');
+gws_test_assert($father['father']['father']['name'] === 'PAPILLON ROUGE', 'Pedigree (vrai PDF) : Père du Père du Père exact (PAPILLON ROUGE)');
+gws_test_assert($father['father']['mother']['name'] === 'ARIANE DU PLESSIS II', 'Pedigree (vrai PDF) : Mère du Père du Père exacte (ARIANE DU PLESSIS II — chiffre romain final jamais confondu avec un stud-book)');
+gws_test_assert($father['mother']['name'] === 'PROMESSE' && $father['mother']['race'] === 'kwpn', 'Pedigree (vrai PDF) : Mère du Père exacte (PROMESSE), stud-book "KWPN" mappé au code canonique');
+gws_test_assert($father['mother']['father']['name'] === 'HEARTBREAKER' && $father['mother']['father']['race'] === 'kwpn', 'Pedigree (vrai PDF) : Père de la Mère du Père exact (HEARTBREAKER), code pays "(NLD)" correctement écarté du nom comme du stud-book');
+gws_test_assert($father['mother']['mother']['name'] === 'CHABLIS' && $father['mother']['mother']['race_autre'] === 'OES', 'Pedigree (vrai PDF) : Mère de la Mère du Père exacte (CHABLIS), stud-book "OES" conservé même sans année associée');
+gws_test_assert($mother['name'] === 'NATIVE DE FELINES', 'Pedigree (vrai PDF) : Mère exacte (NATIVE DE FELINES)');
+gws_test_assert($mother['father']['name'] === 'ROSIRE', 'Pedigree (vrai PDF) : Père de la Mère exact (ROSIRE)');
+gws_test_assert($mother['father']['father']['name'] === 'URIEL', 'Pedigree (vrai PDF) : Père du Père de la Mère exact (URIEL)');
+gws_test_assert($mother['father']['mother']['name'] === 'EOLIENNE', 'Pedigree (vrai PDF) : Mère du Père de la Mère exacte (EOLIENNE)');
+gws_test_assert($mother['mother']['name'] === 'FALINE GENEVRIS', 'Pedigree (vrai PDF) : Mère de la Mère exacte (FALINE GENEVRIS)');
+gws_test_assert($mother['mother']['father']['name'] === 'PEGASE GERBAUX', 'Pedigree (vrai PDF) : Père de la Mère de la Mère exact (PEGASE GERBAUX)');
+gws_test_assert($mother['mother']['mother']['name'] === 'LOUVE VARFEUIL', 'Pedigree (vrai PDF) : Mère de la Mère de la Mère exacte (LOUVE VARFEUIL)');
+gws_test_assert($father['father']['father']['father'] === null && $father['father']['father']['mother'] === null, 'Pedigree (vrai PDF) : la dernière génération détectée n’a jamais de sous-branche inventée (null, pas un nœud vide)');
 
 // --- Robustesse de la sanitation en aval : l'arbre produit est bien accepté tel quel par
 // gwseq_sanitize_external_ancestor_tree() (même fonction que la saisie manuelle, §7) ---
 $father_sanitized = gwseq_sanitize_external_ancestor_tree($father, GWSEQ_PEDIGREE_MAX_DEPTH - 1);
-gws_test_assert($father_sanitized['name'] === 'UNTOUCHABLE' && $father_sanitized['father']['name'] === 'HORS LA LOI II', 'Pedigree : l’arbre produit par le parseur IFCE est accepté sans perte par le sanitiseur existant du pedigree manuel');
+gws_test_assert($father_sanitized['name'] === 'UNTOUCHABLE' && $father_sanitized['father']['name'] === 'HORS LA LOI II', 'Pedigree (vrai PDF) : l’arbre produit par le parseur IFCE est accepté sans perte par le sanitiseur existant du pedigree manuel');
+
+// =====================================================================================
+// 2bis. Cas particuliers de gwseq_ifce_parse_pedigree_entry_line() constatés sur le vrai document
+// =====================================================================================
+
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('HORS LA LOI II') === array('name' => 'HORS LA LOI II', 'race_text' => ''), 'Entrée pedigree : un nom SANS stud-book se terminant par un chiffre romain (« II ») n’est jamais amputé — le chiffre romain n’est jamais confondu avec un code de stud-book');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('ARIANE DU PLESSIS II SFA 1988') === array('name' => 'ARIANE DU PLESSIS II', 'race_text' => 'SFA'), 'Entrée pedigree : le même nom AVEC un vrai stud-book/année distingue correctement les deux (le chiffre romain reste dans le nom, "SFA" est bien isolé comme stud-book)');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('UNTOUCHABLE Alias UNTOUCHABLE 27 (NLD) KWPN 2001') === array('name' => 'UNTOUCHABLE', 'race_text' => ''), 'Entrée pedigree : la mention "Alias ..." (nom d’enregistrement alternatif) est intégralement retirée, y compris le stud-book/l’année qui la suivent');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('CHABLIS OES') === array('name' => 'CHABLIS', 'race_text' => 'OES'), 'Entrée pedigree : un stud-book sans année associée reste correctement reconnu');
 
 // =====================================================================================
 // 3. Documents non reconnus (§10) — jamais un import "best effort"
@@ -326,7 +325,7 @@ $mapped_identity = gwseq_get_cheval_identity(60);
 gws_test_assert(
   $mapped_identity['sexe'] === 'female' && $mapped_identity['race'] === 'selle_francais' && $mapped_identity['robe'] === 'gris'
   && $mapped_identity['taille_cm'] === 168 && $mapped_identity['annee_naissance'] === 2019
-  && $mapped_identity['eleveur'] === 'Haras de Félines' && $mapped_identity['sire'] === '05123456A',
+  && strpos($mapped_identity['eleveur'], 'Haras De Felines') !== false && $mapped_identity['sire'] === '',
   'Mapping identité : toutes les valeurs sont bien persistées via gwseq_set_cheval_identity(), relecture exacte'
 );
 
@@ -416,6 +415,57 @@ gws_test_assert(strpos($ifce_admin_code_only, 'add_meta_box') === false, 'Compat
 // --- Enregistrement du sous-menu (déclaratif, sans réellement appeler admin_menu ici) ---
 gwseq_add_ifce_import_page();
 gws_test_assert(count($GLOBALS['__gwseq_test_submenu_pages']) === 1 && $GLOBALS['__gwseq_test_submenu_pages'][0]['capability'] === 'edit_posts', 'Menu : la page d’import est bien enregistrée en sous-menu du CPT Cheval, avec la capacité edit_posts');
+
+// =====================================================================================
+// 6. Écran de choix "Ajouter un cheval" (§B de la demande, correctif post-recette) : les deux
+//    chemins (import IFCE / création manuelle) présentés à égalité, jamais l’un secondaire par
+//    rapport à l’autre — le formulaire manuel n’est plus jamais affiché avant ce choix.
+// =====================================================================================
+
+$GLOBALS['__gwseq_test_submenu_pages'] = array();
+gwseq_add_cheval_choice_page();
+gws_test_assert(
+  count($GLOBALS['__gwseq_test_submenu_pages']) === 1
+  && $GLOBALS['__gwseq_test_submenu_pages'][0]['parent'] === null
+  && $GLOBALS['__gwseq_test_submenu_pages'][0]['capability'] === 'edit_posts',
+  'Écran de choix : enregistré en page orpheline (parent null, jamais un second point d’entrée visible dans le menu, qui ferait doublon avec "Ajouter un cheval")'
+);
+
+// --- La redirection ne se déclenche QUE pour post-new.php + post_type=gwseq_cheval + absence du
+// paramètre gwseq_manual — chemins sûrs à exécuter réellement (aucun n’atteint wp_safe_redirect) ---
+global $pagenow;
+$GLOBALS['__gwseq_test_last_redirect'] = null;
+
+$pagenow = 'edit.php';
+$_GET = array('post_type' => GWSEQ_CPT_CHEVAL);
+gwseq_redirect_cheval_add_new_to_choice();
+gws_test_assert($GLOBALS['__gwseq_test_last_redirect'] === null, 'Redirection "Ajouter un cheval" : ne se déclenche jamais en dehors de post-new.php (ex. la liste des chevaux)');
+
+$pagenow = 'post-new.php';
+$_GET = array('post_type' => 'gwseq_prestation');
+gwseq_redirect_cheval_add_new_to_choice();
+gws_test_assert($GLOBALS['__gwseq_test_last_redirect'] === null, 'Redirection "Ajouter un cheval" : ne se déclenche jamais pour un autre type de contenu (ex. Prestation)');
+
+$pagenow = 'post-new.php';
+$_GET = array('post_type' => GWSEQ_CPT_CHEVAL, 'gwseq_manual' => '1');
+gwseq_redirect_cheval_add_new_to_choice();
+gws_test_assert($GLOBALS['__gwseq_test_last_redirect'] === null, 'Redirection "Ajouter un cheval" : neutralisée par "gwseq_manual=1" — le lien "Créer manuellement" de l’écran de choix atteint bien le vrai formulaire');
+
+// --- Le cas qui DOIT rediriger (post-new.php + Cheval + gwseq_manual absent) n’est vérifié que
+// déclarativement : la fonction appelle exit() après wp_safe_redirect(), incompatible avec une
+// exécution directe dans ce script de test ---
+$redirect_fn_source = substr($ifce_admin_code_only, strpos($ifce_admin_code_only, 'function gwseq_redirect_cheval_add_new_to_choice'));
+$redirect_fn_source = substr($redirect_fn_source, 0, strpos($redirect_fn_source, "\nfunction "));
+gws_test_assert(strpos($redirect_fn_source, 'wp_safe_redirect') !== false && strpos($redirect_fn_source, 'exit') !== false, 'Redirection "Ajouter un cheval" : le cas nominal (aucun paramètre gwseq_manual) redirige bien vers l’écran de choix (vérification déclarative, wp_safe_redirect()+exit() non exécutables ici)');
+gws_test_assert(strpos($redirect_fn_source, "!== 'post-new.php'") !== false, 'Redirection "Ajouter un cheval" : strictement scopée à post-new.php, jamais à l’édition d’une fiche existante (post.php)');
+
+// --- Rendu de l’écran de choix : les deux chemins présentés, aucune écriture ---
+ob_start();
+gwseq_render_cheval_choice_page();
+$choice_page_html = ob_get_clean();
+gws_test_assert(strpos($choice_page_html, gwseq_ifce_import_page_url()) !== false, 'Écran de choix : le lien vers l’import IFCE est bien présent');
+gws_test_assert(strpos($choice_page_html, 'gwseq_manual=1') !== false, 'Écran de choix : le lien "Créer manuellement" pointe bien vers le formulaire natif avec gwseq_manual=1 (neutralise la redirection pour cette requête)');
+gws_test_assert(strpos($choice_page_html, 'button-primary') !== false && strpos($choice_page_html, 'button-secondary') !== false, 'Écran de choix : les deux chemins sont présentés avec une mise en avant équivalente (aucun des deux boutons n’est un simple lien texte secondaire)');
 
 // =====================================================================================
 // i18n

@@ -52,6 +52,57 @@ if (!defined('ABSPATH')) exit;
 const GWSEQ_CHEVAL_GALERIE_MAX = 9;
 const GWSEQ_CHEVAL_VIDEOS_MAX = 10;
 
+/**
+ * Nettoyage de l'état utilisateur WordPress hérité pour `#postimagediv` (correctif post-recette,
+ * étage "Photo principale / onglet Médias") : la recette runtime a révélé que les contrôles natifs
+ * de réordonnancement clavier de WordPress (boutons "Déplacer vers le haut"/"vers le bas" du
+ * postbox, restés visibles sur la boîte déjà déplacée dans Médias — désormais retirés, voir
+ * assets/cheval-tabs-admin.js) pouvaient, une fois utilisés, persister un ordre/une visibilité
+ * incohérents pour `postimagediv` dans les préférences PAR UTILISATEUR de WordPress
+ * (`meta-box-order_{$screen}`/`metaboxhidden_{$screen}`) — puisque `postimagediv` est ensuite
+ * TOUJOURS retrouvé et réinséré par identifiant (jamais par position) dans l'onglet Médias, cet
+ * ordre/cette visibilité mémorisés n'ont plus aucune utilité réelle une fois l'intégration active,
+ * et peuvent au contraire laisser la boîte masquée (Screen Options) sans qu'aucun mécanisme de
+ * l'onglet Médias ne la restaure (elle n'est pas elle-même un onglet géré, voir
+ * includes/cheval-admin-tabs.php).
+ *
+ * Même mécanisme que gwseq_cleanup_legacy_identite_metabox_user_state() (cheval-fields.php,
+ * Étape 6) : idempotent, ne touche QUE les entrées concernant `postimagediv`, jamais une
+ * réinitialisation générale des préférences de l'utilisateur — aucune autre boîte, aucun autre
+ * identifiant de meta box n'est jamais modifié par cette fonction.
+ */
+function gwseq_cleanup_legacy_postimagediv_metabox_user_state($screen) {
+  if (!$screen || $screen->id !== GWSEQ_CPT_CHEVAL) return;
+  $user_id = get_current_user_id();
+  if (!$user_id) return;
+
+  $hidden_key = 'metaboxhidden_' . $screen->id;
+  $hidden = get_user_meta($user_id, $hidden_key, true);
+  if (is_array($hidden) && in_array('postimagediv', $hidden, true)) {
+    update_user_meta($user_id, $hidden_key, array_values(array_diff($hidden, array('postimagediv'))));
+  }
+
+  // Aucun contexte particulier n'a de sens à préserver pour `postimagediv` une fois l'intégration
+  // Médias active (l'onglet le retrouve toujours par identifiant, jamais par position) : une
+  // entrée existante est simplement retirée de TOUS les contextes, laissant WordPress revenir à
+  // son propre positionnement natif par défaut — sans jamais toucher à l'ordre des AUTRES boîtes.
+  $order_key = 'meta-box-order_' . $screen->id;
+  $order = get_user_meta($user_id, $order_key, true);
+  if (is_array($order)) {
+    $changed = false;
+    foreach ($order as $context => $csv) {
+      if (!is_string($csv) || $csv === '') continue;
+      $ids = array_filter(explode(',', $csv));
+      if (in_array('postimagediv', $ids, true)) {
+        $order[$context] = implode(',', array_diff($ids, array('postimagediv')));
+        $changed = true;
+      }
+    }
+    if ($changed) update_user_meta($user_id, $order_key, $order);
+  }
+}
+add_action('current_screen', 'gwseq_cleanup_legacy_postimagediv_metabox_user_state');
+
 /* -------------------------------------------------------------------------------------------
  * Enregistrement des meta et de la taille d'image dédiée.
  * ----------------------------------------------------------------------------------------- */

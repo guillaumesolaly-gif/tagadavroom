@@ -63,3 +63,24 @@
 .gwseq-cheval-media__photo-principale-slot #postimagediv * {
   display: revert !important;
 }
+
+/* CORRECTIF BLOQUANT post-recette : une fois intégrée dans Médias, la Photo principale n'est plus
+   une metabox que l'utilisateur doit pouvoir déplacer ou replier (voir la note détaillée dans
+   assets/cheval-tabs-admin.js, à l'endroit où la classe .gwseq-cheval-media__locked est posée) — la
+   recette a montré qu'utiliser le contrôle natif "Descendre" la faisait disparaître de l'onglet.
+   Masque les trois contrôles interactifs du postbox natif concernés : un bouton non affiché ne
+   peut plus être cliqué ni atteint au clavier. Sélecteur volontairement plus spécifique que la
+   règle `revert` ci-dessus (déclarée avant, sur les mêmes éléments) pour ne jamais en dépendre de
+   l'ORDRE d'apparition dans la feuille de style. Le glisser-déposer natif (jQuery UI Sortable) est
+   déjà rendu structurellement impossible par le déplacement DOM lui-même (il n'agit que sur les
+   enfants directs de #normal-sortables/#side-sortables, que #postimagediv n'est plus une fois ici)
+   — aucune règle supplémentaire n'est donc nécessaire pour l'empêcher. */
+#postimagediv.gwseq-cheval-media__locked .handle-order-higher,
+#postimagediv.gwseq-cheval-media__locked .handle-order-lower,
+#postimagediv.gwseq-cheval-media__locked .handlediv {
+  display: none !important;
+}
+
+#postimagediv.gwseq-cheval-media__locked .hndle {
+  cursor: default;
+}

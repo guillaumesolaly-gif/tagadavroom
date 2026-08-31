@@ -32,6 +32,17 @@
  *    simple `style.display = ''` ne suffit donc pas à la emporter. Si une boîte de l'onglet actif
  *    reste invisible malgré une tentative de levée de ces mécanismes connus, le système d'onglets
  *    se désactive intégralement et restaure la visibilité de TOUTES les boîtes gérées.
+ *
+ * VERROUILLAGE DE LA PHOTO PRINCIPALE (correctif post-recette) : une fois réellement déplacée dans
+ * Médias (voir plus bas), la boîte native `#postimagediv` reçoit la classe
+ * `gwseq-cheval-media__locked`, qui masque (via assets/cheval-tabs.css) ses contrôles natifs de
+ * réordonnancement (Monter/Descendre) et de repli/dépli — la recette a montré que le contrôle
+ * "Descendre" faisait disparaître la boîte de l'onglet Médias, WordPress réordonnant en présumant
+ * des frères et sœurs qui sont eux-mêmes des metaboxes de premier niveau, hypothèse qui ne tient
+ * plus une fois la boîte imbriquée ici. Cette classe est retirée par disableTabsFallback() en même
+ * temps que la restauration à la position native — voir gwseq_cleanup_legacy_postimagediv_metabox_user_state()
+ * (includes/cheval-media.php) pour le nettoyage complémentaire, côté serveur, de tout état
+ * utilisateur WordPress déjà corrompu par ce contrôle avant ce correctif.
  */
 (function () {
   'use strict';
@@ -175,6 +186,26 @@
       postimagedivOriginalParent = postimagediv.parentNode;
       postimagedivOriginalNextSibling = postimagediv.nextSibling;
       photoPrincipaleSlot.appendChild(postimagediv);
+
+      // CORRECTIF BLOQUANT post-recette : une fois intégrée dans Médias, la Photo principale n'est
+      // plus une metabox que l'utilisateur doit pouvoir déplacer/replier — la recette a montré que
+      // cliquer sur le contrôle natif "Descendre" (accessibilité clavier de réordonnancement des
+      // metaboxes, `.handle-order-lower`) la faisait DISPARAÎTRE de l'onglet Médias (le script natif
+      // de WordPress réordonne en présumant des frères et sœurs qui sont eux-mêmes des metaboxes de
+      // premier niveau, une hypothèse qui ne tient plus une fois la boîte imbriquée ici), et pouvait
+      // persister un ordre/une visibilité incohérents pour les prochains chargements (voir le
+      // nettoyage serveur correspondant, gwseq_cleanup_legacy_postimagediv_metabox_user_state(),
+      // cheval-media.php). Plutôt que de tenter de prévoir CHAQUE façon dont ce script natif
+      // pourrait mal réagir à cette imbrication inédite, la classe ci-dessous masque simplement,
+      // via cheval-tabs.css, les trois contrôles interactifs concernés (Monter/Descendre/Replier) —
+      // un bouton non affiché ne peut plus jamais être cliqué ni atteint au clavier. Le
+      // glisser-déposer natif (jQuery UI Sortable) reste, lui, déjà structurellement impossible :
+      // il n'opère que sur les enfants DIRECTS de #normal-sortables/#side-sortables, et
+      // #postimagediv n'en est plus un une fois déplacé ici — aucun code supplémentaire n'est donc
+      // nécessaire pour l'empêcher. Une simple CLASSE (jamais une suppression de nœud DOM) : la
+      // restauration ci-dessous (disableTabsFallback) peut ainsi rendre ces contrôles sans avoir à
+      // reconstruire quoi que ce soit.
+      postimagediv.classList.add('gwseq-cheval-media__locked');
     }
 
     var fallbackTriggered = false;
@@ -201,6 +232,7 @@
       // l'écran exactement tel qu'avant son intervention, jamais une boîte laissée à un endroit
       // qui n'a de sens que si les onglets fonctionnent.
       if (postimagedivOriginalParent && postimagediv) {
+        postimagediv.classList.remove('gwseq-cheval-media__locked');
         postimagedivOriginalParent.insertBefore(postimagediv, postimagedivOriginalNextSibling);
       }
       if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);

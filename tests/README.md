@@ -330,23 +330,30 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   certitude le code de déplacement (`appendChild()`, qui ne peut par construction jamais effacer
   le contenu d'un nœud déplacé) comme cause du signalement, orientant le diagnostic vers une
   cause CSS plutôt que DOM (voir le CHANGELOG du module pour le détail).
-- **Import IFCE de `gws-equestrian`, Étape 7 (`gws-equestrian-ifce-import-test.php`)** : extraction
-  de texte PDF (`ifce-pdf-text.php`) contre un PDF minimal auto-généré pour ce fichier — flux
-  `/FlateDecode` compressé via `gzcompress()`/décompressé via `gzuncompress()`, flux non compressé
-  toléré tel quel, chaînes littérales échappées (parenthèses, `\n`, antislash) correctement
-  décodées, robustesse (entrée non-PDF, PDF vide, fichier illisible, flux FlateDecode corrompu —
-  jamais d'erreur fatale). Reconnaissance et analyse (`ifce-import-parser.php`) contre une fixture
-  TEXTE reproduisant fidèlement l'exemple **Jamerose de Félines** fourni dans la demande (avec
-  accents réels, pour valider les expressions régulières indépendamment de la limitation
-  d'encodage du PDF — voir plus bas) : détection du document (marqueur d'en-tête IFCE/Info Chevaux
-  ET ligne d'identité valide, tous deux exigés) ; identité (nom, race mappée au référentiel
-  existant, sexe, robe, taille "1m68" → 168 cm, année de naissance, naisseur/éleveur avec accents
-  préservés, SIRE, UELN) ; indices sportifs ISO/ICC/IDR avec valeur+CD+année stockés séparément
-  (exemple exact « ISO 115 (0.70) (2023) »), indices génétiques BSO/BCC/BDR avec valeur signée+CD
-  sans année (exemple exact « BSO +12 (0.59) »), un indice absent du texte reste vide (jamais
-  deviné) ; reconstruction EXACTE des 14 ascendants du pedigree Jamerose (Père/Mère et leurs propres
-  ascendants sur 3 générations, arbre vérifié nœud par nœud), aucune sous-branche inventée à la
-  dernière génération détectée, arbre produit accepté sans perte par
+- **Import IFCE de `gws-equestrian`, Étape 7 (`gws-equestrian-ifce-import-test.php`)** — DEPUIS LA
+  RECETTE RUNTIME (0.13.1) : la fixture de référence pour la reconnaissance/l'analyse est le VRAI
+  PDF de la fiche de synthèse IFCE de Jamerose de Félines (`tests/fixtures/ifce-jamerose-de-felines.pdf`,
+  tel que téléchargé depuis Info Chevaux), exécutant exactement le même pipeline que le runtime
+  WordPress : `gwseq_ifce_extract_pdf_text()` -> `gwseq_ifce_parse_text()`. Extraction de texte PDF
+  (`ifce-pdf-text.php`) : mécanique de base (flux `/FlateDecode`, chaînes littérales échappées,
+  robustesse — entrée non-PDF, PDF vide, fichier illisible, flux corrompu) contre un PDF minimal
+  auto-généré ; PUIS pipeline structuré complet contre le vrai PDF — résolution des objets
+  compressés (`/Type/ObjStm`), décodage de la police composite Identity-H via sa table `/ToUnicode`
+  (CMap `beginbfchar`/`beginbfrange`), reconstruction de ligne par coordonnée Y. Reconnaissance et
+  analyse (`ifce-import-parser.php`) contre le texte réellement extrait de ce vrai PDF : détection
+  du document ; identité (nom, race "Selle Francais" mappée au référentiel existant, sexe, robe,
+  taille "1m68" → 168 cm, année de naissance « né(e) en 2019 », naisseur/éleveur identifié, SIRE/UELN
+  absents de cette fiche réelle -> restent vides, jamais devinés) ; indices sportifs ISO/ICC/IDR avec
+  valeur+CD+année stockés séparément (exemple exact « ISO 115 (0.70) (2023) » retrouvé dans le vrai
+  document, ICC/IDR absents -> vides), indices génétiques BSO/BCC/BDR (exemple exact « BSO +12
+  (0.59) » retrouvé, BCC/BDR absents -> vides) — SEULE la première occurrence d'un indice dans le
+  texte est retenue, jamais une occurrence plus tardive appartenant à un ascendant (page de
+  production détaillée) ; reconstruction EXACTE des 14 ascendants du pedigree Jamerose (arbre
+  vérifié nœud par nœud), avec les cas particuliers constatés sur le vrai document couverts
+  spécifiquement (`gwseq_ifce_parse_pedigree_entry_line()`) : mention "Alias ..." retirée, chiffre
+  romain final d'un nom JAMAIS confondu avec un code de stud-book, stud-book sans année associée
+  toujours reconnu, code pays entre parenthèses écarté du nom comme du stud-book ; aucune sous-branche
+  inventée à la dernière génération détectée ; arbre produit accepté sans perte par
   `gwseq_sanitize_external_ancestor_tree()` (même sanitiseur que la saisie manuelle) ; documents non
   reconnus rejetés (texte sans rapport, marqueur IFCE sans ligne d'identité, ligne d'identité sans
   marqueur IFCE, texte vide) — jamais un import "best effort". Mapping (`ifce-import-mapper.php`) :
@@ -365,7 +372,12 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   existant (`add_meta_box`) ; **aucune écriture avant validation (§1)** vérifiée déclarativement —
   le gestionnaire de téléversement n'appelle jamais `wp_insert_post()`/`gwseq_ifce_map_import()`,
   seul le gestionnaire de confirmation (déclenché uniquement après un clic explicite sur l'écran de
-  prévisualisation) les appelle ; enregistrement du sous-menu vérifié.
+  prévisualisation) les appelle ; enregistrement du sous-menu vérifié. **Écran de choix "Ajouter un
+  cheval" (0.13.1, §B)** : page de choix enregistrée en page orpheline (jamais un second point
+  d'entrée visible dans le menu) ; la redirection depuis l'écran natif ne se déclenche jamais en
+  dehors de `post-new.php`/CPT Cheval, et est bien neutralisée par `gwseq_manual=1` ; le cas nominal
+  de redirection (non exécutable ici, `exit()` après `wp_safe_redirect()`) vérifié déclarativement ;
+  rendu de l'écran de choix (les deux chemins présentés avec une mise en avant équivalente).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -430,21 +442,26 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   L'utilisabilité complète de la
   fiche sans JavaScript (blocs simplement empilés, formulaire toujours soumissible) reste elle
   aussi à confirmer en conditions réelles (navigateur avec JS désactivé).
-- **Import IFCE — LIMITATION MAJEURE ASSUMÉE (Étape 7)** : faute d'accès réseau pour télécharger un
-  exemplaire réel, **aucun test de ce dossier n'a été exécuté contre un authentique PDF IFCE/Info
-  Chevaux téléchargé depuis leur site**. L'extraction PDF (`ifce-pdf-text.php`) n'est validée que
-  contre un PDF minimal auto-généré pour les besoins du test ; la reconnaissance/l'analyse
-  (`ifce-import-parser.php`) n'est validée que contre une fixture TEXTE reproduisant fidèlement
-  l'exemple fourni dans la demande. En particulier : (1) l'extracteur PDF ne décode AUCUNE table
-  d'encodage de police (WinAnsiEncoding, Identity-H/CID, ToUnicode) — un PDF réel utilisant un
-  encodage de police non trivial pour les caractères accentués (Français, née, Félines...) pourrait
-  produire un texte mal décodé, non testé ici ; (2) la convention de lecture assumée pour repérer la
-  ligne d'identité et le tableau de pedigree (voir les docblocs de `ifce-import-parser.php`) n'a pas
-  pu être confrontée à la mise en page RÉELLE d'une fiche IFCE — une disposition différente (colonnes,
-  labels intercalés, pagination) pourrait ne pas être reconnue ; (3) le parcours complet
-  navigateur (téléversement réel → prévisualisation → confirmation → fiche créée) n'a jamais été
-  exercé dans un vrai WordPress. C'est précisément pour cette raison que la prévisualisation
-  obligatoire avant écriture (§9 de la demande) reste la garantie réelle contre une donnée mal
-  interprétée — jamais ce test automatisé. Le CR de livraison de cette étape détaille cette
-  limitation ; l'utilisateur a explicitement indiqué recetter cet import en conditions réelles avant
-  toute extension.
+  **Verrouillage de la Photo principale (0.13.1)** : la pose/le retrait réels de la classe
+  `gwseq-cheval-media__locked` sont exécutés et vérifiés (runtime JS), et la présence des règles CSS
+  masquant les contrôles natifs concernés est vérifiée déclarativement — mais l'EFFET VISUEL réel de
+  ces règles (les boutons Monter/Descendre/Replier effectivement invisibles et inatteignables au
+  clavier une fois la feuille de style chargée dans un vrai navigateur, l'absence de toute
+  possibilité de glisser-déposer la boîte hors de Médias) reste à confirmer en conditions réelles, ce
+  DOM factice n'appliquant aucune règle CSS.
+- **Import IFCE — validé contre le vrai PDF depuis la recette runtime (0.13.1), limites résiduelles
+  assumées (Étape 7)** : la reconnaissance/l'analyse est désormais testée contre le VRAI PDF de
+  Jamerose de Félines (`tests/fixtures/ifce-jamerose-de-felines.pdf`), plus seulement une fixture
+  texte artificielle — voir `ifce-pdf-text.php` pour le diagnostic complet de la cause exacte de
+  l'échec initial (objets compressés `/Type/ObjStm`, police composite Identity-H) et le correctif
+  retenu. Limites résiduelles NON couvertes par ce test, assumées et documentées : (1) un seul
+  niveau de flux d'objets compressés est résolu (pas de flux imbriqués) ; (2) un `/Resources` hérité
+  d'un ancêtre `/Pages` plutôt que porté directement par la page n'est pas résolu (le document réel
+  testé porte directement les siens, cas le plus courant chez les générateurs de rapports) ; (3) la
+  convention de lecture du pedigree (bloc contigu après le titre de section, ligne composée d'une
+  année isolée traitée comme continuation) n'a été confrontée qu'à la mise en page de CE document
+  précis — une disposition IFCE différente (colonnes, labels intercalés) n'a pas pu être testée ;
+  (4) le parcours complet navigateur (téléversement réel → prévisualisation → confirmation → fiche
+  créée, et l'écran de choix "Ajouter un cheval") n'a jamais été exercé dans un vrai WordPress. C'est
+  précisément pour cette raison que la prévisualisation obligatoire avant écriture (§9 de la demande
+  initiale) reste la garantie réelle contre une donnée mal interprétée — jamais ce test automatisé.

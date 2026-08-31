@@ -67,6 +67,12 @@ function wp_verify_nonce($nonce, $action) { return $GLOBALS['__gwseq_test_securi
 function current_user_can($cap, $post_id = null) { return $GLOBALS['__gwseq_test_security']['can_edit']; }
 function wp_is_post_revision($post_id) { return $GLOBALS['__gwseq_test_security']['is_revision']; }
 
+$GLOBALS['__gwseq_test_current_user_id'] = 1;
+function get_current_user_id() { return $GLOBALS['__gwseq_test_current_user_id']; }
+$GLOBALS['__gwseq_test_user_meta'] = array();
+function get_user_meta($user_id, $key, $single = false) { return $GLOBALS['__gwseq_test_user_meta'][$user_id][$key] ?? ''; }
+function update_user_meta($user_id, $key, $value) { $GLOBALS['__gwseq_test_user_meta'][$user_id][$key] = $value; return true; }
+
 // --- Médiathèque : registre en mémoire des attachements "images" existants, pilotable par le
 // test — mêmes garanties que la vraie wp_attachment_is_image() (un ID inconnu ou non-image est
 // rejeté) ---
@@ -271,6 +277,116 @@ $media_js_source = file_get_contents($module_dir . 'assets/cheval-media-admin.js
 gws_test_assert(strpos($media_js_source, 'wp.media') !== false, 'Câblage JS : le script utilise bien la médiathèque native (wp.media()), aucun uploader personnalisé');
 gws_test_assert(strpos($media_js_source, 'multiple: true') !== false, 'Câblage JS : la sélection multiple est activée dans la médiathèque');
 gws_test_assert(strpos($media_js_source, 'removeChild') !== false, 'Câblage JS : le retrait d’une image reste un simple retrait DOM, jamais un appel serveur ou une suppression du média');
+
+// =====================================================================================
+// Nettoyage de l'état WordPress hérité pour #postimagediv (correctif post-recette, étage "Photo
+// principale / onglet Médias") — gwseq_cleanup_legacy_postimagediv_metabox_user_state(). Même
+// méthodologie que le nettoyage Identité (gws-equestrian-cheval-logic-test.php, Étape 6) : ne
+// touche que les préférences PAR UTILISATEUR concernant précisément "postimagediv", jamais une
+// réinitialisation générale, jamais les autres identifiants.
+// =====================================================================================
+
+$cheval_screen = (object) array('id' => GWSEQ_CPT_CHEVAL, 'post_type' => GWSEQ_CPT_CHEVAL);
+
+// --- Écran hors sujet : jamais touché ---
+$GLOBALS['__gwseq_test_current_user_id'] = 42;
+$GLOBALS['__gwseq_test_user_meta'] = array(42 => array(
+  'metaboxhidden_gwseq_prestation' => array('postimagediv'),
+));
+gwseq_cleanup_legacy_postimagediv_metabox_user_state((object) array('id' => 'gwseq_prestation', 'post_type' => 'gwseq_prestation'));
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][42]['metaboxhidden_gwseq_prestation'] === array('postimagediv'),
+  'Nettoyage Photo principale : un écran qui n’est pas celui de la fiche Cheval n’est jamais touché'
+);
+
+// --- Aucun utilisateur connecté : jamais d'erreur ---
+$GLOBALS['__gwseq_test_current_user_id'] = 0;
+gwseq_cleanup_legacy_postimagediv_metabox_user_state($cheval_screen);
+
+// --- Screen Options : postimagediv avait été masquée -> réactivée, sans toucher aux autres
+// boîtes masquées par ailleurs (un postimagediv masqué resterait invisible même une fois
+// réinséré dans Médias, puisqu'il n'est pas lui-même un onglet géré) ---
+$GLOBALS['__gwseq_test_current_user_id'] = 7;
+$GLOBALS['__gwseq_test_user_meta'] = array(7 => array(
+  'metaboxhidden_gwseq_cheval' => array('postimagediv', 'gwseq-cheval-pedigree-preview'),
+));
+gwseq_cleanup_legacy_postimagediv_metabox_user_state($cheval_screen);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][7]['metaboxhidden_gwseq_cheval'] === array('gwseq-cheval-pedigree-preview'),
+  'Nettoyage Photo principale : une Photo principale masquée via Screen Options est réactivée, sans toucher aux autres boîtes masquées par l’utilisateur'
+);
+
+// --- Aucune préférence héritée à nettoyer : jamais de réécriture inutile ---
+$GLOBALS['__gwseq_test_current_user_id'] = 8;
+$GLOBALS['__gwseq_test_user_meta'] = array(8 => array(
+  'metaboxhidden_gwseq_cheval' => array('gwseq-cheval-pedigree-preview'),
+));
+gwseq_cleanup_legacy_postimagediv_metabox_user_state($cheval_screen);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][8]['metaboxhidden_gwseq_cheval'] === array('gwseq-cheval-pedigree-preview'),
+  'Nettoyage Photo principale : idempotent — une préférence déjà propre n’est jamais réécrite ni altérée'
+);
+
+// --- Ordre des meta boxes déjà corrompu par le contrôle natif "Descendre" utilisé en recette :
+// l'entrée "postimagediv" est retirée de TOUS les contextes où elle apparaît (elle n'a plus
+// aucune utilité une fois l'intégration Médias active — l'onglet la retrouve toujours par
+// identifiant, jamais par position), sans jamais toucher à l'ordre des AUTRES boîtes ---
+$GLOBALS['__gwseq_test_current_user_id'] = 9;
+$GLOBALS['__gwseq_test_user_meta'] = array(9 => array(
+  'meta-box-order_gwseq_cheval' => array(
+    'side' => 'gwseq-cheval-global-id-dev,postimagediv,gwseq-cheval-production',
+    'normal' => 'gwseq-cheval-identite,gwseq-cheval-media',
+  ),
+));
+gwseq_cleanup_legacy_postimagediv_metabox_user_state($cheval_screen);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][9]['meta-box-order_gwseq_cheval']['side'] === 'gwseq-cheval-global-id-dev,gwseq-cheval-production',
+  'Nettoyage Photo principale : l’ordre corrompu par le contrôle "Descendre" est nettoyé — postimagediv retiré de l’ordre mémorisé, les autres identifiants du même contexte restant intacts'
+);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][9]['meta-box-order_gwseq_cheval']['normal'] === 'gwseq-cheval-identite,gwseq-cheval-media',
+  'Nettoyage Photo principale : l’ordre d’un AUTRE contexte (« normal », sans rapport avec postimagediv) n’est jamais modifié'
+);
+
+// --- Cas signalé en recette : postimagediv déplacé par erreur DANS le contexte "normal" lui-même
+// (le contrôle natif l'ayant fait dériver hors de sa colonne native) -> retiré également, quel
+// que soit le contexte concerné ---
+$GLOBALS['__gwseq_test_current_user_id'] = 10;
+$GLOBALS['__gwseq_test_user_meta'] = array(10 => array(
+  'meta-box-order_gwseq_cheval' => array('normal' => 'gwseq-cheval-identite,postimagediv,gwseq-cheval-media'),
+));
+gwseq_cleanup_legacy_postimagediv_metabox_user_state($cheval_screen);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][10]['meta-box-order_gwseq_cheval']['normal'] === 'gwseq-cheval-identite,gwseq-cheval-media',
+  'Nettoyage Photo principale : une dérive jusque dans le contexte "normal" (constatée en recette) est nettoyée tout autant qu’ailleurs'
+);
+
+// --- Aucune entrée "postimagediv" dans l'ordre mémorisé : jamais de réécriture inutile ---
+$GLOBALS['__gwseq_test_current_user_id'] = 11;
+$GLOBALS['__gwseq_test_user_meta'] = array(11 => array(
+  'meta-box-order_gwseq_cheval' => array('normal' => 'gwseq-cheval-identite,gwseq-cheval-media'),
+));
+gwseq_cleanup_legacy_postimagediv_metabox_user_state($cheval_screen);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][11]['meta-box-order_gwseq_cheval']['normal'] === 'gwseq-cheval-identite,gwseq-cheval-media',
+  'Nettoyage Photo principale : un ordre déjà propre (aucune trace de postimagediv) n’est jamais modifié'
+);
+
+// =====================================================================================
+// Verrouillage de la Photo principale une fois intégrée à Médias (§C de la demande) — vérification
+// déclarative de la présence des mécanismes dont l'exécution réelle est déjà couverte par
+// gws-equestrian-cheval-admin-tabs-runtime-test.js (JS) et cheval-tabs.css (CSS, non exécutable
+// hors d'un vrai navigateur).
+// =====================================================================================
+
+$cheval_tabs_js_source = file_get_contents($module_dir . 'assets/cheval-tabs-admin.js');
+$cheval_tabs_css_source = file_get_contents($module_dir . 'assets/cheval-tabs.css');
+
+gws_test_assert(strpos($cheval_tabs_js_source, "gwseq-cheval-media__locked") !== false, 'Verrouillage Photo principale : le script pose bien une classe de verrouillage lors du déplacement dans Médias');
+foreach (array('handle-order-higher', 'handle-order-lower', 'handlediv') as $native_control) {
+  gws_test_assert(strpos($cheval_tabs_css_source, $native_control) !== false, "Verrouillage Photo principale : la feuille de style masque bien le contrôle natif \".$native_control\" une fois la classe de verrouillage posée");
+}
+gws_test_assert(strpos($cheval_tabs_js_source, "classList.remove('gwseq-cheval-media__locked')") !== false, 'Verrouillage Photo principale : la classe de verrouillage est bien retirée par le filet de sécurité n°2 (restauration à la position native)');
 
 foreach ($GLOBALS['__gwseq_test_domains_used'] as $domain) {
   gws_test_assert($domain === 'gws-core', "i18n : aucun appel de traduction n’utilise un text domain autre que \"gws-core\" (trouvé : $domain)");

@@ -12,24 +12,40 @@
  * est exploitée ; le reste du document est ignoré, jamais deviné. Aucune donnée ambiguë n'est
  * importée — un champ non reconnu reste simplement vide plutôt que de risquer une valeur fausse.
  *
- * CONVENTION DE LECTURE ASSUMÉE (documentée comme limitation, non validée contre un PDF IFCE réel
- * faute d'accès à un exemplaire) :
+ * CONVENTION DE LECTURE — VALIDÉE CONTRE LE VRAI PDF IFCE DE JAMEROSE DE FÉLINES (Étape 7, recette
+ * runtime, voir `tests/fixtures/ifce-jamerose-de-felines.pdf` et `ifce-pdf-text.php` pour le détail
+ * du correctif d'extraction qui a rendu cette validation possible — le texte ligne par ligne qui
+ * alimente ce fichier n'était, avant ce correctif, jamais reconnaissable) :
  * - Identité : une "ligne d'identité" à 5 valeurs séparées par des virgules
- *   (Race, Sexe, Robe, Taille, "née en AAAA") est repérée par la présence du jeton Sexe
+ *   (Race, Sexe, Robe, Taille, "né(e) en AAAA") est repérée par la présence du jeton Sexe
  *   (Mâle/Femelle/Hongre, insensible à la casse/aux accents) ; le nom du cheval est la ligne non
- *   vide qui la précède immédiatement (correspond exactement à l'exemple fourni : "JAMEROSE DE
- *   FELINES" au-dessus de "Selle Français, Femelle, Gris, 1m68, née en 2019").
- * - Pedigree : repéré par un titre de section ("Généalogie"/"Pedigree"/"Origines"), suivi d'au
- *   plus 14 lignes non vides consécutives, une par ascendant, dans l'ORDRE UNIVERSEL de lecture
- *   d'un tableau généalogique à 3 générations (profondeur, branche Père en premier, de haut en
- *   bas) : Père, PP, PPP, PPM, PM, PMP, PMM, Mère, MP, MPP, MPM, MM, MMP, MMM — convention vérifiée
- *   comme correspondant exactement à l'exemple Jamerose de Félines fourni (14 ascendants).
+ *   vide qui la précède immédiatement — confirmé EXACTEMENT sur le vrai document ("JAMEROSE DE
+ *   FELINES" au-dessus de "Selle Francais, Femelle, Gris, 1m68, né(e) en 2019").
+ * - Pedigree : repéré par un titre de section ("Généalogie"/"Pedigree"/"Origines"), suivi d'un bloc
+ *   CONTIGU de lignes non vides (le bloc s'arrête à la première ligne vide rencontrée APRÈS le
+ *   premier ascendant, jamais avant — le vrai document alterne juste après ce bloc vers une section
+ *   "Production" hors périmètre V1, voir §14), plafonné à 14 lignes/ascendants, dans l'ORDRE
+ *   UNIVERSEL de lecture d'un tableau généalogique à 3 générations (profondeur, branche Père en
+ *   premier, de haut en bas) : Père, PP, PPP, PPM, PM, PMP, PMM, Mère, MP, MPP, MPM, MM, MMP, MMM —
+ *   convention CONFIRMÉE exacte sur le vrai document (14 ascendants, même ordre que l'exemple
+ *   fourni dans la demande).
+ *   Chaque ligne d'ascendant réelle porte le nom suivi, quand présent, d'un code de stud-book en
+ *   MAJUSCULES et d'une année à 4 chiffres (ex. "HORS LA LOI II SFA 1995"), parfois précédés d'un
+ *   code pays entre parenthèses (ex. "HEARTBREAKER (NLD) KWPN 1989") — voir
+ *   gwseq_ifce_parse_pedigree_entry_line(). Une éventuelle mention "Alias ..." (nom d'enregistrement
+ *   alternatif, rencontrée sur le premier ascendant du document réel) est retirée : seul le nom
+ *   canonique avant "Alias" est conservé, jamais les deux. Un ascendant dont le libellé complet
+ *   dépasse la largeur de sa case peut se poursuivre sur la ligne suivante par la seule année sur
+ *   une ligne isolée (rencontré sur le vrai document) : une ligne composée uniquement de 4 chiffres
+ *   est alors rattachée à la ligne précédente plutôt que comptée comme un ascendant séparé.
  *
  * L'ANNÉE DE NAISSANCE D'UN ASCENDANT n'est volontairement PAS extraite/stockée en V1 (§6 : "quand
  * il existe un emplacement de donnée adapté") : le modèle d'ascendant externe existant
  * (cheval-pedigree.php, `{name, race, race_autre, father, mother}`) ne prévoit aucun champ année,
  * et ce fichier n'a pas vocation à modifier ce modèle déjà testé pour ce premier import — une
- * évolution future pourra l'ajouter si un emplacement dédié est créé.
+ * évolution future pourra l'ajouter si un emplacement dédié est créé. Le code de stud-book de
+ * chaque ascendant est mappé au référentiel canonique existant exactement comme pour l'identité
+ * (gwseq_match_race_to_canonical_code(), sinon "Autre" + texte d'origine, jamais deviné).
  */
 
 if (!defined('ABSPATH')) exit;
@@ -186,9 +202,15 @@ function gwseq_ifce_parse_indices_from_text($text) {
     $result[$key] = array('valeur' => '', 'cd' => '');
   }
 
+  // PREMIÈRE occurrence uniquement pour chaque indice (jamais la dernière) : un vrai document
+  // multi-pages peut répéter le même sigle d'indice pour un ASCENDANT plus loin dans le texte
+  // (production détaillée, hors périmètre V1, §14) — seule la mention la plus proche du début,
+  // dans la zone de synthèse du cheval lui-même, doit être retenue ; ne jamais laisser un indice
+  // d'un autre cheval écraser silencieusement celui de la fiche importée.
   if (preg_match_all('/\b(ISO|ICC|IDR)\s+([+-]?\d+(?:[.,]\d+)?)\s*\(\s*([0-9]+(?:[.,][0-9]+)?)\s*\)\s*\(\s*(\d{4})\s*\)/i', (string) $text, $matches, PREG_SET_ORDER)) {
     foreach ($matches as $m) {
       $key = strtolower($m[1]);
+      if ($result[$key]['valeur'] !== '') continue;
       $result[$key] = array(
         'valeur' => (int) round((float) str_replace(',', '.', $m[2])),
         'cd' => (float) str_replace(',', '.', $m[3]),
@@ -200,6 +222,7 @@ function gwseq_ifce_parse_indices_from_text($text) {
   if (preg_match_all('/\b(BSO|BCC|BDR)\s+([+-]?\d+(?:[.,]\d+)?)\s*\(\s*([0-9]+(?:[.,][0-9]+)?)\s*\)/i', (string) $text, $matches, PREG_SET_ORDER)) {
     foreach ($matches as $m) {
       $key = strtolower($m[1]);
+      if ($result[$key]['valeur'] !== '') continue;
       $result[$key] = array(
         'valeur' => (float) str_replace(',', '.', $m[2]),
         'cd' => (float) str_replace(',', '.', $m[3]),
@@ -245,10 +268,38 @@ function gwseq_ifce_build_ancestor_subtree(&$queue, $levels) {
 }
 
 /**
+ * Analyse UNE ligne d'ascendant déjà isolée (une fois les continuations d'année déjà fusionnées,
+ * voir gwseq_ifce_parse_pedigree_from_lines()) en {name, race_text} — voir la convention de lecture
+ * documentée en tête de fichier pour les formes réelles rencontrées :
+ * - "NOM" (aucune information de stud-book/année — cas le plus simple, ex. saisie manuelle) ;
+ * - "NOM CODE_STUDBOOK" ou "NOM CODE_STUDBOOK ANNEE" (cas réel le plus courant) ;
+ * - "NOM (CODE_PAYS) CODE_STUDBOOK ANNEE" (code pays entre parenthèses avant le stud-book) ;
+ * - toute forme ci-dessus précédée d'une mention "Alias ..." (nom d'enregistrement alternatif) :
+ *   retirée avant analyse, seul le nom canonique avant "Alias" est conservé.
+ * L'année elle-même n'est jamais retenue dans la valeur de retour (voir la note en tête de fichier
+ * sur l'absence d'emplacement de donnée pour l'année d'un ascendant) — seul son repérage permet de
+ * délimiter correctement la fin du nom.
+ *
+ * PIÈGE ÉCARTÉ (constaté en développement) : un nom de cheval se termine très souvent par un
+ * chiffre romain ("HORS LA LOI II", "ARIANE DU PLESSIS II"...), qui a exactement la forme d'un code
+ * de stud-book (lettres majuscules). Sans précaution, un nom SANS aucune information de stud-book
+ * verrait alors son chiffre romain final amputé et mal classé comme "race". Le groupe de code de
+ * stud-book exclut donc explicitement les chiffres romains isolés (I à X) en fin de ligne.
+ */
+function gwseq_ifce_parse_pedigree_entry_line($line) {
+  $line = trim(preg_replace('/\bAlias\b.*$/iu', '', $line));
+  $roman_numerals = 'I|II|III|IV|V|VI|VII|VIII|IX|X';
+  if (preg_match('/^(.+?)\s+(?:\(([A-Z]{2,3})\)\s+)?(?!(?:' . $roman_numerals . ')(?:\s+\d{4})?$)([A-Z]{2,6})(?:\s+\d{4})?$/u', $line, $m)) {
+    return array('name' => trim($m[1]), 'race_text' => trim($m[3]));
+  }
+  return array('name' => $line, 'race_text' => '');
+}
+
+/**
  * Extraction du pedigree (§6) — voir la convention de lecture documentée en tête de fichier.
- * Retourne {father, mother, count} : 'count' est le nombre brut de lignes d'ascendant reconnues
- * (utilisé tel quel par la prévisualisation, §9 : "Pedigree : 14 ascendants détectés"), 'father'/
- * 'mother' les arbres déjà à la forme attendue par gwseq_set_horse_parent(mode: 'external').
+ * Retourne {father, mother, count} : 'count' est le nombre d'ascendants reconnus (utilisé tel quel
+ * par la prévisualisation, §9 : "Pedigree : 14 ascendants détectés"), 'father'/'mother' les arbres
+ * déjà à la forme attendue par gwseq_set_horse_parent(mode: 'external').
  */
 function gwseq_ifce_parse_pedigree_from_lines($lines) {
   $result = array('father' => null, 'mother' => null, 'count' => 0);
@@ -262,16 +313,41 @@ function gwseq_ifce_parse_pedigree_from_lines($lines) {
   }
   if ($heading_index === null) return $result;
 
-  $entries = array();
-  for ($i = $heading_index + 1; $i < count($lines) && count($entries) < 14; $i++) {
+  // Bloc CONTIGU de lignes non vides (voir convention de lecture en tête de fichier) : on ignore
+  // d'éventuelles lignes vides de mise en forme entre le titre et le premier ascendant, mais on
+  // s'arrête à la première ligne vide rencontrée UNE FOIS ce premier ascendant trouvé — jamais un
+  // ramassage aveugle des 14 prochaines lignes non vides, qui déborderait sur la section
+  // "Production" détaillée du vrai document (hors périmètre V1, §14).
+  // Plafond large sur les lignes BRUTES (avant fusion des continuations d'année, qui consomment
+  // chacune un rang sans représenter un ascendant supplémentaire) — la vraie limite du bloc reste
+  // la première ligne vide rencontrée ci-dessous ; ce plafond ne fait qu'éviter un parcours sans
+  // fin sur une entrée malformée qui ne rencontrerait jamais de ligne vide.
+  $raw_lines = array();
+  $started = false;
+  for ($i = $heading_index + 1; $i < count($lines) && count($raw_lines) < 40; $i++) {
     $line = trim($lines[$i]);
-    if ($line === '') continue;
-    if (preg_match('/^(.+?)\s*\(\s*([^,()]+?)\s*(?:,\s*\d{4}\s*)?\)\s*$/u', $line, $m)) {
-      $entries[] = array('name' => trim($m[1]), 'race_text' => trim($m[2]));
+    if ($line === '') {
+      if ($started) break;
+      continue;
+    }
+    $started = true;
+    $raw_lines[] = $line;
+  }
+
+  // Une ligne composée uniquement d'une année à 4 chiffres est la continuation visuelle de la ligne
+  // précédente (ascendant dont le libellé complet a débordé sur deux lignes — rencontré sur le vrai
+  // document, voir la convention de lecture), jamais un ascendant distinct.
+  $merged_lines = array();
+  foreach ($raw_lines as $line) {
+    if (preg_match('/^\d{4}$/', $line) && !empty($merged_lines)) {
+      $merged_lines[count($merged_lines) - 1] .= ' ' . $line;
     } else {
-      $entries[] = array('name' => $line, 'race_text' => '');
+      $merged_lines[] = $line;
     }
   }
+  $merged_lines = array_slice($merged_lines, 0, 14);
+
+  $entries = array_map('gwseq_ifce_parse_pedigree_entry_line', $merged_lines);
 
   $result['count'] = count($entries);
   if (empty($entries)) return $result;

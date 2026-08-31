@@ -1,5 +1,33 @@
 # Changelog — GWS Starter
 
+## 1.16.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Recette runtime de l'import IFCE et de la Photo principale — trois correctifs consolidés (GWS
+  Equestrian 0.13.1).**
+  **A. Compatibilité avec le vrai PDF IFCE (bug bloquant)** : le vrai PDF de Jamerose de Félines
+  était rejeté. Diagnostic complet avant correctif : la quasi-totalité des dictionnaires du PDF réel
+  (généré par iText/BIRT) sont stockés dans un flux d'objets compressé jamais lu par l'ancien
+  extracteur, et le corps du texte utilise une police composite CID (Identity-H) dont les codes ne
+  sont interprétables qu'à travers sa table ToUnicode — également jamais résolue. `ifce-pdf-text.php`
+  a été réécrit pour résoudre ces deux mécanismes (index d'objets couvrant les flux compressés,
+  décodage ToUnicode/WinAnsiEncoding par police, reconstruction de ligne par coordonnée Y plutôt que
+  par les opérateurs `Td`/`TD`/`T*`, absents de ce type de générateur). Résultat validé sur le vrai
+  PDF : identité, indices (avec CD) et les 14 ascendants du pedigree sont désormais tous extraits et
+  reconnus correctement. Ce vrai PDF (`tests/fixtures/ifce-jamerose-de-felines.pdf`) est désormais la
+  fixture de référence des tests de reconnaissance/analyse.
+  **B. Écran de choix "Ajouter un cheval"** : l'import IFCE, jusqu'ici relégué à un simple bandeau
+  sur le formulaire manuel, est désormais présenté à égalité avec la création manuelle sur un écran
+  de choix dédié, affiché AVANT tout formulaire — le manuel reste entièrement disponible via un
+  second clic explicite.
+  **C. Verrouillage de la Photo principale dans Médias (bug bloquant)** : le contrôle natif
+  "Descendre" de la boîte Image à la une, restée visible après son intégration dans l'onglet Médias,
+  la faisait disparaître une fois cliqué et pouvait corrompre l'état WordPress de l'utilisateur. Les
+  contrôles de réordonnancement/repli, devenus obsolètes une fois la boîte fixée dans Médias, sont
+  désormais masqués, et un nettoyage automatique répare l'état déjà corrompu par un usage antérieur
+  de ce contrôle, sans jamais toucher aux autres préférences de l'utilisateur. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.13.1) et `tests/README.md`
+  pour le détail complet des trois correctifs.
+
 ## 1.16.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Étape 7 : premier import intelligent depuis une fiche de synthèse IFCE, au format PDF (GWS

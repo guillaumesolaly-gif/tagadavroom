@@ -25,10 +25,23 @@
  * des pages de réglages globales du plugin qui utilisent manage_options.
  *
  * COMPATIBILITÉ (§12) : ce fichier ne modifie ni ne remplace le formulaire de création manuelle
- * existant (cheval-fields.php et les autres boîtes) — il n'ajoute qu'un second chemin, un lien
- * visible depuis l'écran natif "Ajouter un cheval". Toute donnée importée reste ensuite éditable
- * exactement comme une donnée saisie manuellement, aucun champ ni verrou spécifique à l'import
- * n'est introduit dans les boîtes existantes.
+ * existant (cheval-fields.php et les autres boîtes) — la création manuelle reste un chemin à part
+ * entière, choisi explicitement. Toute donnée importée reste ensuite éditable exactement comme une
+ * donnée saisie manuellement, aucun champ ni verrou spécifique à l'import n'est introduit dans les
+ * boîtes existantes.
+ *
+ * ÉCRAN DE CHOIX "AJOUTER UN CHEVAL" (correctif post-recette, §B de la demande) : un simple bandeau
+ * d'information sur le formulaire manuel (première version de cette fonctionnalité) reléguait
+ * l'import IFCE au second plan, alors qu'il peut préremplir Identité + Indices + Pedigree — une
+ * fonctionnalité largement aussi centrale que la création manuelle, jamais accessoire. Toute
+ * requête vers l'écran natif "Ajouter un cheval" (`post-new.php?post_type=gwseq_cheval`) est
+ * désormais interceptée AVANT l'affichage du formulaire manuel et redirigée vers un écran de choix
+ * dédié (gwseq_render_cheval_choice_page()) proposant les deux chemins à égalité — le formulaire
+ * manuel n'est atteint qu'après un clic explicite sur "Créer manuellement" (paramètre
+ * `gwseq_manual=1`, qui neutralise la redirection pour CETTE requête précise uniquement, jamais de
+ * façon persistante). Cet écran de choix est enregistré comme page orpheline (parent `null`) :
+ * jamais un second point d'entrée visible dans le menu, qui ferait doublon avec l'entrée native
+ * "Ajouter un cheval" déjà utilisée par WordPress pour déclencher cette redirection.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -61,25 +74,82 @@ function gwseq_add_ifce_import_page() {
 add_action('admin_menu', 'gwseq_add_ifce_import_page');
 
 /**
- * Lien depuis l'écran natif "Ajouter un cheval" (§1 : les deux chemins — création manuelle /
- * import IFCE — doivent être proposés au même endroit). Ne modifie jamais l'écran lui-même, se
- * contente d'un avis d'administration standard, strictement scopé à cet écran précis.
+ * Écran de choix, enregistré comme page orpheline (parent `null`, jamais affichée dans un menu —
+ * voir la note d'architecture en tête de fichier) : seul point d'atterrissage de la redirection
+ * ci-dessous, réutilise le même mécanisme WordPress natif (`admin.php?page=...`) que n'importe
+ * quelle page d'administration.
  */
-function gwseq_ifce_import_add_new_notice() {
-  if (!function_exists('get_current_screen')) return;
-  $screen = get_current_screen();
-  if (!$screen || $screen->base !== 'post' || $screen->post_type !== GWSEQ_CPT_CHEVAL) return;
+function gwseq_add_cheval_choice_page() {
+  add_submenu_page(
+    null,
+    __('Ajouter un cheval', 'gws-core'),
+    __('Ajouter un cheval', 'gws-core'),
+    'edit_posts',
+    'gwseq-add-cheval-choice',
+    'gwseq_render_cheval_choice_page'
+  );
+}
+add_action('admin_menu', 'gwseq_add_cheval_choice_page');
+
+function gwseq_cheval_choice_page_url() {
+  return admin_url('admin.php?page=gwseq-add-cheval-choice');
+}
+
+function gwseq_cheval_manual_create_url() {
+  return admin_url('post-new.php?post_type=' . GWSEQ_CPT_CHEVAL . '&gwseq_manual=1');
+}
+
+/**
+ * Interception de l'écran natif "Ajouter un cheval" (§B de la demande) : redirige vers l'écran de
+ * choix TANT QUE le paramètre `gwseq_manual=1` n'est pas présent — ce paramètre n'est ajouté que
+ * par le lien "Créer manuellement" de l'écran de choix lui-même (voir
+ * gwseq_render_cheval_choice_page()), jamais persisté au-delà de cette requête précise : revenir
+ * sur "Ajouter un cheval" une prochaine fois represente de nouveau le choix. Ne concerne QUE
+ * `post-new.php` pour le CPT Cheval — l'édition d'une fiche existante (`post.php?action=edit`)
+ * n'est jamais concernée, quel que soit son mode de création d'origine.
+ */
+function gwseq_redirect_cheval_add_new_to_choice() {
   global $pagenow;
   if ($pagenow !== 'post-new.php') return;
+  if (($_GET['post_type'] ?? '') !== GWSEQ_CPT_CHEVAL) return;
+  if (isset($_GET['gwseq_manual'])) return;
   if (!current_user_can('edit_posts')) return;
 
-  echo '<div class="notice notice-info"><p>' . sprintf(
-    /* translators: %s: lien vers l'écran d'import IFCE */
-    esc_html__('Vous pouvez aussi importer cette fiche depuis une fiche de synthèse IFCE / Info Chevaux (PDF) plutôt que de la créer manuellement. %s', 'gws-core'),
-    '<a href="' . esc_url(gwseq_ifce_import_page_url()) . '">' . esc_html__('Importer une fiche IFCE', 'gws-core') . '</a>'
-  ) . '</p></div>';
+  wp_safe_redirect(gwseq_cheval_choice_page_url());
+  exit;
 }
-add_action('admin_notices', 'gwseq_ifce_import_add_new_notice');
+add_action('admin_init', 'gwseq_redirect_cheval_add_new_to_choice');
+
+/**
+ * Écran de choix lui-même (§B) : les deux chemins — import IFCE et création manuelle — présentés à
+ * égalité, jamais l'un en retrait de l'autre. Aucune écriture, aucune logique métier ici : deux
+ * simples liens vers les écrans déjà existants (import IFCE, formulaire manuel avec
+ * `gwseq_manual=1`).
+ */
+function gwseq_render_cheval_choice_page() {
+  if (!current_user_can('edit_posts')) wp_die(esc_html__('Action non autorisée.', 'gws-core'));
+  ?>
+  <div class="wrap gwseq-cheval-choice">
+    <h1><?php esc_html_e('Ajouter un cheval', 'gws-core'); ?></h1>
+    <div class="gwseq-cheval-choice__options">
+      <div class="gwseq-cheval-choice__option">
+        <h2><?php esc_html_e('Importer depuis l’IFCE', 'gws-core'); ?></h2>
+        <p><?php esc_html_e('Importez la fiche de synthèse Info Chevaux de votre cheval pour préremplir automatiquement les informations disponibles (identité, indices, pedigree).', 'gws-core'); ?></p>
+        <p><a class="button button-primary button-hero" href="<?php echo esc_url(gwseq_ifce_import_page_url()); ?>"><?php esc_html_e('Importer depuis l’IFCE', 'gws-core'); ?></a></p>
+      </div>
+      <div class="gwseq-cheval-choice__option">
+        <h2><?php esc_html_e('Créer manuellement', 'gws-core'); ?></h2>
+        <p><?php esc_html_e('Renseignez vous-même les informations du cheval.', 'gws-core'); ?></p>
+        <p><a class="button button-secondary button-hero" href="<?php echo esc_url(gwseq_cheval_manual_create_url()); ?>"><?php esc_html_e('Créer manuellement', 'gws-core'); ?></a></p>
+      </div>
+    </div>
+  </div>
+  <style>
+    .gwseq-cheval-choice__options { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; max-width: 960px; }
+    .gwseq-cheval-choice__option { flex: 1 1 320px; background: #fff; border: 1px solid #ccd0d4; padding: 24px; }
+  </style>
+  <?php
+}
 
 /* -------------------------------------------------------------------------------------------
  * Stockage temporaire de la structure analysée (transient, jamais une meta de fiche à ce stade).

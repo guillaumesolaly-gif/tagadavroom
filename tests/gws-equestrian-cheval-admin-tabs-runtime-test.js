@@ -240,6 +240,25 @@ function makePostimagediv(hasImage) {
   hndle.className = 'hndle';
   hndle.textContent = 'Image à la une';
   header.appendChild(hndle);
+
+  // Contrôles natifs d'accessibilité clavier de réordonnancement des metaboxes
+  // (wp-admin/js/postbox.js) + repli/dépli — reproduits ici car ce sont exactement ceux dont la
+  // recette a montré qu'ils faisaient disparaître la Photo principale de l'onglet Médias une fois
+  // cliqués (voir le correctif "gwseq-cheval-media__locked" dans cheval-tabs-admin.js).
+  const handleActions = new FakeElement('div');
+  handleActions.className = 'handle-actions';
+  const orderHigher = new FakeElement('button');
+  orderHigher.className = 'handle-order-higher';
+  handleActions.appendChild(orderHigher);
+  const orderLower = new FakeElement('button');
+  orderLower.className = 'handle-order-lower';
+  handleActions.appendChild(orderLower);
+  const handlediv = new FakeElement('button');
+  handlediv.className = 'handlediv';
+  handlediv.setAttribute('aria-expanded', 'true');
+  handleActions.appendChild(handlediv);
+  header.appendChild(handleActions);
+
   box.appendChild(header);
 
   const inside = new FakeElement('div');
@@ -623,6 +642,10 @@ function runFallbackScenario() {
     'Filet de sécurité n°2 : la Photo principale, réellement déplacée dans l’onglet Médias avant la désactivation, est restaurée à sa position native exacte (colonne latérale)',
     screen.sideSortables.children.indexOf(screen.boxes.postimagediv) !== -1 && screen.boxes.photoPrincipaleSlot.children.indexOf(screen.boxes.postimagediv) === -1
   );
+  ok(
+    'Filet de sécurité n°2 : la classe de verrouillage (Monter/Descendre/Replier masqués) est bien retirée en même temps que la restauration — la Photo principale redevient une metabox normale une fois de retour dans sa colonne native',
+    !screen.boxes.postimagediv.classList.contains('gwseq-cheval-media__locked')
+  );
 }
 
 /* =============================================================================================
@@ -683,6 +706,11 @@ function runPhotoPrincipaleContentScenario(hasImage) {
 
   const inside = postimagediv.children.filter(function (c) { return c.className === 'inside'; })[0];
   ok('Contenu Photo principale (' + label + ') : la boîte déplacée conserve bien son .inside (jamais vidé par le déplacement)', !!inside);
+
+  ok(
+    'Verrouillage Photo principale (' + label + ') : la classe de verrouillage est posée après déplacement (masque Monter/Descendre/Replier via cheval-tabs.css — correctif "disparaît au clic sur Descendre")',
+    postimagediv.classList.contains('gwseq-cheval-media__locked')
+  );
 
   const nonceSurvived = !!inside && inside.children.some(function (c) { return c.getAttribute('name') === '_wpnonce_set_post_thumbnail'; });
   ok('Contenu Photo principale (' + label + ') : le champ nonce natif de .inside est bien préservé', nonceSurvived);

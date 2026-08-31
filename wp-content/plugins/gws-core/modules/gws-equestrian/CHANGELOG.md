@@ -5,6 +5,110 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.13.1 — Recette runtime Étape 7 : vrai PDF IFCE compatible, choix "Ajouter un cheval", verrouillage Photo principale
+
+Trois correctifs consolidés suite à la première recette runtime de l'import IFCE et de
+l'intégration de la Photo principale (0.12.5/0.12.6) — livraison unique, aucune nouvelle étape
+commencée.
+
+### A. Compatibilité avec le vrai PDF IFCE (bug bloquant)
+
+Le vrai PDF de synthèse de Jamerose de Félines, téléchargé depuis Info Chevaux, était rejeté
+(« Ce document n'a pas été reconnu comme une fiche de synthèse IFCE »). Diagnostic complet effectué
+AVANT tout correctif (voir `ifce-pdf-text.php` pour le détail exhaustif) :
+
+1. **Objets compressés (`/Type/ObjStm`)** : la quasi-totalité des dictionnaires structurels de ce
+   PDF (généré par iText 2.1.7/BIRT) — pages, ressources, dictionnaires de police — sont stockés
+   dans un flux d'objets compressé (PDF 1.5+), jamais comme objets classiques directement visibles.
+   L'ancien extracteur ne lisait que les objets classiques : il ne pouvait donc jamais découvrir la
+   police utilisée par un texte donné, ni sa table `/ToUnicode`.
+2. **Police composite CID (`/Type0`, encodage `/Identity-H`)** : le corps de la fiche utilise une
+   police "Marianne" intégrée et sous-jeu — chaque code affiché est un identifiant de glyphe interne
+   au sous-jeu, pas un octet ASCII/Latin-1. Sans application de la table `/ToUnicode` associée
+   (qui existe bien dans ce PDF), l'ancien extracteur recopiait ces codes tels quels, produisant du
+   texte sans rapport avec le contenu réel — jamais "IFCE", jamais "Femelle"...
+3. **Absence de `Td`/`TD`/`T*`** : ce générateur positionne chaque fragment de texte par une matrice
+   absolue (`cm`), jamais par les opérateurs que l'ancienne reconstruction de ligne traitait comme
+   des sauts de ligne.
+
+**Conclusion du diagnostic** : l'extracteur PHP minimal initial n'était objectivement pas capable de
+traiter ce type de PDF — pas un problème de reconnaissance trop stricte côté parseur. Correctif
+retenu, PAS un assouplissement de la reconnaissance :
+
+- `ifce-pdf-text.php` réécrit : index d'objets couvrant les objets classiques ET compressés
+  (`/Type/ObjStm`), résolution des polices utilisées par chaque page (`/Type0`+`/ToUnicode` avec
+  parsing du CMap `beginbfchar`/`beginbfrange`, ou police simple via une table WinAnsiEncoding
+  standard), reconstruction de ligne par changement de coordonnée Y plutôt que par `Td`/`TD`/`T*`.
+  Repli automatique sur l'ancien comportement si aucune page exploitable n'est trouvée (PDF minimal
+  sans arbre de pages complet, cas des tests). Seule la PREMIÈRE page est décodée (§3 de la demande
+  initiale) — choix délibéré et non plus seulement une limite de commodité : les pages suivantes du
+  vrai document contiennent le détail de production de chaque ascendant, avec ses propres indices
+  ISO/BSO pour d'autres chevaux, qui contamineraient sinon les indices de la fiche importée.
+- `ifce-import-parser.php` : la convention de lecture de l'identité s'est révélée exacte une fois le
+  texte correctement extrait (aucun changement nécessaire). Le pedigree, en revanche, a nécessité
+  trois ajustements constatés sur le vrai document : une mention "Alias ..." (nom d'enregistrement
+  alternatif) est désormais retirée ; une ligne composée uniquement d'une année à 4 chiffres est
+  reconnue comme la continuation visuelle de la ligne précédente (ascendant dont le libellé a
+  débordé sur deux lignes) ; le bloc d'ascendants s'arrête désormais à la première ligne vide
+  rencontrée après le premier ascendant, plutôt que de ramasser aveuglément les 14 prochaines
+  lignes non vides (qui débordait sur la section "Production" détaillée, hors périmètre V1). La
+  reconnaissance du code de stud-book d'un ascendant écarte explicitement les chiffres romains
+  isolés (I à X) en fin de ligne — un nom de cheval s'y termine très souvent ("HORS LA LOI II"),
+  qui aurait sinon été à tort amputé et classé comme stud-book. Les indices ne retiennent désormais
+  que leur PREMIÈRE occurrence dans le texte (jamais la dernière) — un document réel répète le même
+  sigle d'indice pour un ascendant plus loin dans le texte, qui ne doit jamais écraser silencieusement
+  l'indice du cheval importé lui-même.
+- **Résultat sur le vrai PDF de Jamerose** : identité, indices (ISO 115/CD 0.70/2023, BSO +12/CD
+  0.59) et les 14 ascendants du pedigree (arbre exact, race de stud-book mappée quand canonique,
+  sinon "Autre" + texte d'origine) sont désormais tous extraits et reconnus correctement.
+- **Limites résiduelles assumées** (voir `ifce-pdf-text.php`/`README.md` pour le détail) : un seul
+  niveau de flux d'objets compressés résolu ; `/Resources` hérité d'un ancêtre `/Pages` non résolu
+  (chaque page du document réel testé porte directement les siens) ; SIRE/UELN restent vides sur
+  cette fiche réelle (non présents dans sa zone exploitée).
+- **Tests** : `tests/fixtures/ifce-jamerose-de-felines.pdf` (le VRAI PDF) est désormais la fixture de
+  référence pour la reconnaissance/l'analyse — un texte pré-extrait artificiellement n'est plus
+  considéré comme suffisant. Le test appelle exactement le même pipeline que le runtime WordPress.
+
+### B. Écran de choix "Ajouter un cheval" (import IFCE trop secondaire)
+
+Un simple bandeau d'information sur le formulaire manuel reléguait l'import IFCE au second plan.
+Toute requête vers l'écran natif "Ajouter un cheval" est désormais interceptée AVANT l'affichage du
+formulaire manuel et redirigée vers un écran de choix dédié présentant les deux chemins — Importer
+depuis l'IFCE / Créer manuellement — à égalité. Le formulaire manuel n'est atteint qu'après un clic
+explicite sur "Créer manuellement" (paramètre `gwseq_manual=1`, neutralise la redirection pour cette
+seule requête, jamais persisté). L'aide "Où trouver cette fiche ?" reste inchangée sur l'écran
+d'import lui-même. La création manuelle reste entièrement disponible et fonctionnelle.
+
+### C. Verrouillage de la Photo principale dans Médias (bug bloquant)
+
+La recette a révélé que le contrôle natif "Descendre" de `#postimagediv` (resté visible après son
+intégration réelle dans Médias, 0.12.5) faisait disparaître la boîte de l'onglet une fois cliqué —
+WordPress réordonnant en présumant des frères et sœurs qui sont eux-mêmes des metaboxes de premier
+niveau, hypothèse qui ne tient plus une fois la boîte imbriquée dans Médias — et pouvait persister un
+ordre/une visibilité incohérents pour les prochains chargements.
+
+- `assets/cheval-tabs-admin.js` : la classe `gwseq-cheval-media__locked` est posée sur
+  `#postimagediv` lors de son déplacement dans Médias, retirée par le filet de sécurité n°2 en même
+  temps que sa restauration à la position native.
+- `assets/cheval-tabs.css` : cette classe masque les trois contrôles interactifs devenus obsolètes
+  une fois la boîte fixée dans Médias (Monter/Descendre/Replier) — un bouton non affiché ne peut
+  plus être cliqué ni atteint au clavier. Le glisser-déposer natif (jQuery UI Sortable) était déjà
+  structurellement impossible (il n'agit que sur les enfants directs de
+  #normal-sortables/#side-sortables, que `#postimagediv` n'est plus une fois déplacé) — aucune règle
+  supplémentaire n'était nécessaire pour l'empêcher.
+- `includes/cheval-media.php` : `gwseq_cleanup_legacy_postimagediv_metabox_user_state()` (même
+  mécanisme que le nettoyage Identité de l'Étape 6) répare l'état déjà corrompu par le contrôle
+  natif utilisé pendant la recette — retire `postimagediv` de `metaboxhidden_{$screen}` et de TOUS
+  les contextes de `meta-box-order_{$screen}` où il apparaîtrait, sans jamais toucher aux autres
+  préférences de l'utilisateur ni demander de passer par Options de l'écran.
+- Aucun nouveau champ, aucun nouvel attachment ID : la Featured Image native reste l'unique source
+  de vérité, seuls la présentation et le comportement d'interaction de la vraie boîte changent.
+  Sans JavaScript, la Photo principale reste utilisable normalement dans sa colonne native.
+- **Tests** : nouvelles assertions dans `gws-equestrian-cheval-admin-tabs-runtime-test.js` (pose et
+  retrait réels de la classe de verrouillage) et `gws-equestrian-cheval-media-logic-test.php`
+  (nettoyage de l'état utilisateur hérité, y compris le cas signalé en recette d'une dérive jusque
+  dans le contexte "normal").
+
 ## 0.13.0 — Étape 7 : premier import intelligent depuis une fiche de synthèse IFCE (PDF)
 
 Nouvelle fonctionnalité (pas un correctif) : un second chemin de création d'une fiche Cheval,
