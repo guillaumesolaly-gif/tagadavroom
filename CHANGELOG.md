@@ -1,5 +1,23 @@
 # Changelog — GWS Starter
 
+## 1.15.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif RÉGRESSION BLOQUANTE — onglet Identité vide ; Photo principale intégrée à Médias
+  (GWS Equestrian 0.12.2).** La reprise de la recette a confirmé la barre d'onglets fonctionnelle,
+  mais l'onglet Identité affichait une zone vide (champs sexe, année de naissance, robe,
+  race/stud-book, taille, éleveur, propriétaire, SIRE/UELN inaccessibles). Cause exacte : la boîte
+  Identité était laissée REPLIÉE par le mécanisme natif WordPress (classe `.closed`, indépendant
+  des onglets) — la règle CSS native qui masque le contenu replié cible un enfant de la boîte
+  (`.inside`), jamais la boîte elle-même, donc rétablir `style.display` sur le conteneur ne
+  suffisait pas à révéler son contenu. L'ID de boîte, le contexte WordPress et la configuration des
+  onglets étaient corrects — seul l'état de repli natif ne l'était pas. Corrigé : l'activation d'un
+  onglet lève désormais systématiquement ce repli pour chacune de ses boîtes. Ajustement
+  complémentaire : la Photo principale (image à la une native) rejoint désormais Galerie/Vidéos
+  sous l'onglet Médias, selon le même mécanisme déjà utilisé pour Pedigree/Production — aucun
+  second champ, aucun second attachment ID, la Featured Image de WordPress reste l'unique source de
+  vérité. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.12.2) pour le
+  détail complet de la cause racine et des tests renforcés.
+
 ## 1.15.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif RÉGRESSION BLOQUANTE — navigation par onglets (GWS Equestrian 0.12.1).** La recette

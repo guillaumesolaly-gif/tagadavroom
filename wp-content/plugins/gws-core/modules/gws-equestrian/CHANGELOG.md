@@ -5,6 +5,53 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.12.2 — Correctif RÉGRESSION BLOQUANTE — onglet Identité vide ; intégration Photo principale dans Médias
+
+La reprise de la recette runtime après 0.12.1 a confirmé l'apparition correcte de la barre
+d'onglets, mais a révélé un nouveau bloquant : l'onglet Identité affichait une zone vide, rendant
+les champs historiques de l'Étape 4 (sexe, année de naissance, robe, race/stud-book, taille,
+éleveur, propriétaire, SIRE/UELN) inaccessibles. Un ajustement UX complémentaire a été livré dans
+la foulée : intégration de la Photo principale à l'onglet Médias.
+
+- **CAUSE RACINE EXACTE de l'onglet Identité vide** : la meta box Identité était laissée REPLIÉE
+  par le mécanisme natif de repli/dépli de WordPress (classe CSS `.closed`, posée par un clic sur
+  le titre de la boîte — indépendant de nos onglets, potentiellement hérité d'une manipulation
+  antérieure lors de la recette de 0.12.0/0.12.1). La règle CSS native
+  `.postbox.closed .inside { display: none; }` cible l'élément `.inside` — un ENFANT de la boîte,
+  où vit tout son contenu réel — jamais la boîte elle-même. Notre système d'onglets ne pilotait
+  QUE `box.style.display` sur le conteneur `.postbox` : rétablir ce style à `''` rendait bien le
+  conteneur visible, mais son `.inside` restait masqué par la règle CSS native, indépendamment de
+  notre style inline — d'où une boîte "vide" à l'écran malgré un onglet correctement actif.
+  Confirmé : ID de la boîte, contexte WordPress, ordre d'enregistrement et logique du tableau
+  d'onglets étaient tous corrects — le mapping onglet → meta box n'était PAS en cause, seul l'état
+  de repli natif de la boîte l'était. **Correctif** (`assets/cheval-tabs-admin.js`) : l'activation
+  d'un onglet lève désormais systématiquement le repli natif (`classList.remove('closed')`) de
+  chacune de ses boîtes, et synchronise l'attribut ARIA `aria-expanded` du bouton natif de
+  repli/dépli (`.handlediv`) — un onglet actif affiche toujours un contenu déplié, jamais une
+  boîte vide.
+- **Photo principale intégrée à l'onglet Médias** (`includes/cheval-admin-tabs.php`) : la boîte
+  NATIVE WordPress de l'image à la une (`postimagediv`) rejoint désormais Galerie/Vidéos sous un
+  même onglet "Médias" — EXACTEMENT selon le même mécanisme déjà utilisé pour regrouper
+  Production/aperçu pedigree sous "Pedigree" (0.12.1) : la boîte native n'est ni déplacée dans le
+  DOM ni ré-enregistrée par ce plugin (elle reste dans sa colonne native), seule sa VISIBILITÉ est
+  désormais pilotée par le même système d'onglets. **Aucun second champ, aucun second attachment
+  ID, aucune synchronisation parallèle, aucun stockage spécifique** : la Featured Image de
+  WordPress reste l'unique source de vérité, lue/modifiée par sa propre interface native
+  (`wp.media()` intégré à WordPress) — jamais dupliquée. La boîte n'apparaît plus jamais deux fois
+  (elle n'a jamais été dupliquée, seule sa colonne d'apparition — latérale, comme toujours —
+  devient conditionnée à l'onglet actif). Publier, Catégories, Ordre d'affichage et Global Horse ID
+  (dev-only) restent inchangés dans la colonne latérale, toujours visibles.
+- **Sans JavaScript**, tous les champs Identité restent accessibles et la Photo principale reste
+  modifiable via la mécanique native WordPress — aucune régression de ce côté, le mécanisme reste
+  strictement additif (couche de présentation uniquement).
+- **Renforcement des tests** : `tests/gws-equestrian-cheval-admin-tabs-runtime-test.js` reproduit
+  désormais une boîte Identité déjà repliée (`.closed`) AVANT l'exécution du script, et vérifie que
+  l'activation de son onglet la déplie réellement (classe retirée, `aria-expanded="true"`) — ce
+  test aurait immédiatement détecté cette régression. Nouvelles assertions couvrant également le
+  regroupement Photo principale + Galerie/Vidéos sous Médias (visibilité conjointe, masquage
+  conjoint sous tout autre onglet, absence de duplication). 7 nouvelles assertions Node, 4
+  nouvelles assertions PHP déclaratives.
+
 ## 0.12.1 — Correctif RÉGRESSION BLOQUANTE — navigation par onglets inopérante, meta boxes à risque
 
 La recette runtime de 0.12.0 a échoué immédiatement : la navigation par onglets n'apparaissait pas

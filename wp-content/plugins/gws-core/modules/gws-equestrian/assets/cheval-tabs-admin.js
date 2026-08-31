@@ -134,6 +134,21 @@
         button.tabIndex = isActive ? 0 : -1;
         tab.boxes.forEach(function (box) {
           box.style.display = isActive ? '' : 'none';
+          if (isActive) {
+            // CORRECTIF (régression signalée en recette, onglet Identité vide) : une boîte que
+            // WordPress avait laissée REPLIÉE (classe .closed, posée par son propre mécanisme
+            // natif de repli/dépli au clic sur le titre — totalement indépendant de nos onglets)
+            // resterait visuellement vide même une fois notre style.display rétabli sur le
+            // conteneur : la règle native `.postbox.closed .inside { display: none; }` cible
+            // l'enfant `.inside` (où vit tout le contenu réel de la boîte), jamais le conteneur
+            // `.postbox` lui-même — notre bascule de visibilité sur ce conteneur n'a donc aucun
+            // effet sur ce repli. Un onglet qui vient de devenir actif doit toujours montrer un
+            // contenu déplié : on lève systématiquement ce repli natif pour CHAQUE boîte de
+            // l'onglet activé (jamais pour les autres, de toute façon masquées).
+            box.classList.remove('closed');
+            var toggle = box.querySelector('.handlediv');
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+          }
         });
         if (isActive && opts.focus) button.focus();
       });

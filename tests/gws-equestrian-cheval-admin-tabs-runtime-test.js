@@ -111,6 +111,24 @@ class FakeElement {
   }
   click() { this.dispatchEvent({ type: 'click' }); }
   focus() { this._focused = true; }
+  // Support minimal (sélecteur de classe simple, ex. ".handlediv") : suffisant pour exercer
+  // cheval-tabs-admin.js, qui n'utilise querySelector que pour retrouver le bouton natif de
+  // repli/dépli d'une meta box (voir le correctif de la boîte Identité repliée, ci-dessous).
+  querySelector(selector) {
+    if (selector[0] !== '.') {
+      throw new Error('querySelector : seul un sélecteur de classe simple ("."+nom) est supporté par ce DOM factice');
+    }
+    const className = selector.slice(1);
+    function search(node) {
+      for (const child of node.children) {
+        if ((child.className || '').split(/\s+/).indexOf(className) !== -1) return child;
+        const found = search(child);
+        if (found) return found;
+      }
+      return null;
+    }
+    return search(this);
+  }
 }
 
 function makeBox(id) {
@@ -159,6 +177,16 @@ function buildRealisticChevalEditScreen() {
   const normalSortables = new FakeElement('div');
   normalSortables.id = 'normal-sortables';
   const identite = makeBox('gwseq-cheval-identite');
+  // Simule le bug signalé en recette : la boîte Identité est déjà REPLIÉE (classe .closed, posée
+  // par le mécanisme natif de repli/dépli de WordPress, totalement indépendant des onglets) avant
+  // même que le script ne s'exécute — reproduit la condition exacte dans laquelle les champs
+  // historiques (sexe, année de naissance, robe...) restaient visuellement inaccessibles malgré un
+  // style.display correctement rétabli sur le conteneur.
+  identite.className = 'postbox closed';
+  const identiteHandle = new FakeElement('button');
+  identiteHandle.className = 'handlediv';
+  identiteHandle.setAttribute('aria-expanded', 'false');
+  identite.appendChild(identiteHandle);
   const commercialisation = makeBox('gwseq-cheval-commercialisation');
   const pedigree = makeBox('gwseq-cheval-pedigree');
   const indices = makeBox('gwseq-cheval-indices');
@@ -223,7 +251,7 @@ function runScenario() {
     { id: 'commercial', label: 'Commercial', boxes: ['gwseq-cheval-commercialisation'] },
     { id: 'pedigree', label: 'Pedigree', boxes: ['gwseq-cheval-pedigree', 'gwseq-cheval-production', 'gwseq-cheval-pedigree-preview'] },
     { id: 'indices', label: 'Indices', boxes: ['gwseq-cheval-indices'] },
-    { id: 'medias', label: 'Médias', boxes: ['gwseq-cheval-media'] },
+    { id: 'medias', label: 'Médias', boxes: ['postimagediv', 'gwseq-cheval-media'] },
     { id: 'presentation', label: 'Présentation', boxes: ['gwseq-cheval-presentation', 'gwseq-cheval-infos-complementaires'] },
   ];
 
@@ -291,8 +319,35 @@ function main() {
   ok('Au chargement, la boîte Identité est visible (display vide)', boxes.identite.style.display === '');
   ok('Au chargement, la boîte Commercialisation est masquée (un seul onglet actif à la fois)', boxes.commercialisation.style.display === 'none');
   ok("Au chargement, la boîte Identité n'a jamais été retirée du DOM (toujours enfant de #normal-sortables)", screen.normalSortables.children.indexOf(boxes.identite) !== -1);
-  ok("La boîte Image à la une (colonne latérale, hors onglets) n'est jamais touchée par le script", boxes.postimagediv.style.display === undefined);
   ok('La boîte "Ordre d\'affichage" (colonne latérale, hors onglets) n\'est jamais touchée par le script', boxes.ordre.style.display === undefined);
+  ok(
+    "Au chargement, la boîte Image à la une (regroupée sous l'onglet Médias) est masquée, l'onglet actif étant Identité",
+    boxes.postimagediv.style.display === 'none'
+  );
+
+  // --- CORRECTIF RÉGRESSION (onglet Identité vide en recette) : la boîte Identité était déjà
+  // repliée (.closed) avant l'exécution du script (voir sa construction plus haut) — l'activation
+  // de son onglet doit systématiquement lever ce repli natif, sans quoi ses champs restent
+  // invisibles malgré un style.display de conteneur correctement rétabli. ---
+  ok(
+    "Correctif : la boîte Identité, initialement repliée (.closed), est bien dépliée dès que son onglet devient actif",
+    !boxes.identite.classList.contains('closed')
+  );
+  ok(
+    "Correctif : le bouton natif de repli/dépli de la boîte Identité reflète bien l'état déplié (aria-expanded=\"true\")",
+    boxes.identite.querySelector('.handlediv').getAttribute('aria-expanded') === 'true'
+  );
+
+  // --- Photo principale regroupée dans l'onglet Médias (§2 de la demande) : la boîte native
+  // #postimagediv n'est ni déplacée ni dupliquée — seule sa visibilité suit désormais l'onglet actif,
+  // exactement comme pour Production/aperçu sous Pedigree. ---
+  tabButtons[4].click();
+  ok('L\'onglet "Médias" (index 4) référence bien la Photo principale ET la boîte Galerie/Vidéos via aria-controls', tabButtons[4].getAttribute('aria-controls') === 'postimagediv gwseq-cheval-media');
+  ok('Après clic sur "Médias", la boîte native Photo principale (colonne latérale) devient visible', boxes.postimagediv.style.display === '');
+  ok('Après clic sur "Médias", la boîte Galerie/Vidéos (colonne principale) est visible avec elle, dans la même zone logique', boxes.media.style.display === '');
+  ok('Après clic sur "Médias", la boîte Identité (onglet précédent) est de nouveau masquée', boxes.identite.style.display === 'none');
+  tabButtons[0].click();
+  ok('En revenant sur "Identité", la boîte Photo principale (regroupée sous Médias) est de nouveau masquée', boxes.postimagediv.style.display === 'none');
 
   // --- Clic sur l'onglet Pedigree : regroupement Pedigree + Production + aperçu, même si ces
   // deux dernières vivent dans la colonne latérale (#side-sortables) plutôt que la colonne

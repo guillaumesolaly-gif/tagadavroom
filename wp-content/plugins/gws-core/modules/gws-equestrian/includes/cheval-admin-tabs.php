@@ -27,11 +27,17 @@
  * avant cet ajustement, empilée verticalement (§3 : « sans JavaScript, la fiche doit rester
  * utilisable »).
  *
- * PLACEMENT DE LA PHOTO PRINCIPALE (image à la une native) : volontairement laissée à sa place
- * native dans la colonne latérale, jamais intégrée aux onglets — la déplacer forcerait à détourner
- * le fonctionnement interne de la meta box native `postimagediv` (§2 de la demande, qui autorise
- * explicitement ce choix). Le Global Horse ID (dev-only) et la boîte "Ordre d'affichage" restent
- * eux aussi dans la colonne latérale, en dehors du système d'onglets — ce sont des utilitaires
+ * PLACEMENT DE LA PHOTO PRINCIPALE (image à la une native, correctif régression post-recette) :
+ * regroupée avec Galerie/Vidéos sous l'onglet "Médias" — EXACTEMENT comme Production/aperçu
+ * pedigree sont déjà regroupés sous "Pedigree" (voir cheval-pedigree.php) : la boîte native
+ * `postimagediv` n'est JAMAIS déplacée dans le DOM ni ré-enregistrée par ce plugin (elle reste
+ * exactement celle de WordPress, dans sa colonne native), seule sa VISIBILITÉ est désormais gérée
+ * par le même mécanisme d'onglets que les autres boîtes — masquée sous tout autre onglet, visible
+ * uniquement sous "Médias", aux côtés de la boîte Galerie/Vidéos du plugin. Aucun second champ,
+ * aucun second attachment ID, aucune synchronisation : la Featured Image de WordPress reste
+ * l'unique source de vérité, lue/modifiée par sa propre interface native (`wp.media()` intégré à
+ * WordPress), jamais dupliquée. Le Global Horse ID (dev-only) et la boîte "Ordre d'affichage"
+ * restent dans la colonne latérale, en dehors du système d'onglets — ce sont des utilitaires
  * annexes, jamais le cœur du contenu que les onglets cherchent à désencombrer.
  *
  * BOUTON D'ENREGISTREMENT RAPIDE (§4) : le script ajoute, dans la barre d'onglets, un bouton qui
@@ -76,7 +82,10 @@ function gwseq_cheval_admin_tabs_config() {
     array(
       'id' => 'medias',
       'label' => __('Médias', 'gws-core'),
-      'boxes' => array('gwseq-cheval-media'),
+      // 'postimagediv' : boîte NATIVE WordPress de l'image à la une (Photo principale), jamais
+      // enregistrée par ce plugin — voir le correctif ci-dessus pour le détail de ce regroupement
+      // (source de vérité unique : Featured Image de WordPress, jamais un second champ).
+      'boxes' => array('postimagediv', 'gwseq-cheval-media'),
     ),
     array(
       'id' => 'presentation',

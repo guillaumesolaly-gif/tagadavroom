@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.1 (Étape 5 — Pedigree validée)
+## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.2 (Étape 5 — Pedigree validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -170,9 +170,11 @@ créer de conteneur supplémentaire). Les boîtes Production et aperçu pedigree
 contexte WordPress d'origine (`'side'`, colonne latérale — voir le correctif 0.12.1 ci-dessous) :
 le regroupement fonctionnel sous l'onglet Pedigree ne dépend jamais de leur position DOM, seule
 leur COLONNE d'apparition diffère de celle de la boîte Pedigree elle-même quand cet onglet est
-actif. Restent volontairement HORS du système d'onglets, toujours visibles dans la colonne
-latérale : l'image à la une native de WordPress, la boîte de développement Global Horse ID, et
-« Ordre d'affichage ».
+actif. Depuis le correctif 0.12.2, l'image à la une native de WordPress (`postimagediv`) est
+regroupée de la même façon sous l'onglet « Médias », aux côtés de Galerie/Vidéos — voir « Correctif
+RÉGRESSION BLOQUANTE 0.12.2 » plus bas. Restent volontairement HORS du système d'onglets, toujours
+visibles dans la colonne latérale : la boîte de développement Global Horse ID et « Ordre
+d'affichage ».
 
 Réutilise les classes CSS natives de WordPress (`.nav-tab-wrapper`/`.nav-tab`/`.nav-tab-active`,
 déjà utilisées par les écrans de réglages du cœur WP) plutôt que d'inventer un habillage visuel
@@ -230,6 +232,57 @@ bon endroit, regroupement Pedigree/Production/aperçu fonctionnel même à cheva
 physiques, bascule effective de visibilité au clic et au clavier, aucune meta box jamais retirée du
 DOM, bouton rapide déclenchant réellement le bouton natif. Ce type de test, absent avant 0.12.1,
 aurait immédiatement détecté cette régression.
+
+#### Correctif RÉGRESSION BLOQUANTE 0.12.2 — onglet Identité vide ; Photo principale dans Médias
+
+La reprise de la recette a confirmé la barre d'onglets fonctionnelle (0.12.1), mais a révélé un
+nouveau bloquant : l'onglet Identité affichait une zone vide, rendant tous les champs historiques
+de l'Étape 4 (sexe, année de naissance, robe, race/stud-book, taille, éleveur, propriétaire,
+SIRE/UELN) inaccessibles.
+
+**CAUSE RACINE EXACTE** : l'ID de la boîte (`gwseq-cheval-identite`), son contexte WordPress
+(`'normal'`, inchangé depuis l'Étape 4), son ordre d'enregistrement et la configuration du tableau
+d'onglets (`gwseq_cheval_admin_tabs_config()`) étaient TOUS corrects — le mapping onglet → meta box
+n'était pas en cause. La boîte était en réalité laissée REPLIÉE par le mécanisme natif de
+repli/dépli de WordPress (classe CSS `.closed`, posée par un clic sur son titre — un état
+totalement indépendant de nos onglets). Or la règle CSS native qui masque le contenu d'une boîte
+repliée, `.postbox.closed .inside { display: none; }`, cible l'élément `.inside` — un ENFANT de la
+boîte, où vit tout son contenu réel — jamais le conteneur `.postbox` lui-même. Notre système
+d'onglets ne pilotait que `box.style.display` sur ce conteneur : le rétablir à vide le rendait bien
+visible, mais son `.inside` restait masqué par la règle CSS native, indépendamment de notre style
+inline — d'où une boîte visuellement "vide" malgré un onglet correctement actif.
+
+**Correctif** (`assets/cheval-tabs-admin.js`) : l'activation d'un onglet lève désormais
+systématiquement ce repli natif (`classList.remove('closed')`) pour CHACUNE de ses boîtes, et
+synchronise l'attribut ARIA `aria-expanded` du bouton natif de repli/dépli (`.handlediv`) sur
+`"true"` — un onglet actif affiche toujours un contenu déplié, plus jamais une boîte vide, quel que
+soit l'état de repli dans lequel WordPress l'avait laissée.
+
+**Photo principale intégrée à l'onglet Médias** (§2 de la demande, ajustement livré dans la même
+passe) : la boîte NATIVE WordPress de l'image à la une (`postimagediv`) rejoint désormais
+Galerie/Vidéos sous l'onglet "Médias", selon EXACTEMENT le même mécanisme que Production/aperçu
+pedigree sous "Pedigree" (0.12.1) — la boîte native n'est ni déplacée dans le DOM ni ré-enregistrée
+par ce plugin (elle reste dans sa colonne native), seule sa VISIBILITÉ est désormais pilotée par le
+système d'onglets. **Aucun second champ, aucun second attachment ID, aucune synchronisation
+parallèle, aucun stockage spécifique** : la Featured Image de WordPress reste l'unique source de
+vérité, lue/modifiée exclusivement par sa propre interface native (`wp.media()`). Elle n'apparaît
+jamais deux fois : n'ayant jamais été dupliquée, seule sa colonne d'apparition (latérale, comme
+toujours) est désormais conditionnée à l'onglet actif — masquée sous tout autre onglet, visible
+uniquement sous "Médias", aux côtés de la boîte Galerie/Vidéos du plugin (dans la colonne
+principale). Publier, Catégories, "Ordre d'affichage" et Global Horse ID (dev-only) restent
+inchangés, toujours visibles dans la colonne latérale.
+
+**Aucune donnée, règle métier ou mécanisme de sauvegarde n'a été affecté par ces deux correctifs.**
+Sans JavaScript, tous les champs Identité restent accessibles et la Photo principale reste
+modifiable via la mécanique native WordPress, exactement comme avant tout ajustement onglets.
+
+**Renforcement des tests** : `tests/gws-equestrian-cheval-admin-tabs-runtime-test.js` reproduit
+désormais une boîte Identité déjà repliée (`.closed`, avec son bouton `.handlediv`) AVANT
+l'exécution du script, et vérifie que l'activation de son onglet la déplie réellement (classe
+retirée, `aria-expanded="true"` restauré) — ce test aurait immédiatement détecté cette régression.
+Nouvelles assertions couvrant également le regroupement Photo principale + Galerie/Vidéos sous
+Médias (visibilité conjointe, masquage conjoint sous tout autre onglet, absence de duplication) :
+31 assertions au total pour ce fichier (+ 4 nouvelles assertions déclaratives PHP).
 
 #### Limitations connues (Étape 6)
 
@@ -308,14 +361,26 @@ onglets) :
 
 21. Vérifier l'apparition des six onglets (Identité, Commercial, Pedigree, Indices, Médias,
     Présentation) en haut de la colonne principale de la fiche Cheval, avec le bon regroupement de
-    boîtes sous chacun — notamment Production et l'aperçu pedigree (dev/local), qui apparaissent
-    dans la COLONNE LATÉRALE (comme avant l'Étape 6) mais uniquement quand l'onglet « Pedigree »
-    est actif, en même temps que la boîte Pedigree de la colonne principale. Vérifier que l'image à
-    la une, la boîte Global Horse ID (dev/local) et « Ordre d'affichage » restent visibles en
-    permanence dans la colonne latérale, hors du système d'onglets, quel que soit l'onglet actif.
+    boîtes sous chacun — notamment Production et l'aperçu pedigree (dev/local) sous « Pedigree », et
+    désormais la Photo principale (image à la une native) sous « Médias », aux côtés de
+    Galerie/Vidéos. Toutes deux apparaissent dans leur COLONNE NATIVE (latérale pour Production/
+    aperçu/Photo principale, comme avant l'Étape 6) mais uniquement quand leur onglet respectif est
+    actif. Vérifier que la boîte Global Horse ID (dev/local) et « Ordre d'affichage » restent
+    visibles en permanence dans la colonne latérale, hors du système d'onglets, quel que soit
+    l'onglet actif.
+21bis. Cliquer sur l'onglet Identité : vérifier IMMÉDIATEMENT que tous les champs historiques sont
+    bien visibles et saisissables (sexe, année de naissance, robe, race/stud-book, taille, éleveur,
+    propriétaire, SIRE, UELN) — et non une zone vide. Si la boîte a été repliée manuellement au
+    préalable (clic sur son titre), vérifier qu'elle réapparaît bien dépliée en revenant sur cet
+    onglet (correctif 0.12.2).
+21ter. Cliquer sur l'onglet Médias : vérifier que la Photo principale (aperçu de l'image à la une,
+    boutons natifs pour la définir/remplacer/retirer) apparaît bien aux côtés de Galerie et Vidéos.
+    Modifier la Photo principale depuis cet onglet, enregistrer, recharger : vérifier la
+    persistance, et que l'image à la une du site (front, autres écrans admin) reflète bien ce
+    changement — une seule et même donnée, jamais un second champ.
 22. Cliquer sur chaque onglet : vérifier que seules les boîtes du groupe correspondant s'affichent,
     sans perte visuelle de contenu déjà saisi, et que les boîtes gardent leur comportement natif
-    (repli/dépli au clic sur leur propre titre).
+    (repli/dépli au clic sur leur propre titre, y compris après un changement d'onglet).
 23. Naviguer au clavier dans la barre d'onglets (Tab pour l'atteindre, flèches gauche/droite pour
     circuler avec bouclage, Home/End pour aller au premier/dernier onglet) : vérifier que le focus
     visuel suit et que l'onglet activé correspond bien au contenu affiché.

@@ -82,18 +82,23 @@ gws_test_assert(
   'Onglet Pedigree : contient Pedigree, Production (calculée) et l’aperçu développeur, exactement comme demandé'
 );
 gws_test_assert($tabs_by_id['indices']['boxes'] === array('gwseq-cheval-indices'), 'Onglet Indices : contient bien la boîte Indices (ISO/ICC/IDR/BSO/BCC/BDR y sont tous rendus)');
-gws_test_assert($tabs_by_id['medias']['boxes'] === array('gwseq-cheval-media'), 'Onglet Médias : contient bien la boîte Médias (galerie + vidéos)');
+gws_test_assert(
+  $tabs_by_id['medias']['boxes'] === array('postimagediv', 'gwseq-cheval-media'),
+  'Onglet Médias (correctif régression) : contient bien la boîte NATIVE "postimagediv" (Photo principale) ET la boîte Médias (galerie + vidéos) — regroupement fonctionnel, aucun second champ créé'
+);
 gws_test_assert(
   $tabs_by_id['presentation']['boxes'] === array('gwseq-cheval-presentation', 'gwseq-cheval-infos-complementaires'),
   'Onglet Présentation : contient les deux boîtes éditoriales, y compris "Informations complémentaires" (Ostéo-articulaire)'
 );
 
-// --- La photo principale (image à la une native), le Global Horse ID (dev-only) et la boîte
-// "Ordre d'affichage" ne sont volontairement rattachés à AUCUN onglet (§2 : la photo principale
-// peut rester gérée nativement) ---
+// --- "postimagediv" n'apparaît que sous l'onglet Médias, jamais rattaché à un second onglet (une
+// seule source de vérité, jamais deux mécanismes de gestion de la Featured Image en parallèle) —
+// et le Global Horse ID (dev-only) et la boîte "Ordre d'affichage" restent volontairement
+// rattachés à AUCUN onglet ---
 $all_configured_boxes = array();
 foreach ($tabs as $tab) { $all_configured_boxes = array_merge($all_configured_boxes, $tab['boxes']); }
-foreach (array('postimagediv', 'gwseq-cheval-global-id-dev', 'gwseq-ordre-gwseq_cheval') as $excluded_box_id) {
+gws_test_assert(array_count_values($all_configured_boxes)['postimagediv'] === 1, 'Onglets : "postimagediv" (Photo principale) apparaît dans EXACTEMENT un seul onglet (Médias) — jamais dupliqué entre plusieurs onglets');
+foreach (array('gwseq-cheval-global-id-dev', 'gwseq-ordre-gwseq_cheval') as $excluded_box_id) {
   gws_test_assert(!in_array($excluded_box_id, $all_configured_boxes, true), "Onglets : \"$excluded_box_id\" n’est rattaché à aucun onglet — reste dans la colonne latérale, hors du système d’onglets");
 }
 
@@ -175,6 +180,15 @@ gws_test_assert(strpos($tabs_admin_js_source, "box.style.display") !== false, 'A
 // --- Aucune donnée jamais rendue absente du DOM de façon permanente : tout masquage se fait via
 // le style, jamais via remove()/removeChild() appliqué à une boîte ---
 gws_test_assert(preg_match('/box(es)?\.remove\(\)|removeChild\(box/', $tabs_admin_js_source) !== 1, 'Aucune donnée absente du DOM : une meta box n’est jamais retirée du DOM, seulement masquée visuellement');
+
+// --- CORRECTIF RÉGRESSION (onglet Identité vide en recette) : une meta box laissée REPLIÉE par le
+// mécanisme natif WordPress (classe .closed, indépendant de nos onglets) doit être explicitement
+// dépliée quand son onglet devient actif, sans quoi son contenu reste invisible malgré un
+// style.display de conteneur correctement rétabli (`.postbox.closed .inside { display:none }`
+// cible un enfant de la boîte, jamais la boîte elle-même). Vérifié en exécution réelle par
+// tests/gws-equestrian-cheval-admin-tabs-runtime-test.js. ---
+gws_test_assert(strpos($tabs_admin_js_code_only, "classList.remove('closed')") !== false, 'Correctif régression : le script lève bien le repli natif (.closed) d’une boîte dès que son onglet devient actif');
+gws_test_assert(strpos($tabs_admin_js_source, "querySelector('.handlediv')") !== false, 'Correctif régression : le script retrouve bien le bouton natif de repli/dépli pour synchroniser son état ARIA (aria-expanded)');
 
 // --- §5 : pattern ARIA tablist/tab/tabpanel, navigation clavier ---
 foreach (array("'role', 'tablist'", "'role', 'tab'", "'role', 'tabpanel'", 'aria-selected', 'aria-controls', 'aria-labelledby') as $aria_pattern) {
