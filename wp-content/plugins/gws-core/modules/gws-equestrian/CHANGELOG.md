@@ -5,6 +5,85 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.13.0 — Étape 7 : premier import intelligent depuis une fiche de synthèse IFCE (PDF)
+
+Nouvelle fonctionnalité (pas un correctif) : un second chemin de création d'une fiche Cheval,
+« Importer une fiche IFCE », en complément — jamais en remplacement — de la création manuelle
+existante. Objectif : supprimer la ressaisie manuelle, en particulier pour le pedigree.
+
+**Parcours utilisateur** : téléversement du PDF complet tel que téléchargé depuis Info Chevaux ->
+analyse -> écran de prévisualisation obligatoire (« Cheval reconnu : ... / Identité détectée : ... /
+Indices détectés : ... / Pedigree : N ascendants détectés ») avec case à cocher indépendante par
+section (Identité/Indices/Pedigree, import partiel) -> validation explicite -> SEULEMENT à ce
+moment, création de la fiche et écriture des données. **Aucun import silencieux** : un document non
+reconnu comme fiche IFCE n'écrit strictement rien et affiche un message explicite, la création
+manuelle restant toujours disponible.
+
+**Architecture (4 nouveaux fichiers, aucune modification du parcours manuel existant)** :
+- `includes/ifce-pdf-text.php` — extracteur PDF minimal en PHP pur (aucune dépendance
+  Composer/npm, aucun accès réseau disponible pour en installer une) : localisation des blocs
+  `stream...endstream`, décompression `/FlateDecode` via `gzuncompress()` (zlib natif PHP), lecture
+  des opérateurs de dessin de texte (`Tj`/`TJ`, `Td`/`TD`/`T*` traités comme sauts de ligne) avec
+  décodage des échappements de chaîne PDF.
+- `includes/ifce-import-parser.php` — reconnaissance du document (marqueur d'en-tête IFCE/Info
+  Chevaux ET ligne d'identité valide, tous deux exigés) puis extraction vers une structure
+  normalisée fermée `{valid, identity, indices, pedigree}` — jamais un accès à `$_POST` ni aux
+  fonctions métier, uniquement de l'interprétation de texte.
+- `includes/ifce-import-mapper.php` — convertit la structure normalisée vers les MÊMES fonctions
+  métier que la saisie manuelle admin (`gwseq_set_cheval_identity()` — nouvelle extraction, voir
+  plus bas —, `gwseq_set_cheval_sport_indice()`, `gwseq_set_cheval_genetic_indice()`,
+  `gwseq_set_horse_parent()`) : **jamais un accès direct à `update_post_meta()`**, un futur import
+  CSV/API/autre fournisseur pourra réutiliser ces mêmes fonctions sans aucune modification.
+- `includes/ifce-import-admin.php` — écran d'administration (sous-menu du CPT Cheval, capacité
+  `edit_posts`) : validation de sécurité du fichier (type MIME réel via `finfo`, extension `.pdf`,
+  taille maximale 15 Mo, provenance réelle du téléversement), stockage de la structure analysée dans
+  un TRANSIENT WordPress (15 minutes, jamais dans une meta à ce stade), écran de prévisualisation,
+  puis écriture différée jusqu'à confirmation explicite. Suppression immédiate du fichier PDF
+  temporaire après extraction du texte, que l'analyse réussisse ou non — **le PDF n'est jamais
+  conservé après l'import**, ce n'est qu'une source, jamais une nouvelle source de vérité stockée
+  sur la fiche.
+
+**Extension du modèle de données (§5 de la demande)** : ISO/ICC/IDR (`includes/cheval-indices.php`)
+stockent désormais également un coefficient de détermination (CD, `_gwseq_{cle}_cd`) — jusqu'ici
+réservé aux indices génétiques BSO/BCC/BDR — car une fiche IFCE officielle le fournit
+systématiquement pour ces trois indices (exemple exact : « ISO 115 (0.70) (2023) »). Même mécanisme
+de sanitation/persistance/lecture/rendu que le CD déjà existant pour les indices génétiques,
+facultatif pour la saisie manuelle. Toutes les assertions d'égalité stricte de tableau préexistantes
+dans `tests/gws-equestrian-cheval-indices-logic-test.php` ont été mises à jour pour inclure cette
+nouvelle clé.
+
+**Nouvelle fonction métier pure** : `gwseq_set_cheval_identity($post_id, $raw)` extraite de
+`gwseq_save_cheval_meta()` (`includes/cheval-fields.php`) — pure extraction sans changement de
+comportement pour le formulaire manuel existant (toute la suite de tests reste verte à l'identique)
+— nécessaire pour que l'import IFCE réutilise exactement la même fonction que la saisie manuelle
+pour l'Identité (§7 de la demande), à l'image de ce qui existait déjà pour le pedigree et les
+indices.
+
+**Pedigree (objectif principal de la demande)** : reconstruction automatique de l'arbre Père/Mère
+sur 3 générations (14 ascendants) à partir du tableau généalogique du PDF, réutilisant directement
+`gwseq_sanitize_external_ancestor_tree()`/`gwseq_set_horse_parent()`/
+`gwseq_match_race_to_canonical_code()` déjà existants (Étape 5) — validé exactement contre l'exemple
+Jamerose de Félines fourni dans la demande. **Ascendants toujours importés en mode "externe"** :
+aucune fiche `gwseq_cheval` n'est jamais créée automatiquement pour un ascendant, aucune tentative
+de rapprochement/déduplication par nom avec une fiche GWS existante (§8).
+
+**LIMITATION MAJEURE ASSUMÉE ET DOCUMENTÉE** : faute d'accès réseau pour télécharger un exemplaire,
+**cet import n'a pu être validé contre AUCUN PDF IFCE réel**. L'extracteur PDF est testé contre un
+PDF minimal auto-généré ; le parseur est testé contre une fixture TEXTE reproduisant fidèlement
+l'exemple fourni dans la demande. En particulier, l'extracteur ne décode aucune table d'encodage de
+police (WinAnsiEncoding, Identity-H/CID) — des caractères accentués d'un PDF réel pourraient être
+mal extraits — et la convention de lecture assumée pour repérer la ligne d'identité et le tableau de
+pedigree n'a pas pu être confrontée à la mise en page réelle d'une fiche IFCE. C'est précisément
+pour cette raison que la prévisualisation obligatoire avant écriture reste la garantie réelle contre
+une donnée mal interprétée. Voir `tests/README.md` pour le détail complet de cette limitation.
+
+**Tests** : nouveau fichier `tests/gws-equestrian-ifce-import-test.php` (voir `tests/README.md`)
+couvrant l'extraction PDF, la reconnaissance/l'analyse (identité, indices avec CD, reconstruction
+exacte du pedigree Jamerose), le mapping (import complet, partiel, structure invalide refusée,
+aucune fiche fantôme créée pour un ascendant), et une vérification déclarative de la glue
+d'administration (sécurité du téléversement, aucune écriture avant validation, capacité
+`edit_posts`, aucune conservation du PDF). Suite complète du module toujours verte.
+
 ## 0.12.6 — Diagnostic et correctif : contenu de la Photo principale invisible après déplacement
 
 Le déplacement réel de 0.12.5 restait non fonctionnel côté utilisateur : dans l'onglet Médias,

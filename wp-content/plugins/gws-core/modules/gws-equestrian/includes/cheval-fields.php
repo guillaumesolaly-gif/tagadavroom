@@ -598,13 +598,19 @@ function gwseq_render_cheval_global_id_dev_box($post) {
   <?php
 }
 
-function gwseq_save_cheval_meta($post_id) {
-  if (!isset($_POST[GWSEQ_CHEVAL_NONCE_FIELD]) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST[GWSEQ_CHEVAL_NONCE_FIELD])), GWSEQ_CHEVAL_NONCE_ACTION)) return;
-  if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
-  if (function_exists('wp_is_post_revision') && wp_is_post_revision($post_id)) return;
-  if (!current_user_can('edit_post', $post_id)) return;
+/**
+ * Persiste l'identité d'un cheval — fonction métier pure, jamais couplée à $_POST ni à un
+ * nonce/capability (même architecture que gwseq_set_horse_parent()/gwseq_set_cheval_sport_indice(),
+ * réutilisable telle quelle par un futur importeur : IFCE, CSV, API...). Prend volontairement le
+ * même tableau à la forme $_POST que gwseq_sanitize_cheval_identity_input() (aucune deuxième forme
+ * de données inventée) plutôt qu'un tableau déjà propre — un appelant programmatique construit
+ * simplement un tableau avec les mêmes clés '_gwseq_*'.
+ */
+function gwseq_set_cheval_identity($post_id, $raw) {
+  $post_id = (int) $post_id;
+  if (!$post_id) return false;
 
-  $identity = gwseq_sanitize_cheval_identity_input($_POST);
+  $identity = gwseq_sanitize_cheval_identity_input($raw);
   update_post_meta($post_id, '_gwseq_sexe', $identity['sexe']);
   update_post_meta($post_id, '_gwseq_annee_naissance', $identity['annee_naissance']);
   update_post_meta($post_id, '_gwseq_robe', $identity['robe']);
@@ -616,6 +622,16 @@ function gwseq_save_cheval_meta($post_id) {
   update_post_meta($post_id, '_gwseq_proprietaire', $identity['proprietaire']);
   update_post_meta($post_id, '_gwseq_ueln', $identity['ueln']);
   update_post_meta($post_id, '_gwseq_sire', $identity['sire']);
+  return true;
+}
+
+function gwseq_save_cheval_meta($post_id) {
+  if (!isset($_POST[GWSEQ_CHEVAL_NONCE_FIELD]) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST[GWSEQ_CHEVAL_NONCE_FIELD])), GWSEQ_CHEVAL_NONCE_ACTION)) return;
+  if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+  if (function_exists('wp_is_post_revision') && wp_is_post_revision($post_id)) return;
+  if (!current_user_can('edit_post', $post_id)) return;
+
+  gwseq_set_cheval_identity($post_id, $_POST);
 
   $commercial = gwseq_sanitize_cheval_commercial_input($_POST);
   update_post_meta($post_id, '_gwseq_statut_commercial', $commercial['statut_commercial']);

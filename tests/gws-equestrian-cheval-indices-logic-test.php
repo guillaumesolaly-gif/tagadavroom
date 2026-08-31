@@ -88,6 +88,18 @@ $idr = gwseq_get_cheval_sport_indice(10, 'idr');
 gws_test_assert($idr['valeur'] === 135 && $idr['annee'] === 2023, 'IDR : valeur et année exactes');
 gws_test_assert(gwseq_get_cheval_sport_indice(10, 'iso')['valeur'] === 142 && gwseq_get_cheval_sport_indice(10, 'icc')['valeur'] === 118, 'Indépendance : les trois indices sportifs coexistent sans interférence');
 
+// --- CD des indices sportifs (ajouté pour l'import IFCE, §5 : « ISO 115 (0.70) (2023) » fournit
+// systématiquement un CD pour ISO/ICC/IDR, à la différence du formulaire manuel qui le laisse
+// facultatif) : stocké comme un troisième composant séparé, jamais fusionné à la valeur ---
+gwseq_set_cheval_sport_indice(13, 'iso', array('valeur' => '115', 'cd' => '0.70', 'annee' => '2023'));
+$iso_avec_cd = gwseq_get_cheval_sport_indice(13, 'iso');
+gws_test_assert($iso_avec_cd['valeur'] === 115 && $iso_avec_cd['cd'] === 0.7 && $iso_avec_cd['annee'] === 2023, 'ISO : exemple exact IFCE (§5) — valeur, CD et année stockés séparément et exacts');
+gws_test_assert(array_key_exists('_gwseq_iso_cd', $GLOBALS['__gwseq_test_meta'][13]), 'CD sportif : "_gwseq_iso_cd" est bien une meta distincte, jamais fusionnée dans "_gwseq_iso_valeur"');
+
+// --- CD sportif facultatif : une valeur/année sans CD reste valide (formulaire manuel) ---
+gwseq_set_cheval_sport_indice(14, 'iso', array('valeur' => '120', 'annee' => '2024'));
+gws_test_assert(gwseq_get_cheval_sport_indice(14, 'iso')['cd'] === '', 'CD sportif : facultatif — une saisie sans CD reste valide, le CD reste vide');
+
 // --- Champs indépendants : valeur sans année, année sans valeur ---
 gwseq_set_cheval_sport_indice(11, 'iso', array('valeur' => '150'));
 $iso_sans_annee = gwseq_get_cheval_sport_indice(11, 'iso');
@@ -115,7 +127,7 @@ gws_test_assert(!is_array(get_post_meta(10, '_gwseq_iso_valeur', true)), 'Aucun 
 // --- Indice/rôle invalide : refusé proprement, jamais d'erreur ---
 gws_test_assert(gwseq_set_cheval_sport_indice(10, 'inconnu', array('valeur' => '100')) === false, 'Robustesse : une clé d’indice sportif inconnue est refusée');
 gws_test_assert(gwseq_set_cheval_sport_indice(0, 'iso', array('valeur' => '100')) === false, 'Robustesse : un cheval_id invalide (0) est refusé');
-gws_test_assert(gwseq_get_cheval_sport_indice(10, 'inconnu') === array('valeur' => '', 'annee' => ''), 'Robustesse : la lecture d’une clé d’indice sportif inconnue renvoie des valeurs vides, jamais une erreur');
+gws_test_assert(gwseq_get_cheval_sport_indice(10, 'inconnu') === array('valeur' => '', 'annee' => '', 'cd' => ''), 'Robustesse : la lecture d’une clé d’indice sportif inconnue renvoie des valeurs vides, jamais une erreur');
 
 // =====================================================================================
 // Indices génétiques (BSO, BCC, BDR) — §3 de la demande
@@ -208,15 +220,15 @@ gwseq_set_cheval_sport_indice(30, 'iso', array('valeur' => '100', 'annee' => '20
 gwseq_set_cheval_genetic_indice(30, 'bso', array('valeur' => '5', 'cd' => '0.5'));
 gwseq_set_cheval_sport_indice(30, 'icc', array('valeur' => '90', 'annee' => '2021'));
 gws_test_assert(
-  gwseq_get_cheval_sport_indice(30, 'iso') === array('valeur' => 100, 'annee' => 2020)
+  gwseq_get_cheval_sport_indice(30, 'iso') === array('valeur' => 100, 'annee' => 2020, 'cd' => '')
   && gwseq_get_cheval_genetic_indice(30, 'bso') === array('valeur' => 5.0, 'cd' => 0.5)
-  && gwseq_get_cheval_sport_indice(30, 'icc') === array('valeur' => 90, 'annee' => 2021),
+  && gwseq_get_cheval_sport_indice(30, 'icc') === array('valeur' => 90, 'annee' => 2021, 'cd' => ''),
   'Persistance : plusieurs enregistrements successifs sur des indices différents n’entraînent aucune perte de données'
 );
 
 // --- Compatibilité avec une fiche Cheval créée avant l’Étape 6 (jamais enregistrée) ---
 gws_test_assert(
-  gwseq_get_cheval_sport_indice(999, 'iso') === array('valeur' => '', 'annee' => '')
+  gwseq_get_cheval_sport_indice(999, 'iso') === array('valeur' => '', 'annee' => '', 'cd' => '')
   && gwseq_get_cheval_genetic_indice(999, 'bso') === array('valeur' => '', 'cd' => ''),
   'Compatibilité : une fiche jamais enregistrée avec ces champs renvoie des valeurs vides, sans erreur ni avertissement'
 );
@@ -246,13 +258,15 @@ gws_test_assert(strpos($before_save_handler_code, '$_POST') === false, 'Programm
 // =====================================================================================
 
 gws_test_make_post_stub_meta_reset();
-gwseq_set_cheval_sport_indice(50, 'iso', array('valeur' => '142', 'annee' => '2025'));
+gwseq_set_cheval_sport_indice(50, 'iso', array('valeur' => '142', 'annee' => '2025', 'cd' => '0.7'));
 $post_stub = (object) array('ID' => 50);
 ob_start();
 gwseq_render_cheval_indices_box($post_stub);
 $indices_box_html = ob_get_clean();
 gws_test_assert(strpos($indices_box_html, 'name="_gwseq_iso[valeur]"') !== false && strpos($indices_box_html, 'name="_gwseq_iso[annee]"') !== false, 'Rendu admin : les champs valeur et année de l’ISO sont bien rendus séparément (deux champs distincts)');
+gws_test_assert(strpos($indices_box_html, 'name="_gwseq_iso[cd]"') !== false, 'Rendu admin : le champ CD de l’ISO est également rendu (ajout import IFCE, §5)');
 gws_test_assert(strpos($indices_box_html, 'value="142"') !== false && strpos($indices_box_html, 'value="2025"') !== false, 'Rendu admin : les valeurs déjà enregistrées sont bien pré-remplies');
+gws_test_assert(strpos($indices_box_html, 'name="_gwseq_iso[cd]" value="0.70"') !== false, 'Rendu admin : le CD de l’ISO est pré-rempli et présenté à deux décimales, comme pour les indices génétiques');
 gws_test_assert(strpos($indices_box_html, 'name="_gwseq_bso[valeur]"') !== false && strpos($indices_box_html, 'name="_gwseq_bso[cd]"') !== false, 'Rendu admin : les champs valeur et CD du BSO sont bien rendus séparément');
 
 foreach ($GLOBALS['__gwseq_test_domains_used'] as $domain) {

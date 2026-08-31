@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.6 (Étape 5 — Pedigree validée)
+## État actuel : Étape 7 — Import IFCE (PDF), 0.13.0, EN ATTENTE DE RECETTE (Étape 6 — Indices/médias/présentation validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -20,11 +20,15 @@ effective d'un ascendant externe vidé, intégrité père/mère, filtrage sexe/a
 photos et des vidéos, et du contenu éditorial de présentation — sans toucher au socle des Étapes 4
 et 5 (voir plus bas). Une première recette runtime a débuté sur les indices ; elle a révélé une
 fiche devenue trop longue à faire défiler, d'où l'ajustement UX post-recette 0.12.0 (présentation
-du CD des indices génétiques à deux décimales, navigation par onglets — voir plus bas). La reprise
-de la recette sur cette nouvelle interface a immédiatement révélé une régression bloquante
-(navigation par onglets inopérante, risque de disparition de meta boxes existantes), corrigée en
-0.12.1 (voir « Correctif RÉGRESSION BLOQUANTE 0.12.1 » plus bas) avant nouvelle reprise de la
-recette.
+du CD des indices génétiques à deux décimales, navigation par onglets — voir plus bas), suivi de
+plusieurs allers-retours de recette (0.12.1 à 0.12.6, voir plus bas) désormais **validés**.
+
+**Étape 7 (0.13.0, EN ATTENTE DE RECETTE)** : premier import intelligent d'une fiche Cheval depuis
+une fiche de synthèse IFCE / Info Chevaux au format PDF, pour supprimer la ressaisie manuelle — en
+particulier le pedigree. Voir la section « Import IFCE (Étape 7) » plus bas pour le détail complet
+(architecture, données supportées, structure intermédiaire, mapping, limitations — en particulier
+**l'absence de validation contre un PDF IFCE réel**, faute d'accès réseau). Conformément à la
+demande, cette étape n'a volontairement PAS été suivie d'une étape suivante avant recette runtime.
 
 ### Indices, médias et présentation (Étape 6)
 
@@ -572,6 +576,134 @@ onglets) :
 28. Repasser en revue les points 1 à 20 ci-dessus dans la nouvelle interface à onglets : confirmer
     l'absence de toute régression sur pedigree, Production, filtres parents, indices, galerie,
     vidéos, contenus éditoriaux, Global Horse ID et données commerciales.
+
+## Import IFCE (Étape 7)
+
+Second chemin de création d'une fiche Cheval, « Importer une fiche IFCE », en complément — jamais
+en remplacement — de la création manuelle existante (Étapes 4-6, toujours disponible). Objectif :
+supprimer la ressaisie manuelle, en particulier pour le pedigree.
+
+### Parcours utilisateur
+
+Depuis l'écran « Ajouter un cheval », un avis visible propose le lien « Importer une fiche IFCE »
+(sous-menu du CPT Cheval, `edit.php?post_type=gwseq_cheval&page=gwseq-ifce-import`) :
+
+1. L'utilisateur téléverse le PDF **complet** tel que téléchargé depuis Info Chevaux (jamais
+   seulement la première page) ;
+2. GWS analyse le document ;
+3. GWS produit une structure intermédiaire normalisée ;
+4. Un écran de prévisualisation affiche ce qui a été détecté (« Cheval reconnu : ... / Identité
+   détectée : ... / Indices détectés : ... / Pedigree : N ascendants détectés »), avec une case à
+   cocher indépendante par section (Identité / Indices / Pedigree — import partiel possible) ;
+5. L'utilisateur valide explicitement ;
+6. **Seulement à ce moment**, la fiche Cheval est créée et les données sélectionnées sont écrites.
+
+**Aucun import silencieux** : un document non reconnu comme fiche IFCE n'écrit strictement rien et
+affiche un message explicite ; la création manuelle reste toujours disponible en alternative.
+
+### Architecture (4 fichiers, aucune modification du parcours manuel existant)
+
+- **`includes/ifce-pdf-text.php`** — extracteur PDF minimal en PHP pur (aucune dépendance
+  Composer/npm dans ce projet, aucun accès réseau disponible pour en installer une) :
+  localisation des blocs `stream...endstream`, décompression `/FlateDecode` via `gzuncompress()`
+  (zlib natif PHP — le filtre FlateDecode de la spécification PDF est précisément un flux
+  zlib/RFC1950), lecture des opérateurs `Tj`/`TJ` (texte affiché) et `Td`/`TD`/`T*` (traités comme
+  sauts de ligne), décodage des échappements de chaîne PDF (`\n`, `\(`, `\)`, `\\`, séquences
+  octales). Ne gère pas les dictionnaires d'objet imbriqués ni les tables d'encodage de police
+  (voir Limitations).
+- **`includes/ifce-import-parser.php`** — reconnaissance du document (marqueur d'en-tête
+  IFCE/Info Chevaux ET ligne d'identité valide, tous deux exigés — §10 de la demande) puis
+  extraction vers une structure normalisée fermée `{valid, identity, indices, pedigree}`. Ne touche
+  jamais à `$_POST` ni aux fonctions métier — uniquement de l'interprétation de texte pur.
+- **`includes/ifce-import-mapper.php`** — convertit la structure normalisée vers les MÊMES
+  fonctions métier que la saisie manuelle admin : `gwseq_set_cheval_identity()` (nouvelle
+  extraction pure de `gwseq_save_cheval_meta()`, cheval-fields.php — zéro changement de
+  comportement pour le formulaire manuel existant), `gwseq_set_cheval_sport_indice()` /
+  `gwseq_set_cheval_genetic_indice()` (cheval-indices.php), `gwseq_set_horse_parent()`
+  (cheval-pedigree.php). **Jamais un accès direct à `update_post_meta()`** : un futur import
+  CSV/API/autre fournisseur pourra réutiliser ces mêmes fonctions sans aucune modification.
+- **`includes/ifce-import-admin.php`** — écran d'administration : sous-menu du CPT Cheval,
+  capacité `edit_posts` (cohérente avec la création d'un cheval — le CPT n'a aucune capacité
+  personnalisée, à la différence des pages de réglages globales du plugin qui utilisent
+  `manage_options`). Validation de sécurité du fichier (type MIME réel via `finfo`, extension
+  `.pdf`, taille maximale 15 Mo, provenance réelle du téléversement via `is_uploaded_file()`) ;
+  stockage de la structure analysée dans un **transient WordPress** (15 minutes, jamais dans une
+  meta de fiche à ce stade) ; écran de prévisualisation relisant ce transient ; écriture
+  strictement différée jusqu'à confirmation explicite (nonce vérifié, structure toujours relue
+  côté serveur — jamais une donnée structurée resoumise par le client). Suppression immédiate du
+  fichier PDF temporaire après extraction du texte, que l'analyse réussisse ou non.
+
+### Données extraites en V1
+
+- **Identité** (§4) : nom, race/stud-book (mappée au référentiel existant de la fiche Cheval,
+  `gwseq_cheval_race_options()`/`gwseq_match_race_to_canonical_code()` déjà existants, sinon
+  "Autre" + texte libre — jamais une valeur inventée), sexe, robe (même principe de correspondance
+  que la race), taille (`1m68` → 168 cm), année de naissance, naisseur/éleveur si identifiable
+  clairement, numéro SIRE et UELN si présents.
+- **Indices** (§5) : sportifs ISO/ICC/IDR — **le modèle existant a été étendu** pour stocker
+  désormais aussi le coefficient de détermination (CD, `_gwseq_{cle}_cd`, jusqu'ici réservé aux
+  indices génétiques) puisqu'une fiche IFCE officielle le fournit systématiquement (exemple exact :
+  « ISO 115 (0.70) (2023) » → valeur 115, CD 0.70, année 2023) ; génétiques BSO/BCC/BDR — valeur +
+  CD, jamais d'année (exemple exact : « BSO +12 (0.59) »). Chaque composant reste structuré
+  séparément, jamais une chaîne unique.
+- **Pedigree** (§6, objectif principal) : reconstruction automatique de l'arbre Père/Mère sur 3
+  générations (14 ascendants) à partir du tableau généalogique du PDF, réutilisant directement
+  `gwseq_sanitize_external_ancestor_tree()` / `gwseq_set_horse_parent()` /
+  `gwseq_match_race_to_canonical_code()` déjà existants (Étape 5) — validé exactement contre
+  l'exemple Jamerose de Félines fourni dans la demande (Père : UNTOUCHABLE (Père : HORS LA LOI II
+  (Père : PAPILLON ROUGE, Mère : ARIANE DU PLESSIS II), Mère : PROMESSE (Père : HEARTBREAKER, Mère :
+  CHABLIS)) ; Mère : NATIVE DE FELINES (Père : ROSIRE (Père : URIEL, Mère : EOLIENNE), Mère : FALINE
+  GENEVRIS (Père : PEGASE GERBAUX, Mère : LOUVE VARFEUIL))). Race/stud-book des ascendants récupérée
+  quand présente ; **l'année de naissance d'un ascendant n'est volontairement PAS extraite/stockée**
+  en V1 — le modèle d'ascendant externe existant (`{name, race, race_autre, father, mother}`) ne
+  prévoit aucun champ dédié, et ce premier import n'a pas vocation à modifier ce modèle déjà
+  testé.
+- **Ascendants toujours importés en mode "externe"** (§8) : aucune fiche `gwseq_cheval` n'est
+  jamais créée automatiquement pour un ascendant, aucune tentative de rapprochement/déduplication
+  par nom avec une fiche GWS existante.
+
+### Convention de lecture assumée (à confronter à un PDF réel en recette)
+
+Faute d'un exemplaire réel de fiche IFCE à disposition, le parseur assume une convention de
+lecture précise, documentée en tête de `includes/ifce-import-parser.php` : la ligne d'identité est
+repérée par la présence du jeton Sexe (Mâle/Femelle/Hongre) parmi 5 valeurs séparées par des
+virgules, le nom du cheval étant la ligne non vide qui la précède immédiatement ; le pedigree est
+repéré par un titre de section (« Généalogie »/« Pedigree »/« Origines ») suivi d'au plus 14 lignes
+non vides consécutives, dans l'ordre universel de lecture d'un tableau généalogique à 3 générations
+(branche Père d'abord, de haut en bas) — convention vérifiée comme correspondant exactement à
+l'exemple Jamerose de Félines fourni (14 ascendants, ordre et comptage exacts).
+
+### Limitations connues (Étape 7)
+
+- **AUCUNE VALIDATION CONTRE UN PDF IFCE RÉEL** : faute d'accès réseau pour en télécharger un
+  exemplaire, cet import n'a pu être testé que contre un PDF minimal auto-généré (mécanique
+  d'extraction) et une fixture texte reproduisant fidèlement l'exemple fourni dans la demande
+  (reconnaissance/analyse). La convention de lecture ci-dessus n'a pas pu être confrontée à la
+  mise en page réelle d'une fiche IFCE (colonnes, labels intercalés, pagination éventuellement
+  différents). C'est précisément pour cette raison que la prévisualisation obligatoire avant
+  écriture reste la garantie réelle contre une donnée mal interprétée.
+- **Aucun décodage des tables d'encodage de police** (WinAnsiEncoding, Identity-H/CID,
+  ToUnicode) dans l'extracteur PDF : des caractères accentués d'un PDF réel utilisant un encodage
+  de police non trivial pourraient être mal extraits. La correspondance race/robe reste
+  insensible aux accents (même mécanisme que la fiche manuelle), ce qui atténue partiellement ce
+  risque pour ces deux champs, mais pas pour le nom du cheval, les noms d'ascendants ou le
+  naisseur/éleveur.
+- **Zone de synthèse principale uniquement** (§3/§14) : le PDF complet est accepté et peut être lu
+  dans son ensemble, mais seule l'information explicitement supportée ci-dessus est exploitée —
+  jamais une donnée devinée. Volontairement hors périmètre V1 : production détaillée des
+  ascendants, collatéraux, descendants, résultats exhaustifs, toute information sans emplacement
+  dans le modèle GWS actuel.
+- **Aucun rapprochement avec une fiche GWS existante** : une évolution future pourra proposer un
+  appariement (par nom, SIRE...) contre les chevaux déjà enregistrés, non nécessaire pour cette V1.
+- **Aucune conservation du PDF** (§11) : le fichier temporaire est supprimé immédiatement après
+  extraction du texte, que l'analyse réussisse ou échoue — ce n'est qu'une source d'import, jamais
+  une nouvelle source de vérité stockée sur la fiche.
+- **Parcours navigateur complet non exercé** : le pipeline (extraction → analyse → mapping) est
+  testé automatiquement de bout en bout, mais le vrai parcours de téléversement HTTP dans un
+  navigateur (sélection de fichier, écran de prévisualisation réel, redirections) n'a pas pu être
+  exercé dans cet environnement — à valider en recette runtime.
+
+Voir `tests/README.md` pour le détail complet de la couverture de tests et de ses limites.
 
 ### Pedigree (Étape 5)
 

@@ -1,5 +1,28 @@
 # Changelog — GWS Starter
 
+## 1.16.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Étape 7 : premier import intelligent depuis une fiche de synthèse IFCE, au format PDF (GWS
+  Equestrian 0.13.0).** Second chemin de création d'une fiche Cheval, « Importer une fiche IFCE »,
+  en complément de la création manuelle existante — objectif : supprimer la ressaisie manuelle, en
+  particulier pour le pedigree. Téléversement du PDF complet -> analyse -> écran de prévisualisation
+  obligatoire (identité/indices/pedigree détectés, avec case à cocher indépendante par section) ->
+  validation explicite -> écriture uniquement à ce moment ; un document non reconnu n'écrit
+  strictement rien. Le parseur ne touche jamais directement aux post meta : il produit une structure
+  normalisée relayée vers les mêmes fonctions métier que la saisie manuelle
+  (`gwseq_set_cheval_identity()` — nouvelle extraction pure, sans changement de comportement pour le
+  formulaire existant —, `gwseq_set_cheval_sport_indice()`, `gwseq_set_cheval_genetic_indice()`,
+  `gwseq_set_horse_parent()`). Extension du modèle de données : ISO/ICC/IDR stockent désormais aussi
+  un coefficient de détermination (CD), qu'une fiche IFCE fournit systématiquement pour ces trois
+  indices. Le pedigree (objectif principal) est reconstruit automatiquement sur 3 générations en
+  réutilisant le mécanisme d'ascendants externes déjà existant (Étape 5) — les ascendants sont
+  toujours importés en mode externe, jamais de fiche GWS créée automatiquement pour l'un d'eux.
+  **Limitation majeure assumée** : faute d'accès réseau, cet import n'a pu être testé contre aucun
+  PDF IFCE réel (seulement un PDF minimal auto-généré et une fixture texte reproduisant l'exemple
+  fourni) — la prévisualisation obligatoire reste la garantie réelle contre une donnée mal
+  interprétée. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.13.0) et
+  `tests/README.md` pour le détail complet.
+
 ## 1.15.6 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Diagnostic et correctif : contenu de la Photo principale invisible après déplacement (GWS

@@ -2,11 +2,14 @@
 /**
  * Cheval — indices sportifs et génétiques (Étape 6, §2-3 de la demande).
  *
- * INDICES SPORTIFS (ISO, ICC, IDR) : chacun stocké en deux composants séparés — valeur (entier)
- * et année (entier) — jamais dans une chaîne unique du type "142 (2025)" (§2). Une seule valeur
- * par indice et par cheval : GWS Equestrian ne conserve JAMAIS d'historique annuel en V1, seul
- * l'indice que le professionnel souhaite présenter (normalement son meilleur) est enregistré —
- * une nouvelle saisie remplace simplement l'ancienne valeur, elle ne s'ajoute jamais à une liste.
+ * INDICES SPORTIFS (ISO, ICC, IDR) : chacun stocké en trois composants séparés — valeur (entier),
+ * année (entier) et coefficient de détermination/CD (nombre, décimal, facultatif) — jamais dans
+ * une chaîne unique du type "142 (2025)" (§2). Le CD a été ajouté à ce trio lors de l'import IFCE
+ * (une fiche IFCE officielle le fournit systématiquement pour ces trois indices, ex. « ISO 115
+ * (0.70) (2023) ») — auparavant réservé aux indices génétiques (BSO/BCC/BDR) uniquement. Une seule
+ * valeur par indice et par cheval : GWS Equestrian ne conserve JAMAIS d'historique annuel en V1,
+ * seul l'indice que le professionnel souhaite présenter (normalement son meilleur) est enregistré
+ * — une nouvelle saisie remplace simplement l'ancienne valeur, elle ne s'ajoute jamais à une liste.
  * Les trois indices sont indépendants et tous facultatifs : un cheval peut n'en avoir aucun,
  * un seul, ou les trois, sans qu'aucune combinaison ne soit imposée ou déduite d'une autre.
  *
@@ -44,6 +47,7 @@ function gwseq_register_cheval_indices_meta() {
   foreach (gwseq_cheval_sport_indice_keys() as $key) {
     register_post_meta(GWSEQ_CPT_CHEVAL, '_gwseq_' . $key . '_valeur', array('single' => true, 'type' => 'integer', 'show_in_rest' => false));
     register_post_meta(GWSEQ_CPT_CHEVAL, '_gwseq_' . $key . '_annee', array('single' => true, 'type' => 'integer', 'show_in_rest' => false));
+    register_post_meta(GWSEQ_CPT_CHEVAL, '_gwseq_' . $key . '_cd', array('single' => true, 'type' => 'number', 'show_in_rest' => false));
   }
   foreach (gwseq_cheval_genetic_indice_keys() as $key) {
     register_post_meta(GWSEQ_CPT_CHEVAL, '_gwseq_' . $key . '_valeur', array('single' => true, 'type' => 'number', 'show_in_rest' => false));
@@ -81,16 +85,19 @@ function gwseq_sanitize_cheval_indice_annee($raw) {
 }
 
 /**
- * Transforme un tableau à la forme de $_POST (ou de tout appel programmatique) en {valeur, annee}
- * propres pour un indice sportif. Fonction pure — valeur et année sont sanitisées et acceptées
- * indépendamment l'une de l'autre (une valeur sans année, ou une année sans valeur, sont toutes
- * deux des saisies valides — §2 : ne jamais imposer qu'elles soient renseignées ensemble).
+ * Transforme un tableau à la forme de $_POST (ou de tout appel programmatique) en {valeur, annee, cd}
+ * propres pour un indice sportif. Fonction pure — les trois composants sont sanitisés et acceptés
+ * indépendamment les uns des autres (une valeur sans année ni CD, par exemple, reste une saisie
+ * valide — §2 : ne jamais imposer qu'ils soient tous renseignés ensemble). Le CD utilise le même
+ * sanitiseur générique que pour les indices génétiques (gws_core_field_sanitize('number', ...)) —
+ * aucune duplication de logique de validation entre les deux familles d'indices.
  */
 function gwseq_sanitize_cheval_sport_indice_input($raw) {
   $raw = is_array($raw) ? $raw : array();
   return array(
     'valeur' => gwseq_sanitize_cheval_sport_indice_valeur($raw['valeur'] ?? ''),
     'annee' => gwseq_sanitize_cheval_indice_annee($raw['annee'] ?? ''),
+    'cd' => gws_core_field_sanitize('number', $raw['cd'] ?? ''),
   );
 }
 
@@ -121,14 +128,16 @@ function gwseq_set_cheval_sport_indice($cheval_id, $indice_key, $raw_args) {
   $clean = gwseq_sanitize_cheval_sport_indice_input($raw_args);
   update_post_meta($cheval_id, '_gwseq_' . $indice_key . '_valeur', $clean['valeur']);
   update_post_meta($cheval_id, '_gwseq_' . $indice_key . '_annee', $clean['annee']);
+  update_post_meta($cheval_id, '_gwseq_' . $indice_key . '_cd', $clean['cd']);
   return true;
 }
 
 function gwseq_get_cheval_sport_indice($cheval_id, $indice_key) {
-  if (!in_array($indice_key, gwseq_cheval_sport_indice_keys(), true)) return array('valeur' => '', 'annee' => '');
+  if (!in_array($indice_key, gwseq_cheval_sport_indice_keys(), true)) return array('valeur' => '', 'annee' => '', 'cd' => '');
   return array(
     'valeur' => get_post_meta($cheval_id, '_gwseq_' . $indice_key . '_valeur', true),
     'annee' => get_post_meta($cheval_id, '_gwseq_' . $indice_key . '_annee', true),
+    'cd' => get_post_meta($cheval_id, '_gwseq_' . $indice_key . '_cd', true),
   );
 }
 
@@ -226,13 +235,15 @@ function gwseq_render_cheval_indices_box($post) {
   wp_nonce_field(GWSEQ_CHEVAL_NONCE_ACTION, GWSEQ_CHEVAL_NONCE_FIELD);
   ?>
   <h4><?php esc_html_e('Indices sportifs', 'gws-core'); ?></h4>
-  <p class="description"><?php esc_html_e('Un seul indice par type et par cheval — normalement le meilleur obtenu, jamais un historique année par année. Exemple : ISO 142 (2025).', 'gws-core'); ?></p>
+  <p class="description"><?php esc_html_e('Un seul indice par type et par cheval — normalement le meilleur obtenu, jamais un historique année par année. Exemple : ISO 115 (CD 0,70) (2023).', 'gws-core'); ?></p>
   <?php foreach (gwseq_cheval_sport_indice_field_labels() as $key => $label) :
     $indice = gwseq_get_cheval_sport_indice($post->ID, $key);
   ?>
     <p>
       <label for="gwseq-cheval-<?php echo esc_attr($key); ?>-valeur"><strong><?php echo esc_html($label); ?></strong></label>
       <input type="number" step="1" class="small-text" id="gwseq-cheval-<?php echo esc_attr($key); ?>-valeur" name="_gwseq_<?php echo esc_attr($key); ?>[valeur]" value="<?php echo esc_attr($indice['valeur']); ?>">
+      <label for="gwseq-cheval-<?php echo esc_attr($key); ?>-cd"><?php esc_html_e('CD', 'gws-core'); ?></label>
+      <input type="number" step="0.01" class="small-text" id="gwseq-cheval-<?php echo esc_attr($key); ?>-cd" name="_gwseq_<?php echo esc_attr($key); ?>[cd]" value="<?php echo esc_attr(gwseq_format_cheval_indice_cd($indice['cd'])); ?>">
       <label for="gwseq-cheval-<?php echo esc_attr($key); ?>-annee"><?php esc_html_e('Année', 'gws-core'); ?></label>
       <input type="number" step="1" class="small-text" id="gwseq-cheval-<?php echo esc_attr($key); ?>-annee" name="_gwseq_<?php echo esc_attr($key); ?>[annee]" value="<?php echo esc_attr($indice['annee']); ?>">
     </p>

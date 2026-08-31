@@ -23,6 +23,7 @@ php tests/gws-equestrian-cheval-media-logic-test.php
 php tests/gws-equestrian-cheval-editorial-logic-test.php
 php tests/gws-equestrian-cheval-admin-tabs-test.php
 node tests/gws-equestrian-cheval-admin-tabs-runtime-test.js
+php tests/gws-equestrian-ifce-import-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -233,7 +234,12 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   le STOCKAGE reste le nombre exact (relire la valeur brute après arrondi d'affichage renvoie
   toujours 0.987, jamais de perte de précision en base), le libellé génétique public respecte la
   même précision (exemple exact de la demande : « BSO +12 (0.90) »), et le rendu admin affiche
-  bien le champ CD formaté avec un pas de saisie (`step`) cohérent.
+  bien le champ CD formaté avec un pas de saisie (`step`) cohérent. Extension import IFCE (Étape 7,
+  0.13.0) : ISO/ICC/IDR stockent désormais également un CD (`_gwseq_{cle}_cd`), même mécanisme de
+  sanitation/persistance/lecture/rendu que le CD déjà existant des indices génétiques, exemple exact
+  de la demande couvert (« ISO 115 (0.70) (2023) » → valeur 115, CD 0.70, année 2023) ; CD facultatif
+  (une saisie manuelle sans CD reste valide) ; toutes les assertions d'égalité stricte de tableau
+  préexistantes ont été mises à jour pour inclure la nouvelle clé `cd`.
 - Médias de `gws-equestrian`, Étape 6 (`gws-equestrian-cheval-media-logic-test.php`) : galerie
   (ajout/suppression/réordonnancement, bornée à 9 images complémentaires à la photo principale,
   attachment IDs uniquement — jamais une URL ni une valeur mal formée —, aucun doublon, un ID qui
@@ -324,6 +330,42 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   certitude le code de déplacement (`appendChild()`, qui ne peut par construction jamais effacer
   le contenu d'un nœud déplacé) comme cause du signalement, orientant le diagnostic vers une
   cause CSS plutôt que DOM (voir le CHANGELOG du module pour le détail).
+- **Import IFCE de `gws-equestrian`, Étape 7 (`gws-equestrian-ifce-import-test.php`)** : extraction
+  de texte PDF (`ifce-pdf-text.php`) contre un PDF minimal auto-généré pour ce fichier — flux
+  `/FlateDecode` compressé via `gzcompress()`/décompressé via `gzuncompress()`, flux non compressé
+  toléré tel quel, chaînes littérales échappées (parenthèses, `\n`, antislash) correctement
+  décodées, robustesse (entrée non-PDF, PDF vide, fichier illisible, flux FlateDecode corrompu —
+  jamais d'erreur fatale). Reconnaissance et analyse (`ifce-import-parser.php`) contre une fixture
+  TEXTE reproduisant fidèlement l'exemple **Jamerose de Félines** fourni dans la demande (avec
+  accents réels, pour valider les expressions régulières indépendamment de la limitation
+  d'encodage du PDF — voir plus bas) : détection du document (marqueur d'en-tête IFCE/Info Chevaux
+  ET ligne d'identité valide, tous deux exigés) ; identité (nom, race mappée au référentiel
+  existant, sexe, robe, taille "1m68" → 168 cm, année de naissance, naisseur/éleveur avec accents
+  préservés, SIRE, UELN) ; indices sportifs ISO/ICC/IDR avec valeur+CD+année stockés séparément
+  (exemple exact « ISO 115 (0.70) (2023) »), indices génétiques BSO/BCC/BDR avec valeur signée+CD
+  sans année (exemple exact « BSO +12 (0.59) »), un indice absent du texte reste vide (jamais
+  deviné) ; reconstruction EXACTE des 14 ascendants du pedigree Jamerose (Père/Mère et leurs propres
+  ascendants sur 3 générations, arbre vérifié nœud par nœud), aucune sous-branche inventée à la
+  dernière génération détectée, arbre produit accepté sans perte par
+  `gwseq_sanitize_external_ancestor_tree()` (même sanitiseur que la saisie manuelle) ; documents non
+  reconnus rejetés (texte sans rapport, marqueur IFCE sans ligne d'identité, ligne d'identité sans
+  marqueur IFCE, texte vide) — jamais un import "best effort". Mapping (`ifce-import-mapper.php`) :
+  import complet vers les MÊMES fonctions métier que la saisie manuelle
+  (`gwseq_set_cheval_identity`/`gwseq_set_cheval_sport_indice`/`gwseq_set_cheval_genetic_indice`/
+  `gwseq_set_horse_parent`, jamais un accès direct à `update_post_meta()` — vérifié
+  déclarativement, hors commentaires) ; import partiel (une section cochée n'affecte jamais les
+  autres) ; structure invalide ou `post_id` invalide refusés proprement (`false`, aucune écriture) ;
+  ascendants toujours importés en mode `external` (jamais `gws`), aucun appel à `wp_insert_post()`
+  dans le fichier de mapping (aucune fiche fantôme créée pour un ascendant). Glue d'administration
+  (`ifce-import-admin.php`) : contrôles de forme du fichier téléversé testés directement (code
+  d'erreur, taille, extension `.pdf`) ; vérification déclarative (hors commentaires) de la présence
+  du sniffing MIME réel (`finfo_open`)/`is_uploaded_file()`, de la suppression du fichier temporaire
+  après extraction, capacité `edit_posts` (jamais `manage_options`), absence de toute création de
+  pièce jointe/media pour le PDF, absence de toute modification du formulaire d'édition manuel
+  existant (`add_meta_box`) ; **aucune écriture avant validation (§1)** vérifiée déclarativement —
+  le gestionnaire de téléversement n'appelle jamais `wp_insert_post()`/`gwseq_ifce_map_import()`,
+  seul le gestionnaire de confirmation (déclenché uniquement après un clic explicite sur l'écran de
+  prévisualisation) les appelle ; enregistrement du sous-menu vérifié.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -388,3 +430,21 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   L'utilisabilité complète de la
   fiche sans JavaScript (blocs simplement empilés, formulaire toujours soumissible) reste elle
   aussi à confirmer en conditions réelles (navigateur avec JS désactivé).
+- **Import IFCE — LIMITATION MAJEURE ASSUMÉE (Étape 7)** : faute d'accès réseau pour télécharger un
+  exemplaire réel, **aucun test de ce dossier n'a été exécuté contre un authentique PDF IFCE/Info
+  Chevaux téléchargé depuis leur site**. L'extraction PDF (`ifce-pdf-text.php`) n'est validée que
+  contre un PDF minimal auto-généré pour les besoins du test ; la reconnaissance/l'analyse
+  (`ifce-import-parser.php`) n'est validée que contre une fixture TEXTE reproduisant fidèlement
+  l'exemple fourni dans la demande. En particulier : (1) l'extracteur PDF ne décode AUCUNE table
+  d'encodage de police (WinAnsiEncoding, Identity-H/CID, ToUnicode) — un PDF réel utilisant un
+  encodage de police non trivial pour les caractères accentués (Français, née, Félines...) pourrait
+  produire un texte mal décodé, non testé ici ; (2) la convention de lecture assumée pour repérer la
+  ligne d'identité et le tableau de pedigree (voir les docblocs de `ifce-import-parser.php`) n'a pas
+  pu être confrontée à la mise en page RÉELLE d'une fiche IFCE — une disposition différente (colonnes,
+  labels intercalés, pagination) pourrait ne pas être reconnue ; (3) le parcours complet
+  navigateur (téléversement réel → prévisualisation → confirmation → fiche créée) n'a jamais été
+  exercé dans un vrai WordPress. C'est précisément pour cette raison que la prévisualisation
+  obligatoire avant écriture (§9 de la demande) reste la garantie réelle contre une donnée mal
+  interprétée — jamais ce test automatisé. Le CR de livraison de cette étape détaille cette
+  limitation ; l'utilisateur a explicitement indiqué recetter cet import en conditions réelles avant
+  toute extension.

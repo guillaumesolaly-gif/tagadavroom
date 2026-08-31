@@ -232,6 +232,35 @@ gws_test_assert($i['sire'] === '05123456A', 'SIRE : identifiant conservé tel qu
 $i = gwseq_sanitize_cheval_identity_input('pas un tableau');
 gws_test_assert($i['sexe'] === '' && $i['annee_naissance'] === '' && $i['eleveur'] === '', 'Identité : donnée mal formée (pas un tableau) -> repli sûr sur les valeurs par défaut');
 
+// --- gwseq_set_cheval_identity() : fonction métier pure extraite de gwseq_save_cheval_meta()
+// (préparation import IFCE, §7 de la demande — réutilisable hors formulaire, sans $_POST ni
+// nonce) ; prend le même tableau à la forme $_POST que gwseq_sanitize_cheval_identity_input(),
+// aucune deuxième forme de données inventée ---
+$set_result = gwseq_set_cheval_identity(60, array(
+  '_gwseq_sexe' => 'female',
+  '_gwseq_annee_naissance' => '2019',
+  '_gwseq_robe' => 'gris',
+  '_gwseq_race' => 'selle_francais',
+  '_gwseq_taille_cm' => '168',
+  '_gwseq_eleveur' => 'Haras de Félines',
+  '_gwseq_sire' => '05123456A',
+));
+gws_test_assert($set_result === true, 'gwseq_set_cheval_identity() : l’enregistrement réussit et retourne true');
+$identity_60 = gwseq_get_cheval_identity(60);
+gws_test_assert(
+  $identity_60['sexe'] === 'female' && $identity_60['annee_naissance'] === 2019 && $identity_60['robe'] === 'gris'
+  && $identity_60['race'] === 'selle_francais' && $identity_60['taille_cm'] === 168
+  && $identity_60['eleveur'] === 'Haras de Félines' && $identity_60['sire'] === '05123456A',
+  'gwseq_set_cheval_identity() : toutes les données sont bien persistées, relecture exacte via gwseq_get_cheval_identity()'
+);
+gws_test_assert(gwseq_set_cheval_identity(0, array('_gwseq_sexe' => 'mare')) === false, 'gwseq_set_cheval_identity() : un post_id invalide (0) est refusé, jamais d’écriture');
+// Programmatique, sans $_POST ni nonce (même garantie que gwseq_set_horse_parent()/indices) :
+// recherche déclarative directe sur le code source de la fonction elle-même.
+$cheval_fields_source_for_identity_setter_check = file_get_contents($module_dir . 'includes/cheval-fields.php');
+$identity_setter_source = substr($cheval_fields_source_for_identity_setter_check, strpos($cheval_fields_source_for_identity_setter_check, 'function gwseq_set_cheval_identity'));
+$identity_setter_source = substr($identity_setter_source, 0, strpos($identity_setter_source, "\nfunction "));
+gws_test_assert(strpos($identity_setter_source, '$_POST') === false, 'gwseq_set_cheval_identity() : ne lit jamais $_POST directement (réutilisable par un futur import IFCE/CSV/API, §7)');
+
 // =====================================================================================
 // Convention de présentation GWS Equestrian des noms de chevaux (correction post-recette de
 // l'Étape 5, §12-15/§29) : majuscules, sans accents — jamais une transformation de la source
