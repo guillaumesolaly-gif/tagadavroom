@@ -424,6 +424,52 @@ function gwseq_add_cheval_meta_boxes() {
 }
 add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, 'gwseq_add_cheval_meta_boxes');
 
+/**
+ * Nettoyage d'un état WordPress hérité pour la meta box Identité (correctifs itératifs de la
+ * régression "onglet Identité vide") — la boîte est enregistrée en contexte `'normal'` depuis
+ * l'Étape 4 et ce contexte n'a JAMAIS changé dans le code (contrairement à Production/aperçu
+ * pedigree, voir cheval-pedigree.php) : ce n'est donc pas le registre `add_meta_box()` qu'il fallait
+ * corriger, mais l'ÉTAT PERSISTÉ PAR UTILISATEUR que WordPress a pu accumuler pendant les multiples
+ * allers-retours de recette sur cet écran (glisser-déposer accidentel vers la colonne latérale,
+ * case décochée dans « Options de l'écran » en tentant de diagnostiquer une version bloquante) :
+ * - `metaboxhidden_{$screen}` (case décochée dans Screen Options — cause racine confirmée en
+ *   0.12.3, masque la boîte ENTIÈRE via la classe `.hide-if-js`) ;
+ * - `meta-box-order_{$screen}` (ordre/colonne mémorisés par glisser-déposer — si "Identité" y
+ *   apparaît sous un contexte AUTRE que `'normal'`, on retire cette entrée pour que WordPress
+ *   retombe sur son enregistrement réel plutôt que de perpétuer une position héritée incohérente).
+ * Purement un nettoyage de préférences d'affichage PROPRES à l'utilisateur connecté (jamais une
+ * donnée métier, jamais une meta de la fiche Cheval elle-même) — idempotent (ne réécrit la
+ * préférence que si un changement réel est nécessaire) et scopé à cette seule boîte : aucune autre
+ * préférence de l'utilisateur n'est touchée.
+ */
+function gwseq_cleanup_legacy_identite_metabox_user_state($screen) {
+  if (!$screen || $screen->id !== GWSEQ_CPT_CHEVAL) return;
+  $user_id = get_current_user_id();
+  if (!$user_id) return;
+
+  $hidden_key = 'metaboxhidden_' . $screen->id;
+  $hidden = get_user_meta($user_id, $hidden_key, true);
+  if (is_array($hidden) && in_array('gwseq-cheval-identite', $hidden, true)) {
+    update_user_meta($user_id, $hidden_key, array_values(array_diff($hidden, array('gwseq-cheval-identite'))));
+  }
+
+  $order_key = 'meta-box-order_' . $screen->id;
+  $order = get_user_meta($user_id, $order_key, true);
+  if (is_array($order)) {
+    $changed = false;
+    foreach ($order as $context => $csv) {
+      if ($context === 'normal' || !is_string($csv) || $csv === '') continue;
+      $ids = array_filter(explode(',', $csv));
+      if (in_array('gwseq-cheval-identite', $ids, true)) {
+        $order[$context] = implode(',', array_diff($ids, array('gwseq-cheval-identite')));
+        $changed = true;
+      }
+    }
+    if ($changed) update_user_meta($user_id, $order_key, $order);
+  }
+}
+add_action('current_screen', 'gwseq_cleanup_legacy_identite_metabox_user_state');
+
 function gwseq_render_cheval_identite_box($post) {
   $identity = gwseq_get_cheval_identity($post->ID);
   $age = gwseq_cheval_age_from_birth_year($identity['annee_naissance']);

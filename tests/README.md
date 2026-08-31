@@ -133,6 +133,16 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   accordés via `_n()`, exemples exacts de la demande, absence du symbole « ≈ », de la forme non
   accordée « an(s) » et de toute mention permanente d'approximation ; aide discrète disponible en
   attribut `title` uniquement) — le calcul sous-jacent (convention métier équine) reste inchangé.
+  Complété en 0.12.4 : `gwseq_cleanup_legacy_identite_metabox_user_state()`, un nettoyage ciblé de
+  préférences WordPress PROPRES à l'utilisateur connecté (jamais une donnée métier) susceptibles
+  d'avoir dérivé pendant les recettes successives de l'ajustement onglets — écran hors sujet jamais
+  touché, aucune erreur si aucun utilisateur n'est connecté, case "Identité" décochée dans le
+  panneau "Options de l'écran" réactivée sans affecter les autres boîtes masquées par l'utilisateur,
+  idempotence (aucune réécriture si la préférence est déjà propre), entrée héritée de "Identité"
+  dans un contexte de `meta-box-order` autre que `'normal'` (ex. `'side'`, ancien glisser-déposer)
+  retirée sans affecter le reste de ce contexte ni l'ordre du contexte `'normal'` lui-même. Le
+  contexte d'enregistrement réel (`add_meta_box()`, `'normal'`) n'est jamais modifié — il ne l'a
+  jamais été depuis l'Étape 4.
 
 - Pedigree de `gws-equestrian`, Étape 5 (`gws-equestrian-pedigree-logic-test.php`) : relations
   Père/Mère (référence à un cheval GWS existant, jamais par nom, jamais d'auto-référence, jamais

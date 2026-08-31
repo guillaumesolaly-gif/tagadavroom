@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.3 (Étape 5 — Pedigree validée)
+## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.4 (Étape 5 — Pedigree validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -326,6 +326,43 @@ de vrais champs à l'intérieur) et modélise l'effet réel de `.closed`/`.hide-
 durablement invisible déclenchant le filet n°2 ; incohérence de marquage déclenchant le filet n°1),
 chacun vérifié indépendamment détecté par régression. 35 assertions Node au total (+ 8 nouvelles
 assertions déclaratives PHP, dont la vérification du filtre `postbox_classes`).
+
+#### Nettoyage 0.12.4 — état WordPress hérité sur la meta box Identité
+
+Complément demandé après 0.12.3 : au-delà des deux filets de sécurité runtime (JavaScript), un
+nettoyage PHP ciblé purge désormais l'état WordPress persisté PAR UTILISATEUR qui a pu s'accumuler
+pendant les multiples allers-retours de recette sur cet écran — **sans jamais toucher au registre
+`add_meta_box()`** de la boîte Identité, qui reste (et est resté depuis l'Étape 4) enregistrée en
+contexte `'normal'`, jamais `'side'` : ce n'était pas ce registre qui posait problème, mais deux
+préférences que WordPress mémorise séparément, par utilisateur, indépendamment du code du plugin.
+
+**`gwseq_cleanup_legacy_identite_metabox_user_state()`** (`includes/cheval-fields.php`, hookée sur
+`current_screen`, exécutée uniquement sur l'écran d'édition d'une fiche Cheval) purge, si
+nécessaire :
+1. **`metaboxhidden_{$screen}`** (case décochée dans le panneau "Options de l'écran" — la cause
+   racine confirmée en 0.12.3, qui masque la boîte ENTIÈRE via `.hide-if-js`) : Identité est
+   retirée de la liste des boîtes masquées, sans toucher aux autres boîtes que l'utilisateur aurait
+   légitimement masquées par ailleurs.
+2. **`meta-box-order_{$screen}`** (ordre/colonne mémorisés par glisser-déposer) : si Identité
+   apparaît sous un contexte AUTRE que `'normal'` (ex. `'side'`, à la suite d'un glisser-déposer
+   accidentel pendant une recette antérieure), cette entrée est retirée de l'ordre mémorisé —
+   WordPress retombe alors sur son enregistrement réel (`'normal'`/`'high'`) plutôt que de
+   perpétuer une position héritée incohérente. L'ordre du contexte `'normal'` lui-même, et les
+   autres identifiants des autres contextes, ne sont jamais modifiés.
+
+Idempotent (n'écrit la préférence que si un changement réel est nécessaire) et strictement scopé à
+cette seule boîte — aucune autre préférence de l'utilisateur n'est jamais touchée. Purement des
+préférences d'AFFICHAGE propres à l'utilisateur connecté, jamais une donnée métier ni une meta de
+la fiche Cheval elle-même.
+
+**Complémentaire, pas un remplacement** : les deux filets de sécurité runtime de 0.12.3 (levée de
+`.closed`/`.hide-if-js` à l'activation d'un onglet, vérification `offsetParent`, dégradation sûre
+si une boîte reste invisible) restent en place — ce nettoyage traite la cause probable à la racine
+(l'état persisté), les filets restent la garantie de dernier recours.
+
+**Tests** : 6 nouvelles assertions dans `gws-equestrian-cheval-logic-test.php` (écran hors sujet
+jamais touché, absence d'erreur sans utilisateur connecté, réactivation ciblée dans Screen Options,
+idempotence, retrait d'une entrée héritée hors `'normal'`, ordre déjà correct jamais modifié).
 
 #### Limitations connues (Étape 6)
 

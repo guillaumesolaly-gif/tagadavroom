@@ -122,6 +122,15 @@ function get_current_screen() { return $GLOBALS['__gwseq_test_screen']; }
 $GLOBALS['__gwseq_enqueued'] = array();
 function wp_enqueue_script($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] = $handle; }
 
+// --- Préférences utilisateur WordPress (Screen Options / ordre des meta boxes), pour le nettoyage
+// de l'état hérité sur la boîte Identité — registre en mémoire par utilisateur, comme un vrai
+// get_user_meta()/update_user_meta() ---
+$GLOBALS['__gwseq_test_current_user_id'] = 1;
+function get_current_user_id() { return $GLOBALS['__gwseq_test_current_user_id']; }
+$GLOBALS['__gwseq_test_user_meta'] = array();
+function get_user_meta($user_id, $key, $single = false) { return $GLOBALS['__gwseq_test_user_meta'][$user_id][$key] ?? ''; }
+function update_user_meta($user_id, $key, $value) { $GLOBALS['__gwseq_test_user_meta'][$user_id][$key] = $value; return true; }
+
 define('ABSPATH', __DIR__ . '/');
 const GWSEQ_CPT_CHEVAL = 'gwseq_cheval';
 const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
@@ -612,6 +621,87 @@ $_POST = gws_test_cheval_post_payload();
 $GLOBALS['__gwseq_test_meta'][1005] = array();
 gwseq_save_cheval_meta(1005);
 gws_test_assert($GLOBALS['__gwseq_test_meta'][1005] === array(), 'Autosave : aucune meta écrite');
+
+// =====================================================================================
+// Nettoyage de l'état WordPress hérité sur la meta box Identité (correctifs itératifs de la
+// régression "onglet Identité vide") — gwseq_cleanup_legacy_identite_metabox_user_state().
+// Le contexte d'enregistrement (add_meta_box, 'normal') n'a jamais changé et n'est pas en cause :
+// ce nettoyage porte uniquement sur les PRÉFÉRENCES PERSISTÉES PAR UTILISATEUR que WordPress a pu
+// accumuler pendant les recettes successives (Screen Options, ordre/colonne des meta boxes).
+// =====================================================================================
+
+$cheval_screen = (object) array('id' => GWSEQ_CPT_CHEVAL, 'post_type' => GWSEQ_CPT_CHEVAL);
+
+// --- Écran hors sujet : ne touche jamais aux préférences d'un autre écran ---
+$GLOBALS['__gwseq_test_user_meta'] = array(42 => array(
+  'metaboxhidden_gwseq_prestation' => array('gwseq-cheval-identite'),
+));
+$GLOBALS['__gwseq_test_current_user_id'] = 42;
+gwseq_cleanup_legacy_identite_metabox_user_state((object) array('id' => 'gwseq_prestation', 'post_type' => 'gwseq_prestation'));
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][42]['metaboxhidden_gwseq_prestation'] === array('gwseq-cheval-identite'),
+  'Nettoyage Identité : un écran qui n’est pas celui de la fiche Cheval n’est jamais touché'
+);
+
+// --- Aucun utilisateur connecté (ex. contexte CLI/CRON) : jamais d'erreur, rien à faire ---
+$GLOBALS['__gwseq_test_current_user_id'] = 0;
+gwseq_cleanup_legacy_identite_metabox_user_state($cheval_screen); // ne doit lever aucune erreur
+
+// --- Screen Options : la case "Identité" avait été décochée (cause racine confirmée en 0.12.3,
+// masque la boîte ENTIÈRE via .hide-if-js) -> elle doit être retirée de la liste des masquées,
+// sans affecter les autres boîtes masquées par ailleurs ---
+$GLOBALS['__gwseq_test_current_user_id'] = 7;
+$GLOBALS['__gwseq_test_user_meta'] = array(7 => array(
+  'metaboxhidden_gwseq_cheval' => array('gwseq-cheval-identite', 'gwseq-cheval-pedigree-preview'),
+));
+gwseq_cleanup_legacy_identite_metabox_user_state($cheval_screen);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][7]['metaboxhidden_gwseq_cheval'] === array('gwseq-cheval-pedigree-preview'),
+  'Nettoyage Identité : la case "Identité" décochée dans Screen Options est réactivée, sans toucher aux autres boîtes masquées par l’utilisateur'
+);
+
+// --- Aucune préférence héritée à nettoyer : jamais de réécriture inutile ---
+$GLOBALS['__gwseq_test_current_user_id'] = 8;
+$GLOBALS['__gwseq_test_user_meta'] = array(8 => array(
+  'metaboxhidden_gwseq_cheval' => array('gwseq-cheval-pedigree-preview'),
+));
+gwseq_cleanup_legacy_identite_metabox_user_state($cheval_screen);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][8]['metaboxhidden_gwseq_cheval'] === array('gwseq-cheval-pedigree-preview'),
+  'Nettoyage Identité : idempotent — une préférence déjà propre n’est jamais réécrite ni altérée'
+);
+
+// --- Ordre des meta boxes : "Identité" avait dérivé dans un ancien glisser-déposer vers la
+// colonne latérale ('side') -> l'entrée est retirée de cet ordre pour que WordPress retombe sur
+// son enregistrement réel ('normal'), sans jamais toucher à l'ordre du contexte 'normal' lui-même
+// ni aux autres identifiants de la colonne latérale ---
+$GLOBALS['__gwseq_test_current_user_id'] = 9;
+$GLOBALS['__gwseq_test_user_meta'] = array(9 => array(
+  'meta-box-order_gwseq_cheval' => array(
+    'side' => 'postimagediv,gwseq-cheval-identite,gwseq-cheval-global-id-dev',
+    'normal' => 'gwseq-cheval-commercialisation,gwseq-cheval-pedigree',
+  ),
+));
+gwseq_cleanup_legacy_identite_metabox_user_state($cheval_screen);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][9]['meta-box-order_gwseq_cheval']['side'] === 'postimagediv,gwseq-cheval-global-id-dev',
+  'Nettoyage Identité : une entrée héritée dans un contexte autre que "normal" (ex. "side", ancien glisser-déposer) est retirée, sans affecter les autres identifiants de ce contexte'
+);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][9]['meta-box-order_gwseq_cheval']['normal'] === 'gwseq-cheval-commercialisation,gwseq-cheval-pedigree',
+  'Nettoyage Identité : l’ordre du contexte "normal" (le seul contexte d’enregistrement réel de la boîte) n’est jamais modifié'
+);
+
+// --- "Identité" déjà correctement en 'normal' dans l'ordre mémorisé : jamais de réécriture ---
+$GLOBALS['__gwseq_test_current_user_id'] = 10;
+$GLOBALS['__gwseq_test_user_meta'] = array(10 => array(
+  'meta-box-order_gwseq_cheval' => array('normal' => 'gwseq-cheval-identite,gwseq-cheval-commercialisation'),
+));
+gwseq_cleanup_legacy_identite_metabox_user_state($cheval_screen);
+gws_test_assert(
+  $GLOBALS['__gwseq_test_user_meta'][10]['meta-box-order_gwseq_cheval']['normal'] === 'gwseq-cheval-identite,gwseq-cheval-commercialisation',
+  'Nettoyage Identité : un ordre déjà correct (Identité dans "normal") n’est jamais modifié'
+);
 
 echo ($failures === 0 ? 'Tous les tests sont passés.' : "$failures test(s) en échec.") . "\n";
 exit($failures === 0 ? 0 : 1);

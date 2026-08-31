@@ -5,6 +5,42 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.12.4 — Nettoyage de l'état WordPress hérité sur la meta box Identité
+
+Complément demandé après 0.12.3 : au-delà des filets de sécurité runtime (JS), un nettoyage
+PHP ciblé purge désormais l'état WordPress persisté par utilisateur qui a pu s'accumuler pendant
+les multiples allers-retours de recette sur cet écran — sans jamais toucher au registre
+`add_meta_box()` de la boîte Identité, qui reste (et est resté depuis l'Étape 4) en contexte
+`'normal'`, jamais `'side'`.
+
+- **`gwseq_cleanup_legacy_identite_metabox_user_state()`** (`includes/cheval-fields.php`, hookée sur
+  `current_screen`, exécutée uniquement sur l'écran d'édition d'une fiche Cheval) : purge deux
+  préférences WordPress PROPRES à l'utilisateur connecté (jamais une donnée métier, jamais une meta
+  de la fiche Cheval elle-même) si elles portent une trace incohérente concernant la boîte
+  Identité :
+  1. `metaboxhidden_{$screen}` (case décochée dans le panneau "Options de l'écran" — la cause
+     racine confirmée en 0.12.3, qui masque la boîte ENTIÈRE via la classe `.hide-if-js`) : la
+     boîte Identité est retirée de la liste des boîtes masquées, sans toucher aux autres boîtes que
+     l'utilisateur aurait légitimement masquées par ailleurs.
+  2. `meta-box-order_{$screen}` (ordre/colonne mémorisés par glisser-déposer) : si "Identité"
+     apparaît sous un contexte AUTRE que `'normal'` (ex. `'side'`, à la suite d'un glisser-déposer
+     accidentel pendant une recette antérieure), cette entrée est retirée de l'ordre mémorisé —
+     WordPress retombe alors sur son enregistrement réel (`'normal'`/`'high'`) plutôt que de
+     perpétuer une position héritée incohérente. L'ordre du contexte `'normal'` lui-même, et les
+     autres identifiants des autres contextes, ne sont jamais modifiés.
+  Idempotent : n'écrit la préférence que si un changement réel est nécessaire ; scopé à cette seule
+  boîte, jamais un nettoyage générique de toutes les préférences de l'utilisateur.
+- **Complémentaire, pas un remplacement** : les deux filets de sécurité runtime de 0.12.3 (levée de
+  `.closed`/`.hide-if-js` à l'activation d'un onglet, vérification `offsetParent`, dégradation sûre
+  si une boîte reste invisible) restent en place — ce nettoyage traite la cause probable à la
+  racine (l'état persisté), les filets restent la garantie de dernier recours si un autre mécanisme
+  venait à en réintroduire une variante.
+- **Tests** : 6 nouvelles assertions dans `gws-equestrian-cheval-logic-test.php` — écran hors sujet
+  jamais touché, aucun utilisateur connecté (jamais d'erreur), case Screen Options réactivée sans
+  affecter les autres boîtes masquées, idempotence (aucune réécriture si déjà propre), entrée
+  héritée dans un contexte autre que `'normal'` retirée sans affecter le reste de ce contexte,
+  ordre déjà correct jamais modifié. Suite complète : 1100 assertions PHP + 35 assertions Node.
+
 ## 0.12.3 — Correctif RÉGRESSION BLOQUANTE — diagnostic complet de l'onglet Identité vide, filets de sécurité
 
 Le correctif 0.12.2 (repli natif `.closed`) ne résolvait PAS le problème en conditions réelles : la

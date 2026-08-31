@@ -1,5 +1,19 @@
 # Changelog — GWS Starter
 
+## 1.15.4 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Nettoyage de l'état WordPress hérité sur la meta box Identité (GWS Equestrian 0.12.4).** La
+  boîte Identité reste (et est restée depuis l'Étape 4) enregistrée en contexte `'normal'` — jamais
+  `'side'`, jamais modifiée dans le code. Ce qui pouvait diverger, c'est l'état PERSISTÉ PAR
+  UTILISATEUR accumulé pendant les recettes successives sur cet écran : une case décochée dans le
+  panneau "Options de l'écran" (cause racine confirmée en 0.12.3), ou un ordre/colonne de meta
+  boxes mémorisé par un ancien glisser-déposer. Une nouvelle fonction, exécutée uniquement sur
+  l'écran d'édition d'une fiche Cheval, purge désormais ces deux préférences si elles portent une
+  trace incohérente concernant Identité — sans jamais toucher aux autres préférences de
+  l'utilisateur ni au registre `add_meta_box()`. Complémentaire (pas un remplacement) des deux
+  filets de sécurité runtime livrés en 0.12.3. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.12.4) pour le détail complet.
+
 ## 1.15.3 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif RÉGRESSION BLOQUANTE — diagnostic complet de l'onglet Identité vide, filets de
