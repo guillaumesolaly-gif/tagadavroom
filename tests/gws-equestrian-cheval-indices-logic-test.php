@@ -125,7 +125,7 @@ gws_test_assert(gwseq_get_cheval_sport_indice(10, 'inconnu') === array('valeur' 
 gwseq_set_cheval_genetic_indice(20, 'bso', array('valeur' => '12', 'cd' => '0.90'));
 $bso = gwseq_get_cheval_genetic_indice(20, 'bso');
 gws_test_assert($bso['valeur'] === 12.0 && $bso['cd'] === 0.9, 'BSO : valeur positive et CD décimal exacts, stockés séparément');
-gws_test_assert(gwseq_cheval_genetic_indice_label($bso['valeur'], $bso['cd']) === '+12 (0.9)', 'BSO : le libellé ajoute le signe "+" explicite à l’affichage (jamais dans la donnée stockée elle-même)');
+gws_test_assert(gwseq_cheval_genetic_indice_label($bso['valeur'], $bso['cd']) === '+12 (0.90)', 'BSO : le libellé ajoute le signe "+" explicite à l’affichage et présente le CD à deux décimales (jamais dans la donnée stockée elle-même)');
 gws_test_assert(is_float(get_post_meta(20, '_gwseq_bso_valeur', true)), 'BSO : la valeur stockée est bien un nombre, jamais une chaîne formatée comme "+12"');
 
 // --- Valeur négative : signe conservé ---
@@ -146,6 +146,38 @@ gws_test_assert(gwseq_get_cheval_genetic_indice(20, 'bdr') === array('valeur' =>
 // --- Coefficient décimal préservé, jamais tronqué ---
 gwseq_set_cheval_genetic_indice(22, 'bso', array('valeur' => '20', 'cd' => '0.987'));
 gws_test_assert(gwseq_get_cheval_genetic_indice(22, 'bso')['cd'] === 0.987, 'Sanitation : un coefficient décimal à 3 chiffres est conservé exactement, jamais arrondi');
+
+// =====================================================================================
+// Ajustement UX post-recette — présentation du CD à deux décimales (§1 de la demande) : le
+// STOCKAGE reste un nombre, seule la PRÉSENTATION (formulaire admin, libellé) est affectée.
+// =====================================================================================
+
+gws_test_assert(gwseq_format_cheval_indice_cd(0.9) === '0.90', 'Présentation CD : 0.9 est présenté "0.90" (deux décimales), jamais "0.9"');
+gws_test_assert(gwseq_format_cheval_indice_cd(0.8) === '0.80', 'Présentation CD : 0.8 est présenté "0.80"');
+gws_test_assert(gwseq_format_cheval_indice_cd(0.75) === '0.75', 'Présentation CD : 0.75 (déjà deux décimales) reste "0.75"');
+gws_test_assert(gwseq_format_cheval_indice_cd(0.987) === '0.99', 'Présentation CD : une valeur à 3 décimales est arrondie à 2 décimales pour l’AFFICHAGE uniquement');
+gws_test_assert(gwseq_format_cheval_indice_cd('') === '', 'Présentation CD : une valeur vide reste vide, jamais "0.00" inventé');
+gws_test_assert(gwseq_format_cheval_indice_cd(-0.6) === '-0.60', 'Présentation CD : un coefficient négatif reste correctement formaté');
+
+// --- Le STOCKAGE réel n'est jamais affecté par cette présentation : relire la valeur brute après
+// arrondi d'affichage donne toujours le nombre exact enregistré (0.987, pas 0.99) ---
+gws_test_assert(gwseq_get_cheval_genetic_indice(22, 'bso')['cd'] === 0.987, 'Présentation CD : le stockage reste exact (0.987) même si son affichage est arrondi à "0.99" — jamais de perte de précision en base');
+
+// --- Le libellé public de l'indice génétique respecte la même précision (exemple exact de la
+// demande : BSO +12 (0.90) avant localisation éventuelle) ---
+gws_test_assert(gwseq_cheval_genetic_indice_label(12, 0.9) === '+12 (0.90)', 'Libellé génétique : exemple exact de la demande, CD présenté à deux décimales avant toute localisation');
+gws_test_assert(gwseq_cheval_genetic_indice_label(-8, 0.8) === '-8 (0.80)', 'Libellé génétique : deux décimales également pour une valeur négative');
+
+// --- Rendu admin : le champ CD affiche bien la valeur formatée à deux décimales, avec un pas de
+// saisie (step) cohérent, tout en conservant un séparateur décimal point (aucune conversion
+// virgule/point ajoutée à ce stade) ---
+gwseq_set_cheval_genetic_indice(52, 'bso', array('valeur' => '12', 'cd' => '0.9'));
+$post_stub_cd = (object) array('ID' => 52);
+ob_start();
+gwseq_render_cheval_indices_box($post_stub_cd);
+$cd_render_html = ob_get_clean();
+gws_test_assert(strpos($cd_render_html, 'name="_gwseq_bso[cd]" value="0.90"') !== false, 'Rendu admin : le champ CD affiche "0.90" (deux décimales) alors que "0.9" a été enregistré, sans que le stockage n’ait changé');
+gws_test_assert(strpos($cd_render_html, 'step="0.01"') !== false, 'Rendu admin : le champ CD utilise un pas de saisie de 0.01, cohérent avec sa présentation à deux décimales');
 
 // --- Absence d'année pour les indices génétiques : aucune meta "_annee" n'existe pour BSO/BCC/BDR ---
 foreach (array('bso', 'bcc', 'bdr') as $genetic_key) {

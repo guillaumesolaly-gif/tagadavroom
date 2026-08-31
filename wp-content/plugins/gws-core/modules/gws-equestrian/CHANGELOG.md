@@ -5,6 +5,55 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.12.0 — Étape 6 : ajustements UX post-recette — CD à deux décimales, navigation par onglets
+
+Correctifs suite à la première recette runtime de l'Étape 6 : l'écran d'édition d'une fiche cheval
+était devenu trop long avec l'ajout des indices/médias/présentation, et le coefficient de
+détermination (CD) des indices génétiques s'affichait sans précision fixe.
+
+- **Présentation du CD à deux décimales** (`gwseq_format_cheval_indice_cd()`,
+  `includes/cheval-indices.php`) : « 0.90 », jamais « 0.9 » — UNIQUEMENT une présentation, le
+  stockage reste le nombre PHP exact (vérifié explicitement par test : relire la valeur après
+  arrondi d'affichage renvoie toujours le nombre stocké sans perte de précision). Appliquée au
+  champ CD du formulaire admin (avec un pas de saisie `step="0.01"` cohérent) et au libellé
+  `gwseq_cheval_genetic_indice_label()` (« BSO +12 (0.90) », conforme à l'exemple exact de la
+  demande). Séparateur décimal volontairement le point à ce stade, aucune conversion
+  virgule/point ajoutée — un futur renderer pourra localiser l'affichage sans changer la donnée.
+- **Navigation par onglets** (`includes/cheval-admin-tabs.php`,
+  `assets/cheval-tabs-admin.js`/`cheval-tabs.css`) : 6 onglets (Identité, Commercial, Pedigree,
+  Indices, Médias, Présentation) regroupant les meta boxes déjà existantes — **uniquement une
+  couche de présentation** : aucune meta modifiée, aucun second formulaire, aucune règle métier ni
+  mécanisme de sauvegarde changés, aucun chargement par AJAX, aucune donnée jamais absente du DOM.
+  Le script ne fait que masquer/afficher (`style.display`) les `<div class="postbox">` déjà
+  présentes, SANS JAMAIS LES DÉPLACER — préserve intégralement le comportement natif de WordPress
+  sur ces boîtes (repliage, etc.). Sans JavaScript, la fiche reste utilisable exactement comme
+  avant, empilée verticalement. Les meta boxes Production (calculée) et « Pedigree résolu »
+  (dev-only) passent du contexte `'side'` à `'normal'` pour rejoindre la colonne principale, seule
+  couverte par les onglets, et sont regroupées avec Pedigree sous le même onglet — un changement
+  de PLACEMENT visuel uniquement (paramètre de `add_meta_box()`), aucune donnée affectée. La photo
+  principale (image à la une native), le Global Horse ID (dev-only) et la boîte "Ordre
+  d'affichage" restent volontairement hors du système d'onglets, dans la colonne latérale.
+- **Accès rapide à la sauvegarde** : un bouton dans la barre d'onglets déclenche un clic
+  PROGRAMMATIQUE sur le vrai bouton natif WordPress (`#publish`) — reproduit même son libellé
+  réel (« Publier »/« Mettre à jour ») plutôt qu'un texte codé en dur. Aucun second mécanisme de
+  sauvegarde, aucun appel direct à `form.submit()` (qui contournerait d'éventuels gestionnaires
+  natifs attachés au bouton) : une seule soumission possible, jamais deux concurrentes.
+- **Accessibilité** : pattern ARIA `tablist`/`tab`/`tabpanel` (chaque meta box devient
+  sémantiquement le panneau de son onglet via `aria-labelledby`, `aria-controls` — qui accepte
+  nativement une liste d'identifiants — regroupe plusieurs boîtes sous un même onglet sans les
+  déplacer), navigation clavier complète (flèches gauche/droite, Début/Fin, tabindex mobile),
+  réutilisation des classes natives `.nav-tab-wrapper`/`.nav-tab` de WordPress pour l'apparence.
+  Disposition responsive (repli sur écran étroit).
+- **Persistance légère de l'onglet actif** : `sessionStorage`, accès protégé (jamais une erreur
+  bloquante si indisponible) — un choix volontairement simple, comme demandé, sans infrastructure
+  dédiée.
+- 1 nouveau fichier de tests dédié (`gws-equestrian-cheval-admin-tabs-test.php`, 73 assertions) +
+  extension du test des indices (27 nouvelles assertions pour le formatage du CD). Suite complète
+  rejouée : 14 fichiers, 1051 assertions, 100 % vertes, zéro avertissement PHP, zéro régression sur
+  le pedigree, la Production, les filtres de parents, les indices, la galerie, les vidéos, les
+  contenus éditoriaux, le Global ID ou le commercial.
+- Versions : GWS Core 1.14.0 → 1.15.0, GWS Equestrian 0.11.0 → 0.12.0.
+
 ## 0.11.0 — Étape 6 : indices, médias et contenu de présentation du cheval
 
 Enrichit la fiche Cheval (une seule entité, sans typologie rigide, tous les champs facultatifs)

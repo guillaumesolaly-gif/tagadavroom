@@ -527,15 +527,26 @@ function gwseq_cheval_parent_candidates($exclude_post_id) {
   ));
 }
 
+/**
+ * Contexte 'normal' pour les trois boîtes (au lieu de 'side' pour Production/aperçu avant
+ * l'ajustement UX post-recette de l'Étape 6) : uniquement pour qu'elles rejoignent la colonne
+ * principale, seule visible par la navigation par onglets ajoutée dans
+ * includes/cheval-admin-tabs.php, qui les regroupe visuellement avec la boîte Pedigree elle-même
+ * sous un même onglet "Pedigree" (voir gwseq_cheval_admin_tabs_config()). Un changement de
+ * PLACEMENT visuel uniquement (paramètre de add_meta_box()) — aucune donnée, aucun mécanisme de
+ * sauvegarde, aucune règle métier n'est affecté. Sans JavaScript, ces boîtes restent simplement
+ * visibles dans la colonne principale, empilées comme n'importe quelle autre — toujours aussi
+ * fonctionnelles.
+ */
 function gwseq_add_cheval_pedigree_meta_boxes($post) {
   add_meta_box('gwseq-cheval-pedigree', __('Pedigree', 'gws-core'), 'gwseq_render_cheval_pedigree_box', GWSEQ_CPT_CHEVAL, 'normal', 'default');
 
   if ($post && gwseq_get_horse_offspring($post->ID)) {
-    add_meta_box('gwseq-cheval-production', __('Production', 'gws-core'), 'gwseq_render_cheval_offspring_box', GWSEQ_CPT_CHEVAL, 'side', 'default');
+    add_meta_box('gwseq-cheval-production', __('Production', 'gws-core'), 'gwseq_render_cheval_offspring_box', GWSEQ_CPT_CHEVAL, 'normal', 'low');
   }
 
   if (function_exists('wp_get_environment_type') && in_array(wp_get_environment_type(), array('local', 'development'), true)) {
-    add_meta_box('gwseq-cheval-pedigree-preview', __('Pedigree résolu (visible en local/développement uniquement)', 'gws-core'), 'gwseq_render_cheval_pedigree_preview_box', GWSEQ_CPT_CHEVAL, 'side', 'low');
+    add_meta_box('gwseq-cheval-pedigree-preview', __('Pedigree résolu (visible en local/développement uniquement)', 'gws-core'), 'gwseq_render_cheval_pedigree_preview_box', GWSEQ_CPT_CHEVAL, 'normal', 'low');
   }
 }
 add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, 'gwseq_add_cheval_pedigree_meta_boxes');

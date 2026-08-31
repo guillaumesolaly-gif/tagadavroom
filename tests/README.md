@@ -21,6 +21,7 @@ php tests/gws-equestrian-pedigree-logic-test.php
 php tests/gws-equestrian-cheval-indices-logic-test.php
 php tests/gws-equestrian-cheval-media-logic-test.php
 php tests/gws-equestrian-cheval-editorial-logic-test.php
+php tests/gws-equestrian-cheval-admin-tabs-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -205,7 +206,13 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   meta d'année jamais créée pour ces trois indices) ; robustesse (clé d'indice ou cheval_id
   invalide refusés proprement) ; rendu admin (champs valeur/année et valeur/CD bien rendus
   séparément, valeurs pré-remplies) ; persistance et compatibilité avec une fiche jamais
-  enregistrée avec ces champs ; chemin programmatique sans `$_POST` ni nonce.
+  enregistrée avec ces champs ; chemin programmatique sans `$_POST` ni nonce. Ajustement UX
+  post-recette (0.12.0) : le CD est présenté systématiquement à deux décimales
+  (`gwseq_format_cheval_indice_cd()` : 0.9 → "0.90", 0.987 → "0.99" pour l'affichage uniquement),
+  le STOCKAGE reste le nombre exact (relire la valeur brute après arrondi d'affichage renvoie
+  toujours 0.987, jamais de perte de précision en base), le libellé génétique public respecte la
+  même précision (exemple exact de la demande : « BSO +12 (0.90) »), et le rendu admin affiche
+  bien le champ CD formaté avec un pas de saisie (`step`) cohérent.
 - Médias de `gws-equestrian`, Étape 6 (`gws-equestrian-cheval-media-logic-test.php`) : galerie
   (ajout/suppression/réordonnancement, bornée à 9 images complémentaires à la photo principale,
   attachment IDs uniquement — jamais une URL ni une valeur mal formée —, aucun doublon, un ID qui
@@ -232,6 +239,26 @@ un processus PHP séparé — il peut aussi être lancé seul.)
   de tout champ structuré de dossier vétérinaire dans le modèle de données) ; rendu admin réparti
   sur deux meta boxes distinctes (Présentation / Informations complémentaires) ; escaping ;
   persistance et compatibilité avec une fiche jamais enregistrée ; chemin programmatique.
+- Navigation par onglets de la fiche Cheval, ajustement UX post-recette de l'Étape 6
+  (`gws-equestrian-cheval-admin-tabs-test.php`, 0.12.0) : configuration PHP du regroupement
+  onglet → meta boxes (les 6 onglets attendus, avec exactement les bonnes boîtes chacun — en
+  particulier l'onglet Pedigree qui regroupe Pedigree, Production calculée et l'aperçu
+  développeur), photo principale/Global ID dev-only/boîte "Ordre" volontairement rattachés à aucun
+  onglet, chargement conditionnel des assets (uniquement sur l'écran Cheval, pas sur un autre
+  écran ni un autre post type), configuration transmise au script via `wp_localize_script()`
+  identique à la source de vérité PHP, changement de contexte `'side'` → `'normal'` des meta boxes
+  Production/aperçu développeur vérifié par lecture directe de `cheval-pedigree.php`. Le
+  JavaScript lui-même, non exécutable par un script PHP autonome, est vérifié par lecture
+  déclarative directe de son code (même méthodologie que pour `cheval-admin.js`/
+  `repeater-field.js`, hors commentaires pour éviter tout faux positif) : aucun appel AJAX, aucune
+  meta box jamais déplacée dans le DOM (seul son `style.display` change), aucune donnée jamais
+  retirée du DOM, bouton d'enregistrement rapide déclenchant un clic sur le vrai `#publish` natif
+  (jamais `form.submit()` direct), attributs ARIA `tablist`/`tab`/`tabpanel`/`aria-selected`/
+  `aria-controls`/`aria-labelledby`, navigation clavier complète (flèches, Début/Fin, tabindex
+  mobile), réutilisation des classes natives `.nav-tab-wrapper`/`.nav-tab`, dégradation
+  silencieuse si `sessionStorage` est indisponible ou si la structure d'écran attendue est absente,
+  et filtrage silencieux d'un identifiant de boîte qui ne correspond à aucun élément réel (ex.
+  l'aperçu développeur en production).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -276,3 +303,10 @@ un processus PHP séparé — il peut aussi être lancé seul.)
 - Rendu navigateur réel des nouvelles meta boxes de la fiche Cheval (Indices, Médias, Présentation,
   Informations complémentaires, Étape 6) : ordre visuel des blocs, lisibilité pour un professionnel
   non expert WordPress, largeur des champs `<textarea>`.
+- Comportement navigateur réel de la navigation par onglets de la fiche Cheval (ajustement UX
+  post-recette, 0.12.0) : apparence visuelle effective des onglets natifs `.nav-tab` (couleurs,
+  état actif), bascule réelle de panneau au clic et à la navigation clavier (flèches, Home/End),
+  visibilité du focus clavier, persistance de l'onglet actif via `sessionStorage` d'un rechargement
+  à l'autre, ressenti du bouton d'enregistrement rapide (libellé, clic déclenchant bien la
+  sauvegarde native), disposition et utilisabilité sur un écran étroit (≤ 782 px), et utilisabilité
+  complète de la fiche sans JavaScript (blocs simplement empilés, formulaire toujours soumissible).

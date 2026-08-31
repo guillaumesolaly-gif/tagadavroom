@@ -167,18 +167,34 @@ function gwseq_cheval_sport_indice_label($valeur, $annee) {
 }
 
 /**
+ * Présentation à deux décimales d'un coefficient de détermination (§1 de l'ajustement UX
+ * post-recette : « 0.90 », jamais « 0.9 ») — UNIQUEMENT une présentation, jamais une
+ * transformation du stockage : la meta reste le nombre PHP exact tel que sanitisé
+ * (gws_core_field_sanitize('number', ...)), cette fonction ne fait que le formater pour
+ * l'affichage (formulaire admin, libellé). Séparateur décimal volontairement le point à ce stade
+ * (aucune localisation ajoutée maintenant) — un futur renderer pourra localiser cet affichage
+ * (« 0,90 » en français) sans qu'aucune donnée n'ait besoin d'être modifiée pour cela.
+ */
+function gwseq_format_cheval_indice_cd($cd) {
+  if ($cd === '' || $cd === null) return '';
+  return number_format((float) $cd, 2, '.', '');
+}
+
+/**
  * Le signe "+" d'une valeur génétique positive est ajouté UNIQUEMENT ici, à l'affichage — jamais
  * dans la donnée stockée (voir la note en tête de fichier). Une valeur négative garde son "-"
  * natif (le format numérique PHP le fournit déjà) ; une valeur nulle (0) n'est ni "+0" ni "-0",
- * simplement "0".
+ * simplement "0". Le CD est présenté à deux décimales via gwseq_format_cheval_indice_cd()
+ * ci-dessus — ex. « +12 (0.90) », jamais « +12 (0.9) ».
  */
 function gwseq_cheval_genetic_indice_label($valeur, $cd) {
   if ($valeur === '' || $valeur === null) return '';
   $valeur_num = (float) $valeur;
   $valeur_display = (fmod($valeur_num, 1.0) === 0.0) ? (string) (int) $valeur_num : (string) $valeur_num;
   $valeur_label = ($valeur_num > 0 ? '+' : '') . $valeur_display;
-  if ($cd === '' || $cd === null) return $valeur_label;
-  return sprintf('%s (%s)', $valeur_label, $cd);
+  $cd_display = gwseq_format_cheval_indice_cd($cd);
+  if ($cd_display === '') return $valeur_label;
+  return sprintf('%s (%s)', $valeur_label, $cd_display);
 }
 
 /* -------------------------------------------------------------------------------------------
@@ -231,7 +247,7 @@ function gwseq_render_cheval_indices_box($post) {
       <label for="gwseq-cheval-<?php echo esc_attr($key); ?>-valeur"><strong><?php echo esc_html($label); ?></strong></label>
       <input type="number" step="any" class="small-text" id="gwseq-cheval-<?php echo esc_attr($key); ?>-valeur" name="_gwseq_<?php echo esc_attr($key); ?>[valeur]" value="<?php echo esc_attr($indice['valeur']); ?>">
       <label for="gwseq-cheval-<?php echo esc_attr($key); ?>-cd"><?php esc_html_e('CD', 'gws-core'); ?></label>
-      <input type="number" step="any" class="small-text" id="gwseq-cheval-<?php echo esc_attr($key); ?>-cd" name="_gwseq_<?php echo esc_attr($key); ?>[cd]" value="<?php echo esc_attr($indice['cd']); ?>">
+      <input type="number" step="0.01" class="small-text" id="gwseq-cheval-<?php echo esc_attr($key); ?>-cd" name="_gwseq_<?php echo esc_attr($key); ?>[cd]" value="<?php echo esc_attr(gwseq_format_cheval_indice_cd($indice['cd'])); ?>">
     </p>
   <?php endforeach; ?>
   <?php

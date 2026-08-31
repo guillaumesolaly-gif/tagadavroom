@@ -1,0 +1,38 @@
+/* Navigation par onglets de la fiche Cheval (ajustement UX post-recette de l'Étape 6) — mise en
+   forme minimale, aucune dépendance. Réutilise volontairement les classes natives WordPress
+   .nav-tab-wrapper / .nav-tab / .nav-tab-active (déjà stylées en admin, mêmes que les écrans de
+   réglages à onglets du cœur) pour l'essentiel de l'apparence : seule la disposition d'ensemble
+   (bouton d'enregistrement aligné à droite, repli sur écran étroit) est propre à ce fichier. */
+
+.gwseq-cheval-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.gwseq-cheval-tabs__list {
+  flex: 1 1 auto;
+  margin: 0;
+  min-width: 0;
+}
+
+.gwseq-cheval-tabs__tab {
+  cursor: pointer;
+}
+
+.gwseq-cheval-tabs__save {
+  flex: 0 0 auto;
+}
+
+@media screen and (max-width: 782px) {
+  .gwseq-cheval-tabs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .gwseq-cheval-tabs__save {
+    width: 100%;
+  }
+}

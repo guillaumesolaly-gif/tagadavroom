@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 6 — Indices, médias et présentation (Étape 5 — Pedigree validée)
+## État actuel : Étape 6 — Indices, médias et présentation, ajustement UX 0.12.0 (Étape 5 — Pedigree validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -18,7 +18,10 @@ effective d'un ascendant externe vidé, intégrité père/mère, filtrage sexe/a
 **validée** — voir `CHANGELOG.md` de ce dossier pour le détail complet de ces corrections (0.5.0 à
 0.10.0). L'Étape 6 enrichit la fiche Cheval avec des indices sportifs/génétiques, une galerie
 photos et des vidéos, et du contenu éditorial de présentation — sans toucher au socle des Étapes 4
-et 5 (voir plus bas) ; en attente de sa première recette runtime.
+et 5 (voir plus bas). Une première recette runtime a débuté sur les indices ; elle a révélé une
+fiche devenue trop longue à faire défiler, d'où l'ajustement UX post-recette 0.12.0 (présentation
+du CD des indices génétiques à deux décimales, navigation par onglets — voir plus bas) livré avant
+la reprise de cette recette dans la nouvelle interface.
 
 ### Indices, médias et présentation (Étape 6)
 
@@ -48,9 +51,9 @@ il ne peut jamais concerner une année future).
 BSO, BCC, BDR : structure différente — valeur (nombre, signé, décimal si nécessaire) et coefficient
 de détermination/CD (nombre décimal), stockés séparément, jamais d'année. Le signe positif d'une
 valeur (ex. « +12 ») n'est jamais perdu : il est stocké comme un nombre PHP positif natif (12), le
-« + » n'étant ajouté qu'à l'affichage par `gwseq_cheval_genetic_indice_label()` (ex. « +12 (0.9) »)
-— jamais dans la donnée stockée elle-même, qui reste un nombre exploitable tel quel par un futur
-calcul ou tri.
+« + » n'étant ajouté qu'à l'affichage par `gwseq_cheval_genetic_indice_label()` (ex. « +12 (0.90) »,
+CD présenté à deux décimales depuis l'ajustement 0.12.0 — voir plus bas) — jamais dans la donnée
+stockée elle-même, qui reste un nombre exploitable tel quel par un futur calcul ou tri.
 
 #### Médias — galerie et vidéos (`includes/cheval-media.php`)
 
@@ -132,6 +135,55 @@ aucun des trois nouveaux fichiers n'appelle jamais `delete_post_meta()`). Les ch
 fiche créée avant l'Étape 6 restent simplement vides à la lecture, sans erreur ni valeur par défaut
 inventée — aucune migration technique n'a été nécessaire.
 
+#### Ajustement UX post-recette 0.12.0 — CD à deux décimales, navigation par onglets
+
+La première recette runtime de l'Étape 6 (indices) a montré une fiche Cheval devenue trop longue à
+faire défiler à mesure que les meta boxes s'accumulent, et une présentation du coefficient de
+détermination (CD) trop peu lisible (« 0.9 » plutôt que « 0.90 »). Ajustement livré avant la
+poursuite de la recette, strictement UX — aucun modèle de données, aucune règle métier, aucun
+mécanisme de sauvegarde modifié.
+
+**Présentation du CD à deux décimales** (`gwseq_format_cheval_indice_cd()`,
+`includes/cheval-indices.php`) : uniquement une présentation (`number_format()`), jamais une
+transformation du STOCKAGE — la meta reste le nombre PHP exact tel que sanitisé
+(`gws_core_field_sanitize('number', ...)`), vérifié explicitement par un test qui relit la valeur
+brute après un aller-retour admin et confirme l'absence de toute perte de précision (0.987 reste
+0.987 en base, même si affiché « 0.99 »). Utilisée à la fois pour le champ CD du formulaire admin
+(`step="0.01"`, cohérent avec cette précision) et pour `gwseq_cheval_genetic_indice_label()` (le
+futur libellé public). Séparateur décimal volontairement le point à ce stade — un futur renderer
+pourra localiser cet affichage (« 0,90 » en français) sans qu'aucune donnée n'ait besoin d'être
+modifiée pour cela.
+
+**Navigation par onglets** (`includes/cheval-admin-tabs.php`,
+`assets/cheval-tabs-admin.js`/`cheval-tabs.css`) : Identité, Commercial, Pedigree (regroupe
+Pedigree, Production et l'aperçu resolver dev-only), Indices, Médias, Présentation. Conçue comme
+une COUCHE DE PRÉSENTATION PURE : aucune meta déplacée ni renommée, un seul et même formulaire WP
+natif, aucune règle métier touchée, aucun mécanisme de sauvegarde WordPress modifié, aucun appel
+AJAX, aucune donnée absente du DOM. Techniquement, le JavaScript ne déplace JAMAIS les meta boxes
+dans le DOM : il bascule uniquement leur `style.display`, chaque bouton d'onglet référençant les
+`id` HTML réels des boîtes concernées (`aria-controls`, qui accepte nativement une liste d'IDs
+séparés par des espaces — ce qui permet à l'onglet Pedigree de contrôler ses trois boîtes sans
+créer de conteneur supplémentaire). Les boîtes Production et aperçu pedigree sont passées du
+contexte WordPress `'side'` à `'normal'` (paramètre de `add_meta_box()`) — un pur changement de
+PLACEMENT visuel pour rejoindre la colonne principale où vit la navigation, sans aucun effet sur
+les données ou la sauvegarde. Restent volontairement HORS du système d'onglets, toujours visibles
+dans la colonne latérale : l'image à la une native de WordPress, la boîte de développement Global
+Horse ID, et « Ordre d'affichage ».
+
+Réutilise les classes CSS natives de WordPress (`.nav-tab-wrapper`/`.nav-tab`/`.nav-tab-active`,
+déjà utilisées par les écrans de réglages du cœur WP) plutôt que d'inventer un habillage visuel
+propre. Un bouton « Enregistrer / Mettre à jour » est ajouté dans la zone de navigation : il ne
+crée AUCUN nouveau mécanisme de sauvegarde — il lit le libellé du vrai bouton natif `#publish` et
+déclenche un simple `.click()` dessus (jamais `form.submit()`, pour préserver tout comportement
+JS déjà attaché par WordPress à ce bouton — heartbeat, confirmation...). Accessibilité : véritable
+pattern ARIA `tablist`/`tab`/`tabpanel` (jamais une rangée de `<div>` cliquables), navigation
+clavier complète (flèches gauche/droite avec bouclage, Home/End), tabindex flottant (seul l'onglet
+actif est atteignable par Tab), état actif exposé via `aria-selected`. L'onglet actif est
+mémorisé en session (`sessionStorage`, une seule clé partagée, volontairement simple) pour
+persister d'une navigation à l'autre sans infrastructure complexe. **Sans JavaScript**, la fiche
+reste entièrement utilisable et enregistrable : toutes les boîtes s'affichent simplement empilées
+dans l'ordre natif WordPress, comme avant cet ajustement.
+
 #### Limitations connues (Étape 6)
 
 - **Aucun âge minimum de reproduction** pour les indices sportifs/génétiques ni pour le pedigree —
@@ -144,6 +196,14 @@ inventée — aucune migration technique n'a été nécessaire.
 - **Pas de validation croisée entre champs éditoriaux et données structurées** : rien n'empêche un
   professionnel de saisir un texte "Origines" contradictoire avec le pedigree structuré — assumé,
   ce sont deux sources de vérité volontairement indépendantes (§7 de la demande).
+- **Onglets sans glisser-déposer ni réordonnancement** (ajustement 0.12.0) : l'ordre et la
+  composition des six onglets sont fixes, définis par `gwseq_cheval_admin_tabs_config()` — aucune
+  personnalisation par utilisateur n'est prévue à ce stade.
+- **Persistance de l'onglet actif limitée à `sessionStorage`** (ajustement 0.12.0) : une seule clé
+  partagée pour toutes les fiches Cheval (pas de mémorisation par fiche), propre à l'onglet
+  navigateur courant — non synchronisée entre plusieurs onglets/fenêtres ouverts simultanément sur
+  des chevaux différents, et perdue à la fermeture de la session navigateur. Choix assumé pour
+  rester simple, comme demandé.
 
 #### Pistes hors périmètre (aucun développement à ce stade)
 
@@ -195,6 +255,36 @@ réservation/paiement, logique conditionnelle selon le type de cheval.
     d'indice, de galerie, de vidéo ou d'éditorial n'a été modifiée ou supprimée.
 20. Ouvrir une fiche cheval créée avant cette version (jamais enregistrée avec ces nouveaux
     champs) : vérifier que tous les nouveaux champs apparaissent simplement vides, sans erreur.
+
+**Étapes ajoutées pour l'ajustement UX post-recette 0.12.0** (CD à deux décimales, navigation par
+onglets) :
+
+21. Vérifier l'apparition des six onglets (Identité, Commercial, Pedigree, Indices, Médias,
+    Présentation) en haut de la fiche Cheval, avec le bon regroupement de boîtes sous chacun —
+    notamment Production et l'aperçu pedigree (dev/local) bien regroupés sous « Pedigree ».
+    Vérifier que l'image à la une, la boîte Global Horse ID (dev/local) et « Ordre d'affichage »
+    restent visibles dans la colonne latérale, hors du système d'onglets.
+22. Cliquer sur chaque onglet : vérifier que seules les boîtes du groupe correspondant s'affichent,
+    sans perte visuelle de contenu déjà saisi, et que les boîtes gardent leur comportement natif
+    (repli/dépli au clic sur leur propre titre).
+23. Naviguer au clavier dans la barre d'onglets (Tab pour l'atteindre, flèches gauche/droite pour
+    circuler avec bouclage, Home/End pour aller au premier/dernier onglet) : vérifier que le focus
+    visuel suit et que l'onglet activé correspond bien au contenu affiché.
+24. Cliquer sur le bouton « Enregistrer »/« Mettre à jour » ajouté dans la barre d'onglets :
+    vérifier qu'il déclenche exactement la même sauvegarde que le bouton natif de la colonne
+    latérale (même libellé, mêmes données enregistrées, aucune double soumission).
+25. Changer d'onglet, recharger la page (ou naviguer puis revenir) : vérifier que l'onglet
+    précédemment actif reste sélectionné (persistance via `sessionStorage`).
+26. Désactiver JavaScript dans le navigateur puis rouvrir la fiche : vérifier que toutes les boîtes
+    s'affichent simplement empilées (sans barre d'onglets) et que la fiche reste normalement
+    modifiable et enregistrable.
+27. Saisir un CD avec plusieurs décimales (ex. 0,987 dans un champ qui accepte le point) : vérifier
+    que le formulaire affiche bien deux décimales après enregistrement (« 0.99 »), et confirmer
+    dans la base (ou en resaisissant une valeur proche) qu'aucune perte de précision réelle n'a eu
+    lieu au stockage.
+28. Repasser en revue les points 1 à 20 ci-dessus dans la nouvelle interface à onglets : confirmer
+    l'absence de toute régression sur pedigree, Production, filtres parents, indices, galerie,
+    vidéos, contenus éditoriaux, Global Horse ID et données commerciales.
 
 ### Pedigree (Étape 5)
 

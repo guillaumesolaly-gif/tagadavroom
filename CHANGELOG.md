@@ -1,5 +1,22 @@
 # Changelog — GWS Starter
 
+## 1.15.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **GWS Equestrian — Étape 6 : ajustements UX post-recette (CD à deux décimales, navigation par
+  onglets).** Le coefficient de détermination des indices génétiques (BSO/BCC/BDR) s'affiche
+  désormais systématiquement à deux décimales (« 0.90 », jamais « 0.9 ») — le stockage reste un
+  nombre exact, seule la présentation change. L'écran d'édition d'une fiche cheval, devenu trop
+  long, gagne une navigation par onglets (Identité, Commercial, Pedigree, Indices, Médias,
+  Présentation) qui reste une pure couche de présentation : aucune meta modifiée, aucun second
+  formulaire, aucun AJAX, aucune donnée jamais absente du DOM — le script masque/affiche les
+  meta boxes déjà existantes sans jamais les déplacer, et la fiche reste pleinement utilisable
+  sans JavaScript. Un bouton d'enregistrement rapide déclenche un clic sur le vrai bouton natif
+  WordPress (aucun second mécanisme de sauvegarde). Navigation clavier et attributs ARIA complets
+  (`tablist`/`tab`/`tabpanel`), disposition responsive. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.12.0) pour le détail complet.
+- 100 nouvelles assertions automatisées (1 nouveau fichier de tests dédié aux onglets + extension
+  du test des indices), suite complète toujours 100 % passante (1051 assertions au total).
+
 ## 1.14.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **GWS Equestrian — Étape 6 : indices, médias et contenu de présentation du cheval.** Enrichit la
