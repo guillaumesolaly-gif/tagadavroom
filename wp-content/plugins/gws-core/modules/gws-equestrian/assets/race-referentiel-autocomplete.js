@@ -55,19 +55,46 @@
 (function () {
   'use strict';
 
+  // Instrumentation TEMPORAIRE (recette runtime post-0.14.1, à retirer une fois le composant
+  // confirmé fonctionnel en conditions réelles) : quelques traces `console.*` à faible volume (une
+  // ligne par étape-clé d'initialisation, jamais par frappe/interaction) préfixées "[gwseq-race]"
+  // pour permettre de diagnostiquer, directement depuis la console du navigateur sur une vraie
+  // fiche WordPress, où l'exécution diverge éventuellement d'un environnement de test — script
+  // chargé, configuration présente et son nombre d'entrées, nombre de champs trouvés, résultat de
+  // l'initialisation de CHAQUE champ. Sans effet sur le fonctionnement : aucune de ces lignes ne
+  // modifie le comportement, uniquement des lectures d'état déjà calculées par ailleurs.
+  function log() {
+    if (window.console && window.console.log) window.console.log.apply(window.console, ['[gwseq-race]'].concat(Array.prototype.slice.call(arguments)));
+  }
+  function warn() {
+    if (window.console && window.console.warn) window.console.warn.apply(window.console, ['[gwseq-race]'].concat(Array.prototype.slice.call(arguments)));
+  }
+
+  log('script chargé');
+
   document.addEventListener('DOMContentLoaded', function () {
+    log('DOMContentLoaded déclenché');
     var config = window.gwseqRaceReferentiel;
-    if (!config || !Array.isArray(config.entries)) return;
+    if (!config || !Array.isArray(config.entries)) {
+      warn('window.gwseqRaceReferentiel absent ou invalide — le référentiel n’a pas été correctement transmis par wp_localize_script() (vérifier que gwseq_enqueue_race_referentiel_assets() s’exécute bien sur cet écran) :', config);
+      return;
+    }
+    log('référentiel chargé, entrées :', config.entries.length, 'suggestions :', (config.suggestions || []).length);
 
     var fields = document.querySelectorAll('[data-gwseq-race-field]');
-    fields.forEach(function (field) {
+    log('champs [data-gwseq-race-field] trouvés dans le DOM :', fields.length);
+    if (fields.length === 0) {
+      warn('aucun champ [data-gwseq-race-field] trouvé — vérifier que gwseq_render_race_referentiel_field() a bien été rendu sur cet écran (identité et/ou pedigree)');
+    }
+    fields.forEach(function (field, index) {
       // Un champ malformé (structure inattendue) ne doit jamais empêcher l'initialisation des
       // AUTRES champs de la page (Array.prototype.forEach interrompt son parcours à la première
       // exception non rattrapée dans son callback) — chaque champ reste isolé des autres.
       try {
         initField(field, config);
+        log('champ #' + index + ' (id=' + (field.querySelector('.gwseq-race-field__search') || {}).id + ') initialisé avec succès');
       } catch (e) {
-        if (window.console && window.console.error) window.console.error('gwseq-race-field init failed', e);
+        warn('champ #' + index + ' — échec de l’initialisation :', e);
       }
     });
   });
@@ -75,7 +102,17 @@
   function normalize(text) {
     text = String(text == null ? '' : text);
     if (text.normalize) {
-      text = text.normalize('NFD').replace(/[̀-ͯ]/g, '');
+      // Diacritiques combinants (U+0300-U+036F) retirés via des ÉCHAPPEMENTS \uXXXX, jamais les
+      // caractères Unicode littéraux : un caractère multi-octet écrit en clair dans le fichier
+      // source dépend d'un encodage/transfert fidèle (hébergement, CDN, minification...) — corrompu
+      // par n'importe quel maillon qui ne le préserverait pas en UTF-8, il produirait une ERREUR DE
+      // SYNTAXE qui tuerait silencieusement TOUT le script au chargement (correctif runtime post
+      // 0.14.1 : symptôme observé en environnement WordPress réel — "rien ne fonctionne du tout" —
+      // jamais reproductible avec ce même fichier exécuté directement, par exemple via Node, où le
+      // texte source reste toujours fidèle). Un échappement \uXXXX est constitué exclusivement de
+      // caractères ASCII : il ne peut structurellement plus être corrompu par un problème
+      // d'encodage de fichier.
+      text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
     return text.toLowerCase().replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
   }

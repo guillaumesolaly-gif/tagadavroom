@@ -396,6 +396,78 @@ gws_test_assert(
 );
 
 // =====================================================================================
+// 2quinquies. Correctif runtime (recette sur des fiches IFCE réelles supplémentaires) : la ligne
+// d'identité "Race, Sexe, Robe, Taille, né(e) en AAAA[, étalon]" n'a PAS un nombre de segments
+// fixe sur toutes les fiches réelles — Robe ET Taille sont chacune FACULTATIVES indépendamment.
+// Avant ce correctif, une position de segment figée perdait année/taille sur certaines fiches
+// (année jamais extraite, malgré sa présence explicite dans le document), et une fiche à seulement
+// 3 segments (Race, Sexe, "né(e) en AAAA", ni robe ni taille) n'était même pas reconnue comme une
+// fiche IFCE valide. Chacun des cinq VRAIS PDF suivants (recette runtime) est exécuté à travers le
+// MÊME pipeline complet que le runtime WordPress : gwseq_ifce_extract_pdf_text() ->
+// gwseq_ifce_parse_text().
+// =====================================================================================
+
+function gws_test_ifce_parse_fixture($filename) {
+  $path = __DIR__ . '/fixtures/' . $filename;
+  if (!is_readable($path)) return array('valid' => false, '__fixture_missing' => true);
+  return gwseq_ifce_parse_text(gwseq_ifce_extract_pdf_text($path));
+}
+
+// --- Quaprice Bois Margot : "Holsteiner Warmblut, Mâle, né(e) en 1998" — NI robe NI taille, la
+// ligne la plus courte rencontrée (3 segments seulement). AVANT ce correctif : document rejeté
+// intégralement ("Ce document n'a pas été reconnu comme une fiche de synthèse IFCE"). ---
+$quaprice = gws_test_ifce_parse_fixture('ifce-quaprice-bois-margot.pdf');
+gws_test_assert(empty($quaprice['__fixture_missing']), 'Fixture : le vrai PDF de Quaprice Bois Margot est bien présent dans tests/fixtures/');
+gws_test_assert($quaprice['valid'] === true, 'Correctif runtime : Quaprice Bois Margot (ligne d’identité à 3 segments seulement, ni robe ni taille) est désormais bien reconnu comme une fiche IFCE — AVANT ce correctif, ce document réel était intégralement rejeté');
+gws_test_assert(($quaprice['identity']['nom'] ?? null) === 'QUAPRICE BOIS MARGOT', 'Quaprice Bois Margot : nom exact (aucun alias sur cette fiche)');
+gws_test_assert(($quaprice['identity']['annee_naissance'] ?? null) === 1998, 'Quaprice Bois Margot : année de naissance ("né(e) en 1998", directement après le sexe, sans robe ni taille) correctement extraite');
+gws_test_assert(($quaprice['identity']['robe'] ?? null) === '' && ($quaprice['identity']['robe_autre'] ?? null) === '', 'Quaprice Bois Margot : robe absente du document -> reste vide, jamais devinée ni confondue avec l’année');
+gws_test_assert(($quaprice['identity']['taille_cm'] ?? null) === '', 'Quaprice Bois Margot : taille absente du document -> reste vide');
+gws_test_assert(($quaprice['identity']['race'] ?? null) === 'HOLST', 'Quaprice Bois Margot : race "Holsteiner Warmblut" reconnue et mappée au code canonique "HOLST"');
+
+// --- Untouchable 27 : "Kon. Warm Paard Nederland, Mâle, Gris, né(e) en 2001, étalon" — robe
+// présente, taille ABSENTE, mention finale ", étalon" après l'année. AVANT ce correctif : année
+// perdue (le 4e segment positionnel valait "né(e) en 2001", pas la taille attendue à cette
+// position ; le 5e segment valait "étalon", jamais un nombre à 4 chiffres). Race également corrigée
+// (correctif normalisation croisée) : "Kon. Warm Paard Nederland" résout désormais vers "KWPN",
+// le même code que le pedigree de ce même document. ---
+$untouchable = gws_test_ifce_parse_fixture('ifce-untouchable-27.pdf');
+gws_test_assert(empty($untouchable['__fixture_missing']), 'Fixture : le vrai PDF de Untouchable 27 est bien présent dans tests/fixtures/');
+gws_test_assert($untouchable['valid'] === true, 'Untouchable 27 : document bien reconnu');
+gws_test_assert(($untouchable['identity']['nom'] ?? null) === 'UNTOUCHABLE 27' && ($untouchable['identity']['nom_officiel'] ?? null) === 'UNTOUCHABLE', 'Untouchable 27 : alias retenu comme nom, nom officiel conservé séparément (non régressé par ce correctif)');
+gws_test_assert(($untouchable['identity']['annee_naissance'] ?? null) === 2001, 'Correctif runtime : l’année de naissance d’Untouchable 27 ("né(e) en 2001", suivie de ", étalon") est désormais correctement extraite — AVANT ce correctif, elle restait vide malgré sa présence explicite dans le document');
+gws_test_assert(($untouchable['identity']['race'] ?? null) === 'KWPN', 'Correctif normalisation croisée : la race "Kon. Warm Paard Nederland" (libellé long de l’identité) résout désormais vers le code canonique "KWPN" — jamais rangée dans "Autre"');
+gws_test_assert(($untouchable['pedigree']['father']['father']['race'] ?? null) === 'SF', 'Untouchable 27 : le pedigree reste correctement mappé (Hors La Loi II, alias SFA -> SF), aucune régression');
+
+// --- ASB Conquistador (alias de Bush vd Heffinck) : "Belgian Warmblood, Mâle, Bai, né(e) en 2001,
+// étalon" — même structure qu’Untouchable 27 (robe présente, taille absente). ---
+$asb = gws_test_ifce_parse_fixture('ifce-asb-conquistador.pdf');
+gws_test_assert(empty($asb['__fixture_missing']), 'Fixture : le vrai PDF de Asb Conquistador est bien présent dans tests/fixtures/');
+gws_test_assert($asb['valid'] === true, 'Asb Conquistador : document bien reconnu');
+gws_test_assert(($asb['identity']['nom'] ?? null) === 'ASB CONQUISTADOR' && ($asb['identity']['nom_officiel'] ?? null) === 'BUSH VD HEFFINCK', 'Asb Conquistador : alias retenu comme nom, nom officiel "Bush vd Heffinck" conservé séparément');
+gws_test_assert(($asb['identity']['annee_naissance'] ?? null) === 2001, 'Correctif runtime : l’année de naissance d’Asb Conquistador ("né(e) en 2001, étalon") est désormais correctement extraite');
+gws_test_assert(($asb['identity']['race'] ?? null) === 'BWP', 'Correctif normalisation croisée : la race "Belgian Warmblood" résout désormais vers le code canonique "BWP", jamais "Autre"');
+
+// --- Cornet Obolensky (alias de Windows vh Costersveld) : "Belgian Warmblood, Mâle, Gris, 1m71,
+// né(e) en 1999, étalon" — robe ET taille présentes (6 segments). Ce document extrayait déjà
+// correctement l’année AVANT ce correctif (non-régression explicitement vérifiée) ; sa race, en
+// revanche, ne résolvait pas encore vers "BWP" avant le correctif de normalisation croisée. ---
+$cornet = gws_test_ifce_parse_fixture('ifce-cornet-obolensky.pdf');
+gws_test_assert(empty($cornet['__fixture_missing']), 'Fixture : le vrai PDF de Cornet Obolensky est bien présent dans tests/fixtures/');
+gws_test_assert($cornet['valid'] === true, 'Cornet Obolensky : document bien reconnu');
+gws_test_assert(($cornet['identity']['nom'] ?? null) === 'CORNET OBOLENSKY' && ($cornet['identity']['nom_officiel'] ?? null) === 'WINDOWS VH COSTERSVELD', 'Cornet Obolensky : alias retenu comme nom, nom officiel conservé séparément');
+gws_test_assert(($cornet['identity']['annee_naissance'] ?? null) === 1999, 'Non-régression : Cornet Obolensky extrayait déjà correctement son année de naissance (1999) avant ce correctif, toujours vrai après (segments Robe et Taille tous deux présents sur cette fiche)');
+gws_test_assert(($cornet['identity']['taille_cm'] ?? null) === 171, 'Non-régression : la taille ("1m71") reste correctement extraite quand elle est présente, malgré la nouvelle détection dynamique de la position des segments');
+gws_test_assert(($cornet['identity']['race'] ?? null) === 'BWP', 'Correctif normalisation croisée : la race "Belgian Warmblood" de Cornet Obolensky résout également vers "BWP"');
+
+// --- Iowa Jal : format standard à 5 segments (Race, Sexe, Robe, Taille, "né(e) en AAAA", sans
+// mention finale ", étalon") — non-régression explicite du format déjà couvert par Jamerose. ---
+$iowa = gws_test_ifce_parse_fixture('ifce-iowa-jal.pdf');
+gws_test_assert(empty($iowa['__fixture_missing']), 'Fixture : le vrai PDF de Iowa Jal est bien présent dans tests/fixtures/');
+gws_test_assert($iowa['valid'] === true && ($iowa['identity']['nom'] ?? null) === 'IOWA JAL', 'Non-régression : Iowa Jal (format standard à 5 segments) reste correctement reconnu');
+gws_test_assert(($iowa['identity']['annee_naissance'] ?? null) === 2018 && ($iowa['identity']['taille_cm'] ?? null) === 170 && ($iowa['identity']['race'] ?? null) === 'SF', 'Non-régression : année (2018), taille (170 cm) et race (SF) d’Iowa Jal restent tous corrects après la détection dynamique des segments');
+
+// =====================================================================================
 // 3. Documents non reconnus (§10) — jamais un import "best effort"
 // =====================================================================================
 

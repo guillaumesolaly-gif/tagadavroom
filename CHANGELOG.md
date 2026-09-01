@@ -1,5 +1,21 @@
 # Changelog — GWS Starter
 
+## 1.17.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif runtime : cause racine réelle de l'autocomplétion, robustesse de l'extraction IFCE
+  (GWS Equestrian 0.14.2).** L'autocomplétion Race restait non fonctionnelle sur un vrai wp-admin
+  malgré le correctif logique 0.14.1 : cause identifiée — un caractère Unicode littéral multi-octet
+  directement dans le code exécutable d'une expression régulière du script, fragile à tout maillon
+  d'hébergement/transfert qui ne le préserverait pas en UTF-8 (produisant une erreur de syntaxe
+  silencieuse). Remplacé par un échappement ASCII strictement équivalent, insensible à ce risque ;
+  une instrumentation de diagnostic temporaire a été ajoutée au script. Par ailleurs, l'extraction
+  de l'identité IFCE gère désormais un nombre variable de segments (Robe et Taille chacune
+  facultatives indépendamment) — deux fiches réelles perdaient leur année de naissance, une
+  troisième était intégralement rejetée à l'analyse ; les trois cas sont corrigés et couverts par de
+  nouvelles fixtures PDF réelles. Un même stud-book (ex. KWPN) résout désormais vers un code
+  canonique unique quel que soit son libellé IFCE rencontré (identité ou pedigree). Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.14.2) pour le détail complet.
+
 ## 1.17.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif runtime : autocomplétion Race inutilisable en édition, alias/code pays IFCE (GWS

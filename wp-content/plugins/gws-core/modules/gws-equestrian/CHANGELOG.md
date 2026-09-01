@@ -5,6 +5,58 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.14.2 — Correctif runtime : cause racine réelle de l'autocomplétion, robustesse de l'extraction IFCE
+
+Recette sur cinq nouvelles fiches IFCE réelles (Iowa Jal, Untouchable 27, Asb Conquistador, Cornet
+Obolensky, Quaprice Bois Margot) après le correctif 0.14.1 : l'autocomplétion restait non
+fonctionnelle sur un vrai wp-admin malgré un test Node vert, deux fiches perdaient leur année de
+naissance malgré sa présence explicite dans le document, et une fiche réelle (Quaprice Bois Margot)
+était intégralement rejetée à l'analyse.
+
+**A — Cause racine réelle de l'autocomplétion (le test simulé ne pouvait pas la révéler).** Le
+fichier `assets/race-referentiel-autocomplete.js` contenait un caractère Unicode LITTÉRAL
+multi-octet directement dans le code exécutable d'une expression régulière (plage de diacritiques
+combinants U+0300-U+036F, écrite en clair dans le fichier source plutôt qu'en échappement `\u`).
+Un tel caractère dépend d'un encodage/transfert fidèle en UTF-8 à CHAQUE maillon (hébergement, CDN,
+extraction d'archive...) ; corrompu par n'importe lequel d'entre eux, il produit une ERREUR DE
+SYNTAXE qui empêche le navigateur de parser le fichier — tuant silencieusement TOUT le script, sans
+qu'aucune exécution directe (Node, le test simulé qui lit toujours le texte source fidèlement) ne
+puisse jamais le révéler. Remplacé par l'échappement ASCII `\u0300-\u036f`, strictement équivalent
+mais structurellement insensible à ce risque — vérifié qu'aucun caractère non-ASCII ne subsiste plus
+dans le code exécutable du fichier (seuls les commentaires, jamais exécutés, en contiennent encore).
+Une instrumentation de diagnostic TEMPORAIRE (préfixe console `[gwseq-race]`, quelques lignes à
+faible volume aux étapes-clés d'initialisation) a été ajoutée pour permettre, si le problème
+persistait malgré ce correctif, de confirmer directement depuis un vrai navigateur l'étape exacte où
+l'exécution diverge — à retirer une fois le composant confirmé fonctionnel en conditions réelles.
+
+**B — Extraction de l'identité non robuste au nombre variable de segments.** La ligne d'identité
+IFCE ("Race, Sexe, Robe, Taille, né(e) en AAAA[, étalon]") N'A PAS un nombre de segments fixe sur
+toutes les fiches réelles : Robe ET Taille sont chacune FACULTATIVES indépendamment. Une position de
+segment figée perdait l'année sur "Kon. Warm Paard Nederland, Mâle, Gris, né(e) en 2001, étalon"
+(Untouchable 27) et "Belgian Warmblood, Mâle, Bai, né(e) en 2001, étalon" (Asb Conquistador) — taille
+absente, la position attendue de l'année pointait alors sur "étalon". Une fiche à seulement 3
+segments ("Holsteiner Warmblut, Mâle, né(e) en 1998", Quaprice Bois Margot — ni robe ni taille)
+n'était même pas reconnue comme une ligne d'identité valide, rejetant le document dans son
+intégralité. Corrigé par une détection dynamique : la position RÉELLE du jeton Sexe est repérée
+(jamais figée), et un segment qui ressemble déjà à la mention "né(e) en AAAA" n'est jamais confondu
+avec une robe — la Robe et la Taille sont désormais chacune correctement détectées, qu'elles soient
+présentes ou non, quelle que soit leur position réelle.
+
+**C — Normalisation croisée obligatoire d'une race/stud-book (cas Untouchable 27).** Le même
+stud-book pouvait produire deux valeurs stockées différentes selon qu'il était rencontré comme
+libellé long dans l'identité ("Kon. Warm Paard Nederland") ou comme code court dans le pedigree
+("KWPN"). Alias ajoutés au référentiel pour les variantes IFCE réellement rencontrées : KWPN
+("Kon. Warm Paard Nederland"), BWP ("Belgian Warmblood"), HAN ("Hannoveraner"), SF ("Selle Français
+Section A"), OE ("Origine étrangère selle") — HOLST et OLD résolvaient déjà correctement via leurs
+champs `ifce` existants. Un seul code canonique est désormais garanti quel que soit le chemin
+d'entrée (identité ou pedigree), vérifié par des tests croisés dédiés.
+
+**Tests** : cinq nouvelles fixtures PDF réelles ajoutées (`tests/fixtures/ifce-quaprice-bois-margot.pdf`,
+`ifce-iowa-jal.pdf`, `ifce-untouchable-27.pdf`, `ifce-asb-conquistador.pdf`,
+`ifce-cornet-obolensky.pdf`), exécutées à travers le pipeline complet réel ; nouveau scénario 8 dans
+le test d'exécution JS validant l'instrumentation de diagnostic ; nouveaux tests de normalisation
+croisée dans `gws-equestrian-race-referentiel-test.php`. Aucune régression sur la suite existante.
+
 ## 0.14.1 — Correctif runtime : autocomplétion Race inutilisable en édition, alias/code pays IFCE
 
 Recette du référentiel 0.14.0 : le référentiel métier (mapping IFCE, pedigree sur 3 générations)

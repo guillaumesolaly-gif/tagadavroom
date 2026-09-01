@@ -137,6 +137,49 @@ foreach ($all_entries as $entry) {
 }
 
 // =====================================================================================
+// Normalisation croisée obligatoire (correctif runtime, cas UNTOUCHABLE 27) : un même
+// race/stud-book/appellation ne doit JAMAIS produire deux valeurs stockées différentes selon qu'il
+// est rencontré dans l'IDENTITÉ (libellé long/officiel IFCE, ex. "Kon. Warm Paard Nederland") ou
+// dans le PEDIGREE (code court, ex. "KWPN") — les deux chemins appellent la même fonction de
+// résolution canonique (gwseq_match_race_to_canonical_code(), délègue à
+// gwseq_race_referentiel_resolve_alias()), jamais deux implémentations divergentes.
+// =====================================================================================
+
+$cross_consistency_cases = array(
+  'KWPN' => array('KWPN', 'Kon. Warm Paard Nederland', 'Koninklijke Vereniging Warmbloed Paardenstamboek Nederland'),
+  'BWP' => array('BWP', 'Belgian Warmblood', 'Belgisch Warmbloedpaard'),
+  'HOLST' => array('HOLST', 'Holsteiner Warmblut', 'Holsteiner'),
+  'OLD' => array('OLD', 'Oldenburg'),
+  'HAN' => array('HAN', 'Hannoveraner', 'Hanovrien'),
+  'SF' => array('SF', 'SFA', 'Selle Français', 'Selle Francais Section A'),
+  'OE' => array('OE', 'OES', 'Origine étrangère selle'),
+);
+foreach ($cross_consistency_cases as $expected_code => $variants) {
+  $resolved = array_map('gwseq_race_referentiel_resolve_alias', $variants);
+  gws_test_assert(
+    count(array_unique($resolved)) === 1 && $resolved[0] === $expected_code,
+    "Normalisation croisée : toutes les variantes de \"$expected_code\" (" . implode(', ', $variants) . ") résolvent vers EXACTEMENT le même code canonique, jamais deux valeurs différentes stockées pour la même race/stud-book"
+  );
+}
+
+// --- Vérification explicite du cas exact rapporté (UNTOUCHABLE 27) : le libellé long rencontré
+// dans l'IDENTITÉ et le code court rencontré dans le PEDIGREE produisent la MÊME valeur stockée ---
+$identity_side = gwseq_race_referentiel_resolve_alias('Kon. Warm Paard Nederland');
+$pedigree_side = gwseq_race_referentiel_resolve_alias('KWPN');
+gws_test_assert($identity_side === 'KWPN' && $pedigree_side === 'KWPN' && $identity_side === $pedigree_side, 'Cas exact rapporté (UNTOUCHABLE 27) : le libellé IFCE long de l’identité ("Kon. Warm Paard Nederland") et le code court du pedigree ("KWPN") produisent EXACTEMENT la même valeur stockée');
+
+// --- gwseq_match_race_to_canonical_code() (cheval-pedigree.php, appelée par l'identité ET le
+// pedigree via ifce-import-parser.php) délègue bien à CETTE MÊME fonction, jamais une seconde
+// implémentation divergente — vérifié directement sur le code source (léger : ce fichier de test
+// n'a pas besoin de charger toute la chaîne de dépendances de cheval-pedigree.php pour une simple
+// délégation d'une ligne) ---
+$cheval_pedigree_source_for_delegation = file_get_contents($module_dir . 'includes/cheval-pedigree.php');
+gws_test_assert(
+  preg_match('/function\s+gwseq_match_race_to_canonical_code\s*\([^)]*\)\s*\{\s*return\s+gwseq_race_referentiel_resolve_alias\s*\(/', $cheval_pedigree_source_for_delegation) === 1,
+  'gwseq_match_race_to_canonical_code() (utilisée à l’identique par l’identité et le pedigree dans ifce-import-parser.php) délègue bien intégralement à gwseq_race_referentiel_resolve_alias(), jamais une seconde résolution divergente'
+);
+
+// =====================================================================================
 // gwseq_sanitize_race_referentiel_code() : sanitation d'un champ "race" brut ($_POST-shaped),
 // utilisée à l'IDENTIQUE par l'identité du cheval et les ascendants externes (§8 : même composant,
 // même référentiel, aucune divergence). "Autre" toujours disponible comme filet de sécurité.

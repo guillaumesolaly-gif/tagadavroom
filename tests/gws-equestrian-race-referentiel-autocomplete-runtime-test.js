@@ -1,6 +1,7 @@
 /**
  * Test d'EXÉCUTION RÉELLE de assets/race-referentiel-autocomplete.js (correctif runtime
- * post-livraison 0.14.0 : « autocomplétion Race/Stud-book/Appellation inutilisable en édition »).
+ * post-livraison 0.14.0/0.14.1 : « autocomplétion Race/Stud-book/Appellation inutilisable en
+ * édition »).
  *
  * Pourquoi ce fichier existe : la suite PHP (`gws-equestrian-race-referentiel-test.php`) ne teste
  * QUE les helpers PHP du référentiel (résolution, recherche, sanitation) — jamais le composant
@@ -11,8 +12,27 @@
  * mais minimale du DOM (pas de jsdom, AUCUNE dépendance npm ajoutée au projet), exécution RÉELLE du
  * fichier JS du module via le module `vm` de Node.
  *
- * CAUSE RACINE EXACTE du bug (voir le commentaire en tête d'assets/race-referentiel-autocomplete.js
- * pour le détail complet) — DEUX défauts distincts, chacun testé isolément ci-dessous :
+ * IMPORTANT (recette 0.14.1) : ce test restait VERT après le correctif 0.14.1 alors que le
+ * composant restait NON FONCTIONNEL sur un vrai wp-admin — ce fichier prouve la LOGIQUE du script,
+ * jamais sa fidélité byte-à-byte une fois transféré/servi par un hébergement réel. Cause racine
+ * supplémentaire identifiée (voir le commentaire de `normalize()` dans
+ * assets/race-referentiel-autocomplete.js pour le détail complet) : le fichier source contenait un
+ * caractère Unicode LITTÉRAL multi-octet directement dans le code exécutable d'une expression
+ * régulière (plage de diacritiques combinants U+0300-U+036F, écrite en clair dans la source) — un caractère de ce type dépend d'un
+ * encodage/transfert fidèle en UTF-8 à chaque maillon (hébergement, CDN, extraction d'archive...) ;
+ * corrompu par n'importe lequel d'entre eux, il produit une ERREUR DE SYNTAXE qui empêche le
+ * NAVIGATEUR de parser le fichier — tuant SILENCIEUSEMENT tout le script, sans qu'aucune ligne de ce
+ * fichier de test (qui lit toujours le texte source fidèlement via `fs.readFileSync`) ni qu'aucune
+ * exécution directe (Node, `php -l`) ne puisse jamais le révéler. Remplacé par l'échappement ASCII `\u0300-\u036f`, strictement équivalent mais structurellement insensible à ce risque — vérifié
+ * qu'AUCUN caractère non-ASCII ne subsiste plus dans le code exécutable du fichier (seuls les
+ * commentaires, jamais exécutés, en contiennent encore). Une instrumentation de diagnostic
+ * temporaire (préfixe console `[gwseq-race]`) a également été ajoutée au script pour permettre de
+ * confirmer directement depuis un vrai navigateur, si le problème persistait malgré ce correctif,
+ * l'étape exacte où l'exécution diverge (script chargé, référentiel transmis, champs trouvés,
+ * initialisation de chaque champ) — voir le scénario 8 ci-dessous.
+ *
+ * CAUSES RACINES DU BUG LOGIQUE INITIAL (0.14.1, toujours corrigées et non régressées) — DEUX
+ * défauts distincts, chacun testé isolément ci-dessous :
  * 1. Le champ ne sélectionnait jamais son texte existant au focus : reprendre l'édition d'un champ
  *   déjà rempli (ex. "Selle Français" importé) concaténait toute nouvelle frappe ("OLD") à la
  *   valeur affichée au lieu de la remplacer, produisant une chaîne qui ne correspond à RIEN du
@@ -278,10 +298,16 @@ function runScenario() {
   const brokenField = buildBrokenRaceField(form);
   const fieldB = buildRaceField(form, '', '', 'gwseq-race-search-pere');
 
-  // console.error() est appelé DÉLIBÉRÉMENT par le script pour le champ cassé (scénario 7) — capturé
-  // silencieusement ici plutôt que d'imprimer une pile d'appel alarmante à chaque scénario alors que
-  // c'est exactement le comportement de résilience attendu et déjà vérifié par l'assertion dédiée.
-  const sandboxConsole = { log: console.log.bind(console), error: function () { sandboxConsole.lastError = Array.prototype.slice.call(arguments); } };
+  // console.error()/console.warn() sont appelés DÉLIBÉRÉMENT par le script — pour le champ cassé
+  // (scénario 7), et pour l'instrumentation temporaire de diagnostic runtime (recette post-0.14.1,
+  // préfixe "[gwseq-race]") — capturés silencieusement ici plutôt que d'imprimer une pile d'appel ou
+  // un log alarmant à chaque scénario, alors que c'est exactement le comportement attendu et déjà
+  // vérifié par les assertions dédiées.
+  const sandboxConsole = {
+    log: function () { sandboxConsole.lastLog = Array.prototype.slice.call(arguments); },
+    warn: function () { sandboxConsole.lastWarn = Array.prototype.slice.call(arguments); },
+    error: function () { sandboxConsole.lastError = Array.prototype.slice.call(arguments); },
+  };
   const sandbox = {
     window: { gwseqRaceReferentiel: gwseqRaceReferentielConfig, console: sandboxConsole },
     document: fakeDocument,
@@ -401,6 +427,36 @@ function runScenario() {
   fieldB.search.dispatch('input');
   const labels = fieldB.resultsList.children.map((li) => li.textContent);
   ok('Scénario 7 — un champ Race malformé présent sur la page n’empêche jamais l’initialisation d’un AUTRE champ Race (résilience try/catch de la boucle d’initialisation)', labels.some((t) => t.indexOf('KWPN') !== -1));
+}
+
+/* ===========================================================================================
+ * Scénario 8 — instrumentation de diagnostic temporaire (recette runtime post-0.14.1) : quand
+ * window.gwseqRaceReferentiel est absent ou invalide (référentiel jamais transmis par
+ * wp_localize_script(), ex. gwseq_enqueue_race_referentiel_assets() qui ne se serait pas exécutée
+ * sur l'écran réel), un avertissement explicite et identifiable ("[gwseq-race]") est bien émis —
+ * exactement le signal qu'un développeur doit pouvoir lire dans la console d'un vrai navigateur
+ * pour diagnostiquer une éventuelle divergence entre cet environnement de test et le runtime
+ * WordPress réel, sans avoir à deviner où l'exécution s'arrête silencieusement.
+ * =========================================================================================== */
+{
+  const scriptPath = path.join(__dirname, '..', 'wp-content', 'plugins', 'gws-core', 'modules', 'gws-equestrian', 'assets', 'race-referentiel-autocomplete.js');
+  const source = fs.readFileSync(scriptPath, 'utf8');
+  fakeDocument.children = [];
+  fakeDocument.activeElement = null;
+  fakeDocument._listeners = {};
+  const form = new FakeElement('form');
+  fakeDocument.appendChild(form);
+  buildRaceField(form, 'SF', 'Selle Français', 'gwseq-cheval-race-scenario8');
+  const sandboxConsole = {
+    log: function () {},
+    warn: function () { sandboxConsole.lastWarn = Array.prototype.slice.call(arguments); },
+    error: function () {},
+  };
+  const sandbox = { window: { gwseqRaceReferentiel: null, console: sandboxConsole }, document: fakeDocument, console: sandboxConsole };
+  sandbox.window.document = fakeDocument;
+  vm.runInContext(source, vm.createContext(sandbox), { filename: 'race-referentiel-autocomplete.js' });
+  fakeDocument.dispatch('DOMContentLoaded');
+  ok('Scénario 8 — instrumentation : quand window.gwseqRaceReferentiel est absent, un avertissement explicite préfixé "[gwseq-race]" est bien émis (au lieu d’un échec silencieux impossible à diagnostiquer)', !!(sandboxConsole.lastWarn && sandboxConsole.lastWarn[0] === '[gwseq-race]'));
 }
 
 console.log('');

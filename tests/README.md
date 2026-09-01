@@ -196,6 +196,20 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   test lui-même : rejouer ce fichier contre l'ancienne version (pré-correctif) du script fait
   effectivement échouer les scénarios concernés (touche Entrée, filet de sécurité à la soumission),
   la preuve que ce test détecte réellement la régression et n'est pas vacueusement vert.
+  **Correctif runtime complémentaire (0.14.2) — cause racine réelle, invisible à ce test simulé** :
+  la recette a montré que le composant restait non fonctionnel sur un VRAI wp-admin alors que ce
+  test restait vert — la cause était un caractère Unicode LITTÉRAL multi-octet directement dans le
+  code exécutable d'une expression régulière du script (plage de diacritiques combinants), fragile à
+  tout maillon d'hébergement/transfert qui ne le préserverait pas fidèlement en UTF-8 (produisant une
+  erreur de syntaxe qui tue silencieusement tout le script au chargement) — un risque que ce test ne
+  pouvait structurellement pas révéler puisqu'il lit toujours le texte source fidèlement via
+  `fs.readFileSync()`, comme n'importe quelle exécution directe (Node, `php -l`). Remplacé par un
+  échappement ASCII strictement équivalent, vérifié qu'aucun caractère non-ASCII ne subsiste dans le
+  code exécutable du fichier. **Nouveau scénario 8** : vérifie qu'une instrumentation de diagnostic
+  temporaire ajoutée au script (préfixe console `[gwseq-race]`) émet bien un avertissement explicite
+  quand `window.gwseqRaceReferentiel` est absent, au lieu d'un échec silencieux impossible à
+  diagnostiquer — pensée pour permettre de confirmer, depuis un vrai navigateur, l'étape exacte où
+  l'exécution diverge si un problème similaire devait se reproduire.
 
 - Pedigree de `gws-equestrian`, Étape 5 (`gws-equestrian-pedigree-logic-test.php`) : relations
   Père/Mère (référence à un cheval GWS existant, jamais par nom, jamais d'auto-référence, jamais
@@ -495,6 +509,23 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   explicitement) — jamais une suppression aveugle de toute parenthèse. Chiffres romains en fin de
   nom officiel ("CORRADO I") et suffixes courts d'alias ("CARTHAGO Z") toujours conservés, jamais
   confondus avec un stud-book (aucune régression du piège déjà écarté).
+  **Correctif runtime complémentaire (0.14.2) — robustesse de l'extraction sur cinq nouvelles
+  fiches IFCE réelles** (`tests/fixtures/ifce-quaprice-bois-margot.pdf`, `ifce-iowa-jal.pdf`,
+  `ifce-untouchable-27.pdf`, `ifce-asb-conquistador.pdf`, `ifce-cornet-obolensky.pdf`, chacune
+  exécutée à travers le pipeline complet réel `gwseq_ifce_extract_pdf_text()` ->
+  `gwseq_ifce_parse_text()`) : la ligne d'identité IFCE n'a PAS un nombre de segments fixe — Robe ET
+  Taille sont chacune facultatives indépendamment, une position figée perdait l'année de naissance
+  sur deux fiches réelles (Untouchable 27, Asb Conquistador — taille absente, l'année se retrouvait
+  décalée sur le segment "étalon") et rejetait intégralement une troisième (Quaprice Bois Margot — ni
+  robe ni taille, seulement 3 segments) ; la détection repère désormais la position RÉELLE du jeton
+  Sexe et reconnaît la mention "né(e) en AAAA" elle-même plutôt qu'une position, non-régression
+  vérifiée sur le format standard à 5/6 segments (Iowa Jal, Cornet Obolensky, taille correctement
+  extraite quand présente). **Normalisation croisée obligatoire** (cas Untouchable 27 : "Kon. Warm
+  Paard Nederland" dans l'identité vs "KWPN" dans le pedigree du même document) — un même
+  stud-book/race résout désormais vers un code canonique unique quel que soit le libellé IFCE
+  rencontré (alias ajoutés pour KWPN, BWP, HAN, SF, OE ; HOLST et OLD résolvaient déjà correctement),
+  vérifié par des tests croisés dédiés dans `gws-equestrian-race-referentiel-test.php` (identité et
+  pedigree produisant explicitement la même valeur pour KWPN/BWP/HOLST/OLD/HAN/SF/SFA/OE/OES).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

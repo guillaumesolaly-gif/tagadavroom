@@ -177,6 +177,17 @@ function gwseq_ifce_match_robe_to_canonical_code($text) {
 }
 
 /**
+ * Reconnaît la mention "né(e) en AAAA" elle-même (plutôt qu'une position de segment fixe) —
+ * correctif runtime : la robe est FACULTATIVE sur certaines fiches IFCE réelles (ex. "Holsteiner
+ * Warmblut, Mâle, né(e) en 1998", aucune robe), et un segment qui porte déjà cette mention ne doit
+ * alors jamais être pris pour une robe. Insensible à la casse et tolère les deux variantes
+ * d'accent rencontrées ("né" / "née").
+ */
+function gwseq_ifce_looks_like_birth_year_segment($text) {
+  return (bool) preg_match('/n[ée]\(?e?\)?\s*en\s*\d{4}/iu', (string) $text);
+}
+
+/**
  * Extraction de l'identité (§4) à partir des lignes de texte déjà découpées — voir la convention
  * de lecture documentée en tête de fichier. Retourne une structure fermée dont TOUS les champs
  * sont potentiellement vides (aucune valeur n'est jamais devinée) ; 'nom' vide signale l'échec de
@@ -189,22 +200,51 @@ function gwseq_ifce_parse_identity_from_lines($lines) {
     'taille_cm' => '', 'annee_naissance' => '', 'eleveur' => '', 'sire' => '', 'ueln' => '',
   );
 
+  // Correctif runtime (recette sur des fiches IFCE réelles supplémentaires) : le nombre de segments
+  // séparés par des virgules sur la ligne d'identité N'EST PAS FIXE. Le format à 5 segments (Race,
+  // Sexe, Robe, Taille, "né(e) en AAAA", éventuellement suivi de ", étalon") observé sur Jamerose/
+  // Iowa Jal n'est qu'UNE variante parmi d'autres réellement rencontrées :
+  // - "Kon. Warm Paard Nederland, Mâle, Gris, né(e) en 2001, étalon" (UNTOUCHABLE 27) : PAS de
+  //   taille — la robe est directement suivie de l'année.
+  // - "Holsteiner Warmblut, Mâle, né(e) en 1998" (Quaprice Bois Margot) : NI taille NI robe.
+  // Une position FIGÉE ("le 4e segment est toujours la taille, le 5e toujours l'année") casse dans
+  // ces deux cas — Quaprice n'était même pas reconnu comme une ligne d'identité (rejeté avant tout
+  // examen, moins de 5 segments), et Untouchable 27/Bush vd Heffinck avaient leur robe et leur
+  // "né(e) en AAAA" mal alignés sur les positions attendues, perdant taille ET année. Détection
+  // robuste : on repère la position RÉELLE du jeton Sexe (jamais figée), la race est tout ce qui la
+  // précède, puis on distingue la robe (facultative) de la suite en reconnaissant la mention
+  // "né(e) en AAAA" ELLE-MÊME plutôt qu'une position — un segment qui y ressemble n'est jamais
+  // confondu avec une robe.
   $identity_line_index = null;
-  $identity_parts = array();
+  $race_text = '';
+  $sexe_token = '';
+  $robe_text = '';
+  $remainder_text = '';
   foreach ($lines as $i => $line) {
     if (strpos($line, ',') === false) continue;
-    $parts = array_map('trim', explode(',', $line));
-    if (count($parts) < 5) continue;
-    // La ligne d'identité peut contenir des virgules supplémentaires dans son dernier segment
-    // ("née en 2019") : on ne fige que les 4 premiers segments, le reste forme le 5e.
-    $parts = array_map('trim', explode(',', $line, 5));
-    if (count($parts) !== 5) continue;
-    $sexe_token = gwseq_ifce_normalize_plain_text($parts[1]);
-    if (in_array($sexe_token, array('male', 'femelle', 'hongre'), true)) {
-      $identity_line_index = $i;
-      $identity_parts = $parts;
-      break;
+    $segments = array_map('trim', explode(',', $line));
+    if (count($segments) < 2) continue;
+    $sexe_index = null;
+    foreach ($segments as $idx => $segment) {
+      if ($idx === 0) continue; // le premier segment est toujours la race, jamais le sexe
+      if (in_array(gwseq_ifce_normalize_plain_text($segment), array('male', 'femelle', 'hongre'), true)) {
+        $sexe_index = $idx;
+        break;
+      }
     }
+    if ($sexe_index === null) continue;
+    $identity_line_index = $i;
+    $race_text = trim(implode(',', array_slice($segments, 0, $sexe_index)));
+    $sexe_token = gwseq_ifce_normalize_plain_text($segments[$sexe_index]);
+    $after_sexe = array_slice($segments, $sexe_index + 1);
+    if (!empty($after_sexe) && !gwseq_ifce_looks_like_birth_year_segment($after_sexe[0])) {
+      $robe_text = trim($after_sexe[0]);
+      $remainder_text = trim(implode(',', array_slice($after_sexe, 1)));
+    } else {
+      $robe_text = '';
+      $remainder_text = trim(implode(',', $after_sexe));
+    }
+    break;
   }
   if ($identity_line_index === null) return $result;
 
@@ -238,7 +278,6 @@ function gwseq_ifce_parse_identity_from_lines($lines) {
   $result['nom'] = $usage_name !== '' ? $usage_name : $official_name;
   $result['nom_officiel'] = $official_name !== '' ? $official_name : $usage_name;
 
-  $race_text = trim($identity_parts[0]);
   if ($race_text !== '') {
     $matched_race = gwseq_match_race_to_canonical_code($race_text);
     if ($matched_race !== '') {
@@ -250,9 +289,8 @@ function gwseq_ifce_parse_identity_from_lines($lines) {
   }
 
   $sexe_map = array('male' => 'male', 'femelle' => 'female', 'hongre' => 'gelding');
-  $result['sexe'] = $sexe_map[gwseq_ifce_normalize_plain_text($identity_parts[1])] ?? '';
+  $result['sexe'] = $sexe_map[$sexe_token] ?? '';
 
-  $robe_text = trim($identity_parts[2]);
   if ($robe_text !== '') {
     $matched_robe = gwseq_ifce_match_robe_to_canonical_code($robe_text);
     if ($matched_robe !== '') {
@@ -263,13 +301,15 @@ function gwseq_ifce_parse_identity_from_lines($lines) {
     }
   }
 
-  if (preg_match('/(\d+)\s*m\s*(\d{2})\b/i', $identity_parts[3], $mt)) {
+  if (preg_match('/(\d+)\s*m\s*(\d{2})\b/i', $remainder_text, $mt)) {
     $result['taille_cm'] = (int) ($mt[1] . $mt[2]);
-  } elseif (preg_match('/(\d+)[.,](\d{2})\s*m\b/i', $identity_parts[3], $mt)) {
+  } elseif (preg_match('/(\d+)[.,](\d{2})\s*m\b/i', $remainder_text, $mt)) {
     $result['taille_cm'] = (int) ($mt[1] . $mt[2]);
   }
 
-  if (preg_match('/(\d{4})/', $identity_parts[4], $my)) {
+  if (preg_match('/n[ée]\(?e?\)?\s*en\s*(\d{4})/iu', $remainder_text, $my)) {
+    $result['annee_naissance'] = (int) $my[1];
+  } elseif (preg_match('/(\d{4})/', $remainder_text, $my)) {
     $result['annee_naissance'] = (int) $my[1];
   }
 

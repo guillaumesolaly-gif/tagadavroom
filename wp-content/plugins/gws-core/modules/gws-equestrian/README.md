@@ -874,6 +874,33 @@ et le nom d'un ascendant externe restent enregistrés exactement tels que saisis
 référentiel. Réutilisable plus tard par le front, un export PDF, l'impression, un catalogue, ou le
 Social Kit.
 
+#### Correctif runtime 0.14.2 — cause racine réelle de l'autocomplétion, robustesse de l'extraction IFCE
+
+Le correctif logique 0.14.1 (sélection au focus, mise à jour synchrone sur `blur`, filet de
+sécurité à la soumission) restait sans effet visible sur un vrai wp-admin, alors que le test
+d'exécution JS restait vert. **Cause racine réelle** : `assets/race-referentiel-autocomplete.js`
+contenait un caractère Unicode LITTÉRAL multi-octet directement dans le code exécutable d'une
+expression régulière (plage de diacritiques combinants U+0300-U+036F, écrite en clair dans le
+fichier plutôt qu'en échappement `\u`). Un tel caractère dépend d'un encodage/transfert fidèle en
+UTF-8 à CHAQUE maillon (hébergement, CDN, extraction d'archive...) ; corrompu par n'importe lequel
+d'entre eux, il produit une ERREUR DE SYNTAXE qui empêche le navigateur de parser le fichier — tuant
+silencieusement TOUT le script, un risque qu'aucune exécution directe du texte source fidèle (Node,
+le test simulé) ne pouvait jamais révéler. Remplacé par l'échappement ASCII `\u0300-\u036f`,
+strictement équivalent mais structurellement insensible à ce risque. Une instrumentation de
+diagnostic TEMPORAIRE (préfixe console `[gwseq-race]`) a été ajoutée pour permettre, si le problème
+persistait malgré ce correctif, de confirmer directement depuis un vrai navigateur l'étape exacte où
+l'exécution diverge.
+
+Par ailleurs, l'extraction de l'identité IFCE (`gwseq_ifce_parse_identity_from_lines()`) gérait mal
+un nombre variable de segments sur la ligne "Race, Sexe, Robe, Taille, né(e) en AAAA[, étalon]" —
+Robe et Taille sont chacune FACULTATIVES indépendamment sur des fiches réelles, une position figée
+perdait l'année de naissance sur certaines (Untouchable 27, Asb Conquistador) et rejetait
+intégralement une fiche à seulement 3 segments (Quaprice Bois Margot, ni robe ni taille). Corrigé
+par une détection dynamique de la position réelle du sexe et de la mention "né(e) en AAAA"
+elle-même, plutôt qu'une position supposée. Un même stud-book (KWPN, BWP, HAN, SF, OE) résout
+désormais aussi vers un code canonique unique quel que soit son libellé IFCE rencontré (identité ou
+pedigree) — voir `includes/race-referentiel.php`.
+
 #### Correctif BLOQUANT 0.7.0 — corruption des noms accentués
 
 La reprise de la recette a révélé qu'un nom accentué (« Native de Félines ») était corrompu en
