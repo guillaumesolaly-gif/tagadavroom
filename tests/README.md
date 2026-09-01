@@ -378,6 +378,24 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   dehors de `post-new.php`/CPT Cheval, et est bien neutralisée par `gwseq_manual=1` ; le cas nominal
   de redirection (non exécutable ici, `exit()` après `wp_safe_redirect()`) vérifié déclarativement ;
   rendu de l'écran de choix (les deux chemins présentés avec une mise en avant équivalente).
+  **Correctif « headers already sent » (0.13.2)** : le traitement des deux formulaires a été
+  extrait en fonctions PURES (`gwseq_process_ifce_import_upload()`/`_confirm()`, jamais de HTML ni
+  de `wp_safe_redirect()`/`exit` elles-mêmes) — exécutées RÉELLEMENT dans ce test, avec le vrai PDF
+  de Jamerose de Félines pour l'upload, vérifiant littéralement : aucune sortie avant la redirection
+  (capture de tampon), création réelle du transient de prévisualisation avec la structure
+  normalisée effectivement analysée, URL de redirection calculée (vers la prévisualisation en cas de
+  succès, vers l'écran d'upload nu sinon), suppression du fichier temporaire, et — pour la
+  confirmation — aucune fiche Cheval créée pour un jeton expiré/inexistant, création réelle
+  seulement pour un jeton valide (compteur de fiches avant/après), suppression du transient après
+  usage. Nonce invalide et capacité insuffisante vérifiés par exécution réelle (ces deux cas lèvent
+  une exception AVANT tout `wp_safe_redirect()`/`exit`, donc sûrs à exécuter directement).
+  Vérifications déclaratives complémentaires : les deux gestionnaires sont bien accrochés aux hooks
+  natifs `admin_post_gwseq_ifce_import_upload`/`_confirm` (exécutés par `wp-admin/admin-post.php`,
+  qui ne rend jamais de HTML avant de les déclencher) ; le callback de PAGE
+  (`gwseq_render_ifce_import_page()`) ne contient plus jamais ni `$_POST` ni `wp_safe_redirect` —
+  la cause exacte du bug — ni d'appel direct aux gestionnaires `admin_post_*` ; les deux formulaires
+  soumettent bien vers `admin-post.php` avec le champ caché `action` attendu par WordPress pour
+  router vers le bon hook.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

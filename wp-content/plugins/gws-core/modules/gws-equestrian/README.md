@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 7 — Import IFCE (PDF), 0.13.1, EN ATTENTE DE RECETTE (Étape 6 — Indices/médias/présentation validée)
+## État actuel : Étape 7 — Import IFCE (PDF), 0.13.2, EN ATTENTE DE RECETTE (Étape 6 — Indices/médias/présentation validée)
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -23,7 +23,7 @@ fiche devenue trop longue à faire défiler, d'où l'ajustement UX post-recette 
 du CD des indices génétiques à deux décimales, navigation par onglets — voir plus bas), suivi de
 plusieurs allers-retours de recette (0.12.1 à 0.12.6, voir plus bas) désormais **validés**.
 
-**Étape 7 (0.13.1, EN ATTENTE DE RECETTE)** : premier import intelligent d'une fiche Cheval depuis
+**Étape 7 (0.13.2, EN ATTENTE DE RECETTE)** : premier import intelligent d'une fiche Cheval depuis
 une fiche de synthèse IFCE / Info Chevaux au format PDF, pour supprimer la ressaisie manuelle — en
 particulier le pedigree. La première recette runtime (0.13.0) a révélé un bug bloquant — le vrai PDF
 de Jamerose de Félines était rejeté — diagnostiqué et corrigé en 0.13.1 (voir « Import IFCE (Étape 7)
@@ -678,6 +678,13 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
   strictement différée jusqu'à confirmation explicite (nonce vérifié, structure toujours relue
   côté serveur — jamais une donnée structurée resoumise par le client). Suppression immédiate du
   fichier PDF temporaire après extraction du texte, que l'analyse réussisse ou non.
+  **Correctif « headers already sent » (0.13.2)** : le traitement des deux formulaires (upload,
+  confirmation) est accroché aux hooks natifs `admin_post_{action}` de WordPress, déclenchés depuis
+  `wp-admin/admin-post.php` — jamais depuis le callback de la page d'administration elle-même, que
+  WordPress n'appelle qu'APRÈS avoir déjà émis le HTML du menu d'administration (une redirection à
+  ce stade échoue systématiquement). La logique métier de chaque étape est extraite dans des
+  fonctions pures (`gwseq_process_ifce_import_upload()`/`_confirm()`) qui ne rendent jamais de HTML
+  ni ne redirigent elles-mêmes — directement testables par appel direct.
 
 ### Données extraites en V1
 

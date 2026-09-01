@@ -1,5 +1,19 @@
 # Changelog — GWS Starter
 
+## 1.16.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif bloquant : « headers already sent » à l'analyse du PDF IFCE (GWS Equestrian 0.13.2).**
+  Le lancement réel de l'import IFCE échouait avec « Cannot modify header information - headers
+  already sent by ... wp-admin/menu-header.php », sans jamais atteindre l'écran de prévisualisation.
+  Cause : le traitement des formulaires (upload, confirmation) s'exécutait depuis le callback de la
+  page d'administration, appelé par WordPress seulement APRÈS que le HTML du menu d'administration
+  a déjà été émis — une redirection à ce stade échoue systématiquement. Corrigé en confiant ce
+  traitement aux hooks natifs `admin_post_{action}` de WordPress (déclenchés depuis
+  `wp-admin/admin-post.php`, qui ne rend jamais de HTML avant de les déclencher), et en extrayant la
+  logique métier de chaque étape dans des fonctions pures ne redirigeant jamais elles-mêmes — ce qui
+  les rend directement testables. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.13.2) pour le détail complet.
+
 ## 1.16.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Recette runtime de l'import IFCE et de la Photo principale — trois correctifs consolidés (GWS

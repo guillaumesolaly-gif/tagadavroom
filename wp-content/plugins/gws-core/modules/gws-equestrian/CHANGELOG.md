@@ -5,6 +5,54 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.13.2 — Correctif bloquant : « headers already sent » à l'analyse du PDF IFCE
+
+Le lancement réel de l'analyse du PDF IFCE (0.13.1) échouait avec `Warning: Cannot modify header
+information - headers already sent by ... wp-admin/menu-header.php`, sans jamais atteindre l'écran
+de prévisualisation.
+
+**Diagnostic** : le traitement des deux formulaires (upload, confirmation) était exécuté
+DIRECTEMENT depuis le callback de la page d'administration
+(`gwseq_render_ifce_import_page()`, enregistré via `add_submenu_page()`). Or WordPress n'appelle ce
+callback que depuis l'INTÉRIEUR du rendu complet de l'écran — après que
+`wp-admin/admin-header.php`/`menu-header.php` ont déjà émis le `<html>` et le HTML du menu
+d'administration. Un `wp_safe_redirect()` déclenché à ce stade échoue systématiquement, et le
+script continuait silencieusement son exécution sans jamais atteindre la prévisualisation.
+
+**Correctif** (architecture, pas un simple contournement) : le traitement des deux formulaires est
+désormais confié aux hooks natifs `admin_post_{action}` de WordPress
+(`admin_post_gwseq_ifce_import_upload`/`admin_post_gwseq_ifce_import_confirm`), déclenchés depuis
+`wp-admin/admin-post.php` — un point d'entrée dédié qui ne rend JAMAIS de HTML avant de déclencher
+le hook, garantissant qu'aucune sortie ne précède la redirection. Le callback de page
+(`gwseq_render_ifce_import_page()`) ne traite plus JAMAIS de `$_POST` ni ne redirige lui-même : il
+se contente désormais de lire l'état déjà déterminé (jeton de prévisualisation en GET, message
+d'erreur éventuel déposé dans un transient scopé à l'utilisateur par le gestionnaire) et de
+l'afficher. Les deux formulaires soumettent désormais vers `admin-post.php` avec un champ caché
+`action` (`gwseq_ifce_import_upload`/`gwseq_ifce_import_confirm`), le mécanisme natif que WordPress
+utilise pour router vers le bon hook.
+
+La logique métier de chaque étape (extraction/analyse/transient pour l'upload ; relecture du
+transient puis création de la fiche et mapping pour la confirmation) a été extraite dans deux
+fonctions PURES (`gwseq_process_ifce_import_upload()`/`gwseq_process_ifce_import_confirm()`) qui ne
+rendent jamais de HTML et n'appellent jamais `wp_safe_redirect()`/`exit` elles-mêmes — elles
+retournent simplement `{redirect, notice}`, laissant les gestionnaires `admin_post_*` (fine couche
+de glue HTTP) se charger de la redirection réelle. Cette séparation rend le chemin réel directement
+testable par appel direct, sans jamais avoir à exécuter une redirection dans un test.
+
+**Aucun warning masqué** : aucune bufferisation artificielle de sortie, aucun `@` sur
+`wp_safe_redirect()`, aucune désactivation d'avertissement — le cycle de requête lui-même a été
+corrigé en utilisant le point d'entrée WordPress approprié pour un traitement suivi d'une
+redirection.
+
+**Tests** : nouvelle suite de vérifications dans `tests/gws-equestrian-ifce-import-test.php`
+exécutant le chemin réel via les fonctions pures (avec le vrai PDF de Jamerose de Félines) —
+absence de toute sortie avant redirection (capture de tampon), création réelle du transient de
+prévisualisation, URL de redirection calculée, aucune écriture métier (fiche/meta) avant
+confirmation explicite, jeton expiré/inexistant refusé proprement, et nonce/capability invalides
+refusés avant tout traitement — complétées par des vérifications déclaratives (hooks `admin_post_*`
+bien enregistrés, callback de page ne contenant plus ni `$_POST` ni `wp_safe_redirect`, formulaires
+soumettant bien vers `admin-post.php`).
+
 ## 0.13.1 — Recette runtime Étape 7 : vrai PDF IFCE compatible, choix "Ajouter un cheval", verrouillage Photo principale
 
 Trois correctifs consolidés suite à la première recette runtime de l'import IFCE et de

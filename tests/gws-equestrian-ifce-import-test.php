@@ -124,7 +124,17 @@ $GLOBALS['__gwseq_test_security'] = array('nonce_valid' => true, 'can_edit' => t
 function wp_verify_nonce($nonce, $action) { return $GLOBALS['__gwseq_test_security']['nonce_valid']; }
 function current_user_can($cap, $post_id = null) { return $GLOBALS['__gwseq_test_security']['can_edit']; }
 function wp_is_post_revision($post_id) { return $GLOBALS['__gwseq_test_security']['is_revision']; }
-function check_admin_referer($action, $field) { return $GLOBALS['__gwseq_test_security']['nonce_valid']; }
+// Fidèle au comportement réel de check_admin_referer() (WordPress core) : appelée pour son EFFET
+// DE BORD (meurt via wp_nonce_ays()/wp_die() si le nonce est invalide), jamais pour sa valeur de
+// retour — le code réel (ifce-import-admin.php) l'appelle d'ailleurs sans jamais lire ce qu'elle
+// renvoie. Un stub qui se contenterait de renvoyer un booléen laisserait passer silencieusement un
+// nonce invalide au travers du code appelant.
+function check_admin_referer($action, $field) {
+  if (!$GLOBALS['__gwseq_test_security']['nonce_valid']) {
+    throw new Exception('check_admin_referer: invalid nonce');
+  }
+  return true;
+}
 function wp_die($message = '') { throw new Exception('wp_die: ' . (is_string($message) ? $message : 'error')); }
 function wp_safe_redirect($url) { $GLOBALS['__gwseq_test_last_redirect'] = $url; }
 
@@ -383,20 +393,139 @@ foreach (array('finfo_open', 'is_uploaded_file') as $security_marker) {
 }
 gws_test_assert(strpos($ifce_admin_source, 'GWSEQ_IFCE_IMPORT_MAX_SIZE') !== false, 'Sécurité upload (vérification déclarative) : une taille maximale est bien appliquée');
 
-// --- Suppression du fichier temporaire (§11) : jamais de conservation du PDF après traitement ---
-$upload_handler_body = substr($ifce_admin_code_only, strpos($ifce_admin_code_only, 'function gwseq_handle_ifce_import_upload'));
-$upload_handler_body = substr($upload_handler_body, 0, strpos($upload_handler_body, "\nfunction "));
-gws_test_assert(strpos($upload_handler_body, 'unlink') !== false, 'Suppression du fichier temporaire (§11) : le gestionnaire de téléversement supprime bien le PDF après extraction du texte');
-
-// --- Aucune écriture avant validation (§1) : le gestionnaire d'UPLOAD n'écrit jamais de fiche ni
-// de meta — seul le gestionnaire de CONFIRMATION (déclenché uniquement après un clic explicite sur
-// l'écran de prévisualisation) crée la fiche et appelle le mapping ---
-foreach (array('wp_insert_post', 'gwseq_ifce_map_import') as $write_marker) {
-  gws_test_assert(strpos($upload_handler_body, $write_marker) === false, "Aucune écriture avant validation (§1) : le gestionnaire de téléversement n’appelle jamais $write_marker() — seule l’étape de confirmation explicite écrit quoi que ce soit");
+/**
+ * Extrait le corps d'UNE fonction (jusqu'à la déclaration `function` suivante) depuis le code
+ * source déjà débarrassé de ses commentaires — même utilitaire que celui déjà utilisé plus haut
+ * pour les gestionnaires de haut niveau, généralisé ici pour cibler les fonctions PURES extraites
+ * lors du correctif "headers already sent" (voir plus bas).
+ */
+function gws_test_extract_function_body($code_only, $function_name) {
+  $body = substr($code_only, strpos($code_only, 'function ' . $function_name));
+  $next = strpos($body, "\nfunction ", 1);
+  return $next === false ? $body : substr($body, 0, $next);
 }
-$confirm_handler_body = substr($ifce_admin_code_only, strpos($ifce_admin_code_only, 'function gwseq_handle_ifce_import_confirm'));
-$confirm_handler_body = substr($confirm_handler_body, 0, strpos($confirm_handler_body, "\nfunction "));
-gws_test_assert(strpos($confirm_handler_body, 'wp_insert_post') !== false && strpos($confirm_handler_body, 'gwseq_ifce_map_import') !== false, 'Écriture différée (§1) : la fiche n’est créée et le mapping appelé QUE dans le gestionnaire de confirmation');
+
+$upload_handler_body = gws_test_extract_function_body($ifce_admin_code_only, 'gwseq_handle_ifce_import_upload');
+$upload_processor_body = gws_test_extract_function_body($ifce_admin_code_only, 'gwseq_process_ifce_import_upload');
+$confirm_handler_body = gws_test_extract_function_body($ifce_admin_code_only, 'gwseq_handle_ifce_import_confirm');
+$confirm_processor_body = gws_test_extract_function_body($ifce_admin_code_only, 'gwseq_process_ifce_import_confirm');
+
+// --- Suppression du fichier temporaire (§11) : jamais de conservation du PDF après traitement ---
+gws_test_assert(strpos($upload_processor_body, 'unlink') !== false, 'Suppression du fichier temporaire (§11) : le traitement du téléversement supprime bien le PDF après extraction du texte');
+
+// --- Aucune écriture avant validation (§1) : ni le gestionnaire d'UPLOAD ni son traitement pur
+// n'écrivent jamais de fiche ni de meta — seul le traitement de CONFIRMATION (déclenché uniquement
+// après un clic explicite sur l'écran de prévisualisation) crée la fiche et appelle le mapping ---
+foreach (array($upload_handler_body, $upload_processor_body) as $body) {
+  foreach (array('wp_insert_post', 'gwseq_ifce_map_import') as $write_marker) {
+    gws_test_assert(strpos($body, $write_marker) === false, "Aucune écriture avant validation (§1) : le téléversement n’appelle jamais $write_marker() — seule l’étape de confirmation explicite écrit quoi que ce soit");
+  }
+}
+gws_test_assert(strpos($confirm_processor_body, 'wp_insert_post') !== false && strpos($confirm_processor_body, 'gwseq_ifce_map_import') !== false, 'Écriture différée (§1) : la fiche n’est créée et le mapping appelé QUE dans le traitement de confirmation');
+gws_test_assert(strpos($confirm_handler_body, 'wp_insert_post') === false && strpos($confirm_handler_body, 'gwseq_ifce_map_import') === false, 'Séparation glue/logique : le gestionnaire admin_post de confirmation lui-même n’appelle plus directement wp_insert_post()/gwseq_ifce_map_import() — délégué au traitement pur');
+
+// =====================================================================================
+// 5bis. Correctif bloquant post-recette — « headers already sent » (admin-post.php, jamais le
+// callback de page). Le traitement POST (upload, confirmation) était auparavant exécuté DEPUIS le
+// callback de la page d'administration (gwseq_render_ifce_import_page()), appelé par WordPress
+// SEULEMENT depuis l'intérieur du rendu complet de l'écran (après admin-header.php/menu-header.php
+// ont déjà émis du HTML) — un wp_safe_redirect() à ce stade échoue systématiquement. Corrigé en
+// confiant ce traitement aux hooks natifs `admin_post_{action}`, déclenchés depuis
+// wp-admin/admin-post.php, qui ne rend jamais aucun HTML avant de déclencher le hook.
+// =====================================================================================
+
+// --- Le traitement POST est bien confié aux hooks admin_post_* (exécutés AVANT tout rendu
+// d'écran), jamais au callback de page ---
+gws_test_assert(strpos($ifce_admin_code_only, "add_action('admin_post_gwseq_ifce_import_upload', 'gwseq_handle_ifce_import_upload')") !== false, 'Correctif "headers already sent" : le traitement du téléversement est bien accroché à admin_post_gwseq_ifce_import_upload (exécuté par wp-admin/admin-post.php, avant tout rendu d’écran)');
+gws_test_assert(strpos($ifce_admin_code_only, "add_action('admin_post_gwseq_ifce_import_confirm', 'gwseq_handle_ifce_import_confirm')") !== false, 'Correctif "headers already sent" : le traitement de la confirmation est bien accroché à admin_post_gwseq_ifce_import_confirm');
+
+// --- Le callback de PAGE ne traite plus jamais de POST ni ne redirige lui-même — c'est précisément
+// ce qui causait l'échec (wp_safe_redirect() appelé après que admin-header.php/menu-header.php ont
+// déjà émis du HTML) ---
+$page_callback_body = gws_test_extract_function_body($ifce_admin_code_only, 'gwseq_render_ifce_import_page');
+gws_test_assert(strpos($page_callback_body, 'wp_safe_redirect') === false, 'Correctif "headers already sent" : le callback de page (gwseq_render_ifce_import_page) n’appelle plus jamais wp_safe_redirect() lui-même');
+gws_test_assert(strpos($page_callback_body, '$_POST') === false, 'Correctif "headers already sent" : le callback de page ne lit plus jamais $_POST — il ne traite plus aucun formulaire, uniquement l’état déjà déterminé par les gestionnaires admin_post_*');
+foreach (array('gwseq_handle_ifce_import_upload', 'gwseq_handle_ifce_import_confirm') as $handler_name) {
+  gws_test_assert(strpos($page_callback_body, $handler_name) === false, "Correctif \"headers already sent\" : le callback de page n’appelle plus jamais $handler_name() directement");
+}
+
+// --- Les DEUX formulaires soumettent bien vers admin-post.php (jamais vers la page elle-même, qui
+// ne traite plus aucun POST) ---
+ob_start();
+gwseq_render_ifce_import_upload_form();
+$upload_form_html = ob_get_clean();
+gws_test_assert(strpos($upload_form_html, 'admin-post.php') !== false, 'Formulaire d’upload : soumet bien vers admin-post.php');
+gws_test_assert(strpos($upload_form_html, 'name="action" value="gwseq_ifce_import_upload"') !== false, 'Formulaire d’upload : porte bien le champ "action" attendu par admin-post.php pour router vers admin_post_gwseq_ifce_import_upload');
+
+ob_start();
+gwseq_render_ifce_import_preview('faketoken123', $jamerose_parsed);
+$preview_form_html = ob_get_clean();
+gws_test_assert(strpos($preview_form_html, 'admin-post.php') !== false, 'Formulaire de confirmation : soumet bien vers admin-post.php');
+gws_test_assert(strpos($preview_form_html, 'name="action" value="gwseq_ifce_import_confirm"') !== false, 'Formulaire de confirmation : porte bien le champ "action" attendu par admin-post.php pour router vers admin_post_gwseq_ifce_import_confirm');
+
+// --- Chemin réel : traitement de l'upload SANS jamais atteindre wp_safe_redirect()/exit (fonction
+// pure), en partant du VRAI PDF de Jamerose — vérifie littéralement l'absence de toute sortie AVANT
+// la redirection (ob_start), la création réelle du transient, et l'URL de redirection calculée ---
+copy($jamerose_pdf_path, sys_get_temp_dir() . '/gwseq-ifce-test-real.pdf');
+$real_tmp_path = sys_get_temp_dir() . '/gwseq-ifce-test-real.pdf';
+ob_start();
+$upload_result = gwseq_process_ifce_import_upload($real_tmp_path);
+$upload_output = ob_get_clean();
+gws_test_assert($upload_output === '', 'Aucune sortie avant redirection : le traitement réel de l’upload ne produit littéralement AUCUN caractère de sortie (vérifié par capture de tampon)');
+gws_test_assert($upload_result['notice'] === null, 'Chemin réel upload : un PDF IFCE reconnu (le vrai PDF de Jamerose) ne produit aucun message d’erreur');
+gws_test_assert(strpos($upload_result['redirect'], 'gwseq_token=') !== false, 'Chemin réel upload : la redirection calculée pointe bien vers l’écran de prévisualisation (jeton présent dans l’URL)');
+gws_test_assert(!file_exists($real_tmp_path), 'Chemin réel upload : le fichier PDF temporaire est bien supprimé après traitement (§11)');
+
+preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $upload_result['redirect'], $token_match);
+$real_upload_token = $token_match[1] ?? '';
+$created_transient = gwseq_get_ifce_import_transient($real_upload_token);
+gws_test_assert($created_transient !== false && $created_transient['parsed']['identity']['nom'] === 'JAMEROSE DE FELINES', 'Chemin réel upload : le transient de prévisualisation est bien créé, avec la structure normalisée réellement analysée');
+
+$posts_before_upload = count($GLOBALS['__gwseq_test_posts']);
+gws_test_assert(count($GLOBALS['__gwseq_test_posts']) === $posts_before_upload, 'Aucune écriture métier avant confirmation : le traitement de l’upload seul n’a créé strictement aucune fiche Cheval');
+
+// --- Chemin réel : un PDF non reconnu ne crée aucun transient exploitable, notice renseignée,
+// redirection vers l'écran d'upload nu (jamais vers une prévisualisation) ---
+$unrecognized_pdf_path = sys_get_temp_dir() . '/gwseq-ifce-test-unrecognized.pdf';
+file_put_contents($unrecognized_pdf_path, gws_test_build_minimal_pdf(array('Un document sans rapport avec une fiche cheval.'), true));
+$unrecognized_result = gwseq_process_ifce_import_upload($unrecognized_pdf_path);
+gws_test_assert($unrecognized_result['notice'] !== null && strpos($unrecognized_result['redirect'], 'gwseq_token=') === false, 'Chemin réel upload : un PDF non reconnu produit un message d’erreur et redirige vers l’écran d’upload nu, jamais vers une prévisualisation');
+
+// --- Chemin réel : confirmation avec un jeton EXPIRÉ/INEXISTANT — aucune fiche créée, notice
+// renseignée, redirection vers l'écran d'upload ---
+$posts_before_confirm = count($GLOBALS['__gwseq_test_posts']);
+ob_start();
+$expired_confirm_result = gwseq_process_ifce_import_confirm('jeton-inexistant', array('identity' => true, 'indices' => true, 'pedigree' => true));
+$expired_confirm_output = ob_get_clean();
+gws_test_assert($expired_confirm_output === '', 'Aucune sortie avant redirection : le traitement de confirmation ne produit aucune sortie, y compris pour un jeton expiré');
+gws_test_assert($expired_confirm_result['notice'] !== null, 'Chemin réel confirmation : un jeton expiré/inexistant produit un message d’erreur explicite');
+gws_test_assert(count($GLOBALS['__gwseq_test_posts']) === $posts_before_confirm, 'Chemin réel confirmation : un jeton invalide ne crée strictement aucune fiche Cheval');
+
+// --- Chemin réel : confirmation avec un jeton VALIDE — SEULEMENT à ce moment la fiche est créée et
+// le mapping appelé, jamais avant (§1) ---
+gwseq_set_ifce_import_transient('jeton-valide-test', $jamerose_parsed);
+$posts_before_valid_confirm = count($GLOBALS['__gwseq_test_posts']);
+ob_start();
+$valid_confirm_result = gwseq_process_ifce_import_confirm('jeton-valide-test', array('identity' => true, 'indices' => true, 'pedigree' => true));
+$valid_confirm_output = ob_get_clean();
+gws_test_assert($valid_confirm_output === '', 'Aucune sortie avant redirection : le traitement de confirmation réussi ne produit aucune sortie non plus');
+gws_test_assert($valid_confirm_result['notice'] === null, 'Chemin réel confirmation : un jeton valide ne produit aucun message d’erreur');
+gws_test_assert(count($GLOBALS['__gwseq_test_posts']) === $posts_before_valid_confirm + 1, 'Chemin réel confirmation : la fiche Cheval est bien créée, et SEULEMENT à la confirmation (jamais avant)');
+gws_test_assert(gwseq_get_ifce_import_transient('jeton-valide-test') === false, 'Chemin réel confirmation : le transient est bien supprimé après une confirmation réussie (usage unique)');
+
+// --- Nonce/capability invalides refusés (exécution réelle, sûre : ces deux cas lèvent une
+// exception AVANT tout wp_safe_redirect()/exit — voir les stubs check_admin_referer()/wp_die()) ---
+$GLOBALS['__gwseq_test_security']['nonce_valid'] = false;
+$nonce_rejected = false;
+try { gwseq_handle_ifce_import_upload(); } catch (Exception $e) { $nonce_rejected = (strpos($e->getMessage(), 'nonce') !== false); }
+gws_test_assert($nonce_rejected, 'Sécurité : un nonce invalide est bien refusé avant tout traitement (gwseq_handle_ifce_import_upload)');
+$GLOBALS['__gwseq_test_security']['nonce_valid'] = true;
+
+$capability_rejected = false;
+$GLOBALS['__gwseq_test_security']['can_edit'] = false;
+try { gwseq_handle_ifce_import_confirm(); } catch (Exception $e) { $capability_rejected = (strpos($e->getMessage(), 'wp_die') !== false); }
+gws_test_assert($capability_rejected, 'Sécurité : une capacité insuffisante est bien refusée avant tout traitement (gwseq_handle_ifce_import_confirm)');
+$GLOBALS['__gwseq_test_security']['can_edit'] = true;
 
 // --- Capacité : edit_posts, jamais manage_options (cohérent avec la capacité de création d’un
 // cheval, à la différence des pages de réglages globales du plugin) ---
