@@ -5,6 +5,68 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.14.3 — Correctif runtime : régression de la 0.14.2 réintroduite lors de l'instrumentation, filet de sécurité obligatoire, ajustement UX de la prévisualisation IFCE
+
+Recette en conditions réelles du correctif 0.14.2 : les points B et C (extraction IFCE, normalisation
+croisée) confirmés fonctionnels en production, mais l'autocomplétion Race restait totalement non
+fonctionnelle sur un vrai wp-admin — impossible de modifier une race déjà renseignée (ex.
+UNTOUCHABLE 27, KWPN) et impossible d'en saisir une sur une fiche vide (ex. Jamerose), sans aucun
+autre contrôle disponible : un bug bloquant du parcours de création/édition. Les logs navigateur
+fournis prouvaient que le script se chargeait, s'analysait et s'initialisait intégralement sans
+erreur (référentiel de 154 entrées chargé, 15 champs trouvés et initialisés) — écartant tout défaut
+de chargement, de syntaxe ou d'initialisation.
+
+**A — Régression : la réécriture de l'instrumentation (préparée pour cette recette) avait
+réintroduit EXACTEMENT le défaut corrigé en 0.14.2**, un caractère Unicode combinant LITTÉRAL
+multi-octet (U+0300-U+036F) directement dans le code exécutable de `normalize()`, au lieu de
+l'échappement ASCII `\u0300-\u036f`. Détecté avant livraison par une vérification systématique des
+octets du fichier (`od -c`) plutôt que par une simple lecture — un fichier JS entièrement réécrit ne
+garantit jamais par lui-même l'absence de cette classe de risque, une vérification octet-par-octet
+reste nécessaire à chaque réécriture complète. Corrigé de nouveau ; confirmé qu'aucun caractère
+non-ASCII ne subsiste plus dans le code exécutable (seuls les commentaires en contiennent encore).
+Cette régression, propre à la préparation de ce correctif, n'a jamais atteint la version livrée en
+0.14.2 elle-même.
+
+**B — La cause exacte de la panne runtime réellement observée par l'utilisateur reste, à ce stade,
+non reproduite en environnement de test** malgré une instrumentation exhaustive désormais en place
+(dix points de diagnostic couvrant `input → normalisation → recherche → résultats → rendu DOM →
+visibilité → sélection → synchronisation du code caché`, voir le docblock de
+`assets/race-referentiel-autocomplete.js`) et un `try`/`catch` dédié autour de CHAQUE gestionnaire
+d'événement (focus, saisie, perte de focus, clavier, clic sur un résultat, soumission) — une
+exception survenant pendant une interaction réelle serait désormais visible dans la console
+(`[gwseq-race] ... exception in ... handler:`) plutôt que silencieusement avalée par le navigateur.
+Une valeur du référentiel n'explique structurellement pas le symptôme : `config.suggestions` (le
+`5` observé dans les logs) est UNIQUEMENT le repli affiché champ vide au focus (valeurs récentes de
+l'utilisateur) — toute saisie non vide comme "old" recherche TOUJOURS dans `config.entries` (les 154
+entrées complètes), jamais dans `config.suggestions` ; ce point est désormais tracé explicitement
+dans les logs pour le démontrer sur le runtime réel.
+
+**C — Filet de sécurité obligatoire, indépendant de la résolution de B.** Une donnée métier
+essentielle comme la race ne doit jamais devenir impossible à saisir, que le composant
+JavaScript fonctionne ou non. `gwseq_render_race_referentiel_field()` rend désormais TOUJOURS, en
+plus du composant de recherche, un `<select>` natif complet portant le VRAI nom de champ soumis par
+défaut — fonctionnel sans JavaScript. `activateField()` ne désactive ce `<select>` (et ne transfère
+le nom réel vers le composant de recherche) qu'à la TOUTE FIN d'une initialisation ayant réussi sans
+la moindre exception ; si le script échoue à se charger, à s'analyser, ou lève une erreur n'importe
+où avant ce point précis, le `<select>` reste le SEUL contrôle actif, visible et réellement soumis —
+pour l'identité du cheval comme pour chaque génération d'ascendant externe du pedigree (même
+composant partagé). Le gestionnaire de suppression d'un ascendant externe (`cheval-admin.js`) a été
+mis à jour pour réinitialiser également ce `<select>` de secours.
+
+**D — Ajustement UX de la prévisualisation IFCE (purement l'affichage, ni le parseur ni les données
+ne sont modifiés).** Le résumé d'identité détectée était affiché sur une seule ligne concaténée par
+des virgules (ex. "KWPN, Mâle, Gris, non détectée, 2001"), rendant ambigu à quoi un "non détectée"
+isolé se rapportait. Remplacé par des lignes explicitement étiquetées : Race / Stud-book, Sexe,
+Robe, Taille, Année de naissance — mêmes valeurs déjà calculées, mise en forme uniquement.
+
+**Tests** : nouveaux scénarios dans le test d'exécution JS de l'autocomplétion (état par défaut du
+`<select>` de secours avant toute exécution JS, désactivation uniquement après succès complet de
+l'initialisation, maintien actif si l'initialisation échoue, vérification détaillée des dix points
+d'instrumentation demandés) ; nouvelles assertions dans le test d'import IFCE vérifiant les lignes
+étiquetées de la prévisualisation et l'absence de l'ancien résumé concaténé. Aucune régression sur
+la suite existante (alias IFCE, années de naissance, reconnaissance Quaprice Bois Margot,
+normalisation KWPN/BWP, limite à 3 générations de pedigree — tous revérifiés).
+
 ## 0.14.2 — Correctif runtime : cause racine réelle de l'autocomplétion, robustesse de l'extraction IFCE
 
 Recette sur cinq nouvelles fiches IFCE réelles (Iowa Jal, Untouchable 27, Asb Conquistador, Cornet

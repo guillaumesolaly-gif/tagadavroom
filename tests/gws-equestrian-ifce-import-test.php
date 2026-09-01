@@ -629,6 +629,17 @@ $preview_form_html = ob_get_clean();
 gws_test_assert(strpos($preview_form_html, 'admin-post.php') !== false, 'Formulaire de confirmation : soumet bien vers admin-post.php');
 gws_test_assert(strpos($preview_form_html, 'name="action" value="gwseq_ifce_import_confirm"') !== false, 'Formulaire de confirmation : porte bien le champ "action" attendu par admin-post.php pour router vers admin_post_gwseq_ifce_import_confirm');
 
+// --- Ajustement UX de la prévisualisation (recette runtime, §8) : chaque donnée d'identité est
+// désormais affichée sur sa propre ligne EXPLICITEMENT étiquetée ("Race / Stud-book :", "Sexe :",
+// "Robe :", "Taille :", "Année de naissance :"), jamais concaténée sur une seule ligne séparée par
+// des virgules où un "non détectée" isolé ne permettait pas de savoir à quelle donnée il se
+// rapportait. Purement un changement d'affichage : $jamerose_parsed (donnée réellement extraite du
+// VRAI PDF plus haut dans ce fichier) n'est ici ni modifiée ni recalculée. ---
+foreach (array('Race / Stud-book', 'Sexe', 'Robe', 'Taille', 'Année de naissance') as $expected_label) {
+  gws_test_assert(strpos($preview_form_html, $expected_label . ' :') !== false, "Prévisualisation IFCE : la ligne « $expected_label : » est bien affichée séparément (ajustement UX §8)");
+}
+gws_test_assert(preg_match('/,\s*(Mâle|Femelle|Hongre)\s*,/u', $preview_form_html) !== 1, 'Prévisualisation IFCE : l’ancien résumé concaténé par des virgules (ex. "KWPN, Mâle, Gris, non détectée, 2001") a bien disparu');
+
 // --- Chemin réel : traitement de l'upload SANS jamais atteindre wp_safe_redirect()/exit (fonction
 // pure), en partant du VRAI PDF de Jamerose — vérifie littéralement l'absence de toute sortie AVANT
 // la redirection (ob_start), la création réelle du transient, et l'URL de redirection calculée ---

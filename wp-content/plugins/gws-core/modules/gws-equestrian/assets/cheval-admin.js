@@ -215,6 +215,13 @@
         if (searchInput) searchInput.value = '';
         var autreWrap = field.querySelector('.gwseq-race-field__autre-wrap');
         if (autreWrap) autreWrap.style.display = 'none';
+        // Filet de sécurité obligatoire (§6, race-referentiel-autocomplete.js) : le <select> de
+        // secours peut être le contrôle réellement actif (composant de recherche jamais activé,
+        // ex. JavaScript en échec sur cet ascendant précis) — le réinitialiser aussi, sinon sa
+        // valeur précédente resterait soumise malgré le clic sur "Supprimer cet ascendant".
+        var fallbackWrap = field.parentNode ? field.parentNode.querySelector('.gwseq-race-field__fallback-wrap') : null;
+        var fallbackSelect = fallbackWrap ? fallbackWrap.querySelector('.gwseq-race-field__fallback') : null;
+        if (fallbackSelect) fallbackSelect.value = '';
       });
       nodeWrap.querySelectorAll('.gwseq-external-name-input').forEach(function (input) {
         input.dispatchEvent(new Event('input', { bubbles: true }));

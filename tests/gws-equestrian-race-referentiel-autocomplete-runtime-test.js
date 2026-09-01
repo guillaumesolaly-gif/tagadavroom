@@ -217,10 +217,37 @@ const fakeDocument = {
  * gwseq_render_race_referentiel_field() (includes/race-referentiel.php).
  * ----------------------------------------------------------------------------------------- */
 
-function buildRaceField(form, currentCode, currentLabel, inputId) {
+function buildRaceField(form, currentCode, currentLabel, inputId, fieldName, autreFieldName) {
+  // Balisage conforme à gwseq_render_race_referentiel_field() (0.14.3) : le composant de recherche
+  // et le <select> de secours sont désormais frères, tous deux enfants d'un même
+  // `.gwseq-race-field-wrap` — c'est cette structure que activateField() parcourt via
+  // `field.parentNode.querySelector('.gwseq-race-field__fallback-wrap')` pour transférer le VRAI
+  // `name` du <select> vers les champs cachés du composant de recherche une fois l'initialisation
+  // terminée sans exception (filet de sécurité obligatoire, §6 de la demande).
+  fieldName = fieldName || ('gwseq-race-name-' + inputId);
+  autreFieldName = autreFieldName || (fieldName + '_autre');
+
+  const wrap = new FakeElement('span');
+  wrap.className = 'gwseq-race-field-wrap';
+
+  const fallbackWrap = new FakeElement('span');
+  fallbackWrap.className = 'gwseq-race-field__fallback-wrap';
+  const fallbackSelect = new FakeElement('select');
+  fallbackSelect.className = 'gwseq-race-field__fallback';
+  fallbackSelect.setAttribute('name', fieldName);
+  fallbackSelect.value = currentCode;
+  fallbackWrap.appendChild(fallbackSelect);
+  const fallbackAutre = new FakeElement('input');
+  fallbackAutre.className = 'gwseq-race-field__fallback-autre';
+  fallbackAutre.setAttribute('name', autreFieldName);
+  fallbackAutre.value = currentCode === 'autre' ? currentLabel : '';
+  fallbackWrap.appendChild(fallbackAutre);
+  wrap.appendChild(fallbackWrap);
+
   const field = new FakeElement('span');
   field.className = 'gwseq-race-field';
   field.setAttribute('data-gwseq-race-field', '');
+  field.style.display = 'none';
 
   const search = new FakeElement('input');
   search.className = 'gwseq-race-field__search';
@@ -230,6 +257,7 @@ function buildRaceField(form, currentCode, currentLabel, inputId) {
 
   const codeInput = new FakeElement('input');
   codeInput.className = 'gwseq-race-field__code';
+  codeInput.setAttribute('data-gwseq-race-field-name', fieldName);
   codeInput.value = currentCode;
   field.appendChild(codeInput);
 
@@ -243,11 +271,14 @@ function buildRaceField(form, currentCode, currentLabel, inputId) {
   autreWrap.style.display = currentCode === 'autre' ? '' : 'none';
   const autreInput = new FakeElement('input');
   autreInput.className = 'gwseq-race-field__autre';
+  autreInput.setAttribute('data-gwseq-race-field-name', autreFieldName);
+  autreInput.value = currentCode === 'autre' ? currentLabel : '';
   autreWrap.appendChild(autreInput);
   field.appendChild(autreWrap);
 
-  form.appendChild(field);
-  return { field, search, codeInput, resultsList, autreWrap, autreInput };
+  wrap.appendChild(field);
+  form.appendChild(wrap);
+  return { wrap, fallbackWrap, fallbackSelect, fallbackAutre, field, search, codeInput, resultsList, autreWrap, autreInput };
 }
 
 function buildBrokenRaceField(form) {
@@ -259,7 +290,7 @@ function buildBrokenRaceField(form) {
   // interromprait sinon son parcours à la première exception non rattrapée dans son callback).
   const built = buildRaceField(form, '', '', 'gwseq-race-broken');
   built.field.closest = function () { throw new Error('champ délibérément cassé pour ce test'); };
-  return built.field;
+  return built;
 }
 
 /* -------------------------------------------------------------------------------------------
@@ -457,6 +488,111 @@ function runScenario() {
   vm.runInContext(source, vm.createContext(sandbox), { filename: 'race-referentiel-autocomplete.js' });
   fakeDocument.dispatch('DOMContentLoaded');
   ok('Scénario 8 — instrumentation : quand window.gwseqRaceReferentiel est absent, un avertissement explicite préfixé "[gwseq-race]" est bien émis (au lieu d’un échec silencieux impossible à diagnostiquer)', !!(sandboxConsole.lastWarn && sandboxConsole.lastWarn[0] === '[gwseq-race]'));
+}
+
+/* ===========================================================================================
+ * Scénario 9 — filet de sécurité OBLIGATOIRE (§6 de la demande) : une fois initField() réussie
+ * sans exception jusqu'à activateField(), le VRAI `name` porté par défaut par le <select> de
+ * secours doit avoir migré vers le champ caché du composant de recherche, et le <select> doit être
+ * désactivé, démuni de son `name`, et masqué — un seul contrôle actif et soumis à la fois, jamais
+ * les deux en même temps.
+ * =========================================================================================== */
+{
+  const { fieldA } = runScenario();
+  ok('Scénario 9 — après initialisation réussie, le <select> de secours est désactivé', fieldA.fallbackSelect.disabled === true);
+  ok('Scénario 9 — après initialisation réussie, le <select> de secours ne porte plus aucun `name` (ne soumet plus rien)', fieldA.fallbackSelect.hasAttribute('name') === false);
+  ok('Scénario 9 — après initialisation réussie, le champ de précision "Autre" de secours ne porte plus aucun `name`', fieldA.fallbackAutre.hasAttribute('name') === false);
+  ok('Scénario 9 — après initialisation réussie, le bloc de secours est masqué', fieldA.fallbackWrap.style.display === 'none');
+  ok('Scénario 9 — après initialisation réussie, le composant de recherche est affiché', fieldA.field.style.display === '');
+  ok('Scénario 9 — après initialisation réussie, le VRAI `name` a bien migré vers le champ caché du composant de recherche', fieldA.codeInput.name === 'gwseq-race-name-gwseq-cheval-race');
+}
+
+/* ===========================================================================================
+ * Scénario 10 — filet de sécurité OBLIGATOIRE : si initField() échoue AVANT d'atteindre
+ * activateField() (défaut inattendu pendant l'initialisation, ex. champ malformé du scénario 7),
+ * le <select> de secours de CE champ précis ne doit JAMAIS être désactivé par anticipation — il
+ * reste le SEUL contrôle actif, visible et réellement soumis, garantissant qu'une race reste
+ * toujours saisissable même si le composant JavaScript échoue.
+ * =========================================================================================== */
+{
+  const { brokenField } = runScenario();
+  ok('Scénario 10 — un champ dont l’initialisation échoue conserve son <select> de secours ACTIF (non désactivé)', brokenField.fallbackSelect.disabled !== true);
+  ok('Scénario 10 — un champ dont l’initialisation échoue conserve le `name` réel sur son <select> de secours (c’est bien lui qui sera soumis)', brokenField.fallbackSelect.hasAttribute('name') === true);
+  ok('Scénario 10 — un champ dont l’initialisation échoue conserve son bloc de secours VISIBLE', brokenField.fallbackWrap.style.display !== 'none');
+  ok('Scénario 10 — un champ dont l’initialisation échoue conserve son composant de recherche MASQUÉ (jamais affiché à moitié fonctionnel)', brokenField.field.style.display === 'none');
+}
+
+/* ===========================================================================================
+ * Scénario 11 — état par défaut AVANT toute exécution JavaScript (ou si le script ne s'exécute
+ * jamais, ex. fichier non chargé) : le <select> de secours doit porter le VRAI `name` dès le rendu
+ * PHP, sans dépendre d'aucune activation JS — un utilisateur sans JavaScript doit pouvoir
+ * renseigner une race dès le chargement de la page.
+ * =========================================================================================== */
+{
+  const form = new FakeElement('form');
+  const built = buildRaceField(form, 'KWPN', 'KWPN', 'gwseq-race-no-js');
+  ok('Scénario 11 — sans exécution JS, le <select> de secours porte déjà le VRAI `name` par défaut', built.fallbackSelect.getAttribute('name') === 'gwseq-race-name-gwseq-race-no-js');
+  ok('Scénario 11 — sans exécution JS, le <select> de secours n’est PAS désactivé par défaut', built.fallbackSelect.disabled !== true);
+  ok('Scénario 11 — sans exécution JS, le composant de recherche est masqué par défaut (`display:none` rendu par PHP)', built.field.style.display === 'none');
+  ok('Scénario 11 — sans exécution JS, les champs cachés du composant de recherche NE portent PAS de `name` réel (seulement `data-gwseq-race-field-name`, jamais soumis en double)', built.codeInput.name === undefined || built.codeInput.name === '');
+}
+
+/* ===========================================================================================
+ * Scénario 12 — instrumentation détaillée (dix points demandés en recette, §4 de la demande) :
+ * une saisie "old" sur un champ précédemment rempli ("KWPN") doit produire, dans l'ordre, des
+ * traces couvrant la valeur brute reçue, la valeur normalisée, le nombre de résultats trouvés, les
+ * premiers résultats, le code caché avant/après, la création du conteneur de suggestions, le
+ * nombre d'éléments injectés et un rapport de visibilité réel (`getComputedStyle`).
+ * =========================================================================================== */
+{
+  const logs = [];
+  // Capture les logs réellement produits par CETTE frappe, exactement ce qu'un vrai navigateur
+  // afficherait dans sa console — reproduit fidèlement les dix points de diagnostic demandés en
+  // recette (§4 de la demande) pour la saisie "old" sur un champ précédemment rempli ("KWPN").
+  const scriptPath = path.join(__dirname, '..', 'wp-content', 'plugins', 'gws-core', 'modules', 'gws-equestrian', 'assets', 'race-referentiel-autocomplete.js');
+  const source = fs.readFileSync(scriptPath, 'utf8');
+  fakeDocument.children = [];
+  fakeDocument.activeElement = null;
+  fakeDocument._listeners = {};
+  const form2 = new FakeElement('form');
+  fakeDocument.appendChild(form2);
+  const built = buildRaceField(form2, 'KWPN', 'KWPN', 'gwseq-race-instrumentation');
+  const capturingConsole = {
+    log: function () { logs.push(Array.prototype.slice.call(arguments).join(' ')); },
+    warn: function () { logs.push(Array.prototype.slice.call(arguments).join(' ')); },
+    error: function () { logs.push(Array.prototype.slice.call(arguments).join(' ')); },
+  };
+  // `getComputedStyle` minimal mais fidèle : lit `el.style`, applique les valeurs par défaut d'un
+  // vrai navigateur pour toute propriété jamais explicitement fixée — permet à `visibilityReport()`
+  // (assets/race-referentiel-autocomplete.js) de produire un VRAI rapport exploitable au lieu du
+  // repli "n/a" (absence totale de `window.getComputedStyle`), condition du point de recette n°10.
+  function fakeGetComputedStyle(el) {
+    const style = el.style || {};
+    return {
+      display: style.display !== undefined && style.display !== '' ? style.display : 'inline',
+      visibility: style.visibility || 'visible',
+      opacity: style.opacity || '1',
+      overflow: style.overflow || 'visible',
+      zIndex: style.zIndex || 'auto',
+    };
+  }
+  const sandbox2 = { window: { gwseqRaceReferentiel: gwseqRaceReferentielConfig, console: capturingConsole, getComputedStyle: fakeGetComputedStyle }, document: fakeDocument, console: capturingConsole };
+  sandbox2.window.document = fakeDocument;
+  vm.runInContext(source, vm.createContext(sandbox2), { filename: 'race-referentiel-autocomplete.js' });
+  fakeDocument.dispatch('DOMContentLoaded');
+  built.search.dispatch('focus');
+  built.search.value = 'old';
+  built.search.dispatch('input');
+  const joined = logs.join('\n');
+  ok('Scénario 12 — instrumentation : la valeur brute reçue par le handler `input` ("old") est bien tracée', joined.indexOf('"old"') !== -1);
+  ok('Scénario 12 — instrumentation : la valeur normalisée utilisée pour la recherche est bien tracée', joined.indexOf('normalized for search') !== -1);
+  ok('Scénario 12 — instrumentation : le nombre de résultats trouvés est bien tracé', joined.indexOf('results found: 1') !== -1);
+  ok('Scénario 12 — instrumentation : les premiers résultats retournés ("Oldenburg") sont bien tracés', joined.indexOf('OLD/Oldenburg') !== -1);
+  ok('Scénario 12 — instrumentation : le code caché avant/après la saisie est bien tracé', joined.indexOf('hidden code before this input event') !== -1);
+  ok('Scénario 12 — instrumentation : la création du conteneur de suggestions est bien tracée', joined.indexOf('results container: created = true') !== -1);
+  ok('Scénario 12 — instrumentation : le nombre d’éléments injectés dans le conteneur est bien tracé', joined.indexOf('items injected: 2') !== -1);
+  ok('Scénario 12 — instrumentation : un rapport de visibilité réel (display/visibility/opacity/overflow/zIndex) est bien tracé', joined.indexOf('display=') !== -1 && joined.indexOf('visibility=') !== -1 && joined.indexOf('opacity=') !== -1);
+  ok('Scénario 12 — instrumentation : le résultat "Oldenburg" est bien VISIBLE (liste non masquée)', built.resultsList.hidden === false);
 }
 
 console.log('');

@@ -210,6 +210,29 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   quand `window.gwseqRaceReferentiel` est absent, au lieu d'un échec silencieux impossible à
   diagnostiquer — pensée pour permettre de confirmer, depuis un vrai navigateur, l'étape exacte où
   l'exécution diverge si un problème similaire devait se reproduire.
+  **Correctif runtime 0.14.3 — filet de sécurité obligatoire, régression Unicode réintroduite lors de
+  l'instrumentation** : la recette du correctif 0.14.2 a montré que le composant restait totalement
+  non fonctionnel sur un vrai wp-admin malgré des logs prouvant un chargement/analyse/initialisation
+  intégralement réussis (154 entrées chargées, 15 champs initialisés sans exception) — écartant toute
+  cause déjà envisagée et orientant vers l'exécution réelle des interactions (frappe, clic), jamais
+  exercée par ce test synthétique. La réécriture de l'instrumentation pour cette recette avait
+  elle-même réintroduit EXACTEMENT le défaut Unicode déjà corrigé en 0.14.2 (détecté avant livraison
+  par une vérification octet-par-octet, `od -c`, jamais atteint par la version 0.14.2 livrée) —
+  reconfirme qu'une réécriture complète d'un fichier JS exige une revérification systématique de ce
+  risque. Instrumentation étendue aux dix points de diagnostic demandés en recette (valeur brute,
+  valeur normalisée, nombre de résultats, premiers résultats, code caché avant/après, création et
+  contenu du conteneur, rapport de visibilité réel via `getComputedStyle`), et `try`/`catch` DÉDIÉ
+  désormais posé sur CHAQUE gestionnaire d'événement (et non plus seulement autour de
+  l'initialisation) — une exception pendant une interaction réelle est désormais tracée
+  (`[gwseq-race] ... exception in ... handler:`) plutôt que silencieusement avalée. **Nouveaux
+  scénarios 9 à 12** : le `<select>` de secours obligatoire (`gwseq_render_race_referentiel_field()`,
+  `includes/race-referentiel.php`) porte le VRAI nom de champ par défaut et reste actif/visible tant
+  que l'initialisation JS n'a pas explicitement réussi (scénario 11, avant toute exécution du script) ;
+  `activateField()` ne le désactive/masque, en transférant le nom réel vers le composant de recherche,
+  qu'à la toute fin d'une initialisation sans exception (scénario 9) ; si l'initialisation échoue, le
+  `<select>` reste le SEUL contrôle actif, visible et nommé, jamais désactivé par anticipation
+  (scénario 10) ; l'instrumentation détaillée produit bien, pour une saisie "old" sur un champ
+  précédemment rempli, l'ensemble des dix traces attendues (scénario 12).
 
 - Pedigree de `gws-equestrian`, Étape 5 (`gws-equestrian-pedigree-logic-test.php`) : relations
   Père/Mère (référence à un cheval GWS existant, jamais par nom, jamais d'auto-référence, jamais
@@ -526,6 +549,12 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   rencontré (alias ajoutés pour KWPN, BWP, HAN, SF, OE ; HOLST et OLD résolvaient déjà correctement),
   vérifié par des tests croisés dédiés dans `gws-equestrian-race-referentiel-test.php` (identité et
   pedigree produisant explicitement la même valeur pour KWPN/BWP/HOLST/OLD/HAN/SF/SFA/OE/OES).
+  **Ajustement UX de la prévisualisation (0.14.3)** : l'identité détectée était affichée sur une
+  seule ligne concaténée par des virgules (ex. "KWPN, Mâle, Gris, non détectée, 2001"), rendant
+  ambigu à quoi un « non détectée » isolé se rapportait — remplacée par des lignes explicitement
+  étiquetées (Race / Stud-book, Sexe, Robe, Taille, Année de naissance), vérifiées présentes
+  séparément et l'ancien résumé concaténé vérifié absent ; purement l'affichage, `$identity`
+  (donnée réellement extraite du vrai PDF) n'est ni modifiée ni recalculée.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
@@ -613,3 +642,17 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   créée, et l'écran de choix "Ajouter un cheval") n'a jamais été exercé dans un vrai WordPress. C'est
   précisément pour cette raison que la prévisualisation obligatoire avant écriture (§9 de la demande
   initiale) reste la garantie réelle contre une donnée mal interprétée — jamais ce test automatisé.
+- **Composant d'autocomplétion Race/Stud-book — cause runtime exacte NON reproduite en test
+  automatisé (0.14.3)** : malgré une instrumentation exhaustive (dix points de diagnostic, `try`/
+  `catch` dédié sur chaque interaction réelle, voir plus haut) ajoutée précisément pour cette recette,
+  ce fichier de test n'a pas reproduit le symptôme signalé sur un vrai wp-admin (aucune suggestion à
+  la frappe malgré une initialisation confirmée réussie par les logs) — un DOM simulé fait main, quel
+  que soit son degré de fidélité, ne peut pas structurellement garantir l'absence de tout écart avec
+  un VRAI moteur de rendu de navigateur. C'est précisément la raison d'être du filet de sécurité
+  obligatoire (`<select>` de secours, voir plus haut) : indépendamment de la résolution éventuelle de
+  cette cause, la saisie d'une race reste garantie possible. Reste à confirmer en conditions réelles :
+  (1) que l'instrumentation ajoutée révèle effectivement, dans la console d'un vrai navigateur, le
+  point exact où l'exécution diverge lors d'une frappe réelle ; (2) le comportement visuel réel du
+  `<select>` de secours (positionnement, lisibilité) tel que rendu par le vrai CSS d'administration
+  WordPress ; (3) la transition visuelle entre `<select>` de secours et composant de recherche une
+  fois l'initialisation JS réussie (aucun scintillement, aucun état intermédiaire visible).

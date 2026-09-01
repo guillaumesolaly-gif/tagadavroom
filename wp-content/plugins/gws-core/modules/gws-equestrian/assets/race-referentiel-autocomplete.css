@@ -45,3 +45,25 @@
   display: block;
   margin-top: 6px;
 }
+
+/* Filet de sécurité obligatoire (§6 de la demande) : <select> de secours natif, actif tant que le
+   composant de recherche n'a pas été activé avec succès (voir activateField() dans
+   race-referentiel-autocomplete.js) — mise en forme minimale, la présentation native du navigateur
+   suffit pour un contrôle de repli. */
+.gwseq-race-field-wrap {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.gwseq-race-field__fallback-wrap {
+  display: block;
+}
+
+.gwseq-race-field__fallback {
+  max-width: 100%;
+}
+
+.gwseq-race-field__fallback-autre {
+  display: block;
+  margin-top: 6px;
+}

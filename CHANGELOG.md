@@ -1,5 +1,26 @@
 # Changelog — GWS Starter
 
+## 1.17.3 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif runtime : régression de la 0.14.2 réintroduite lors de l'instrumentation, filet de
+  sécurité obligatoire sur le champ Race, ajustement UX de la prévisualisation IFCE (GWS Equestrian
+  0.14.3).** Recette du correctif 0.14.2 : l'extraction IFCE et la normalisation croisée confirmées
+  fonctionnelles, mais l'autocomplétion Race restait totalement non fonctionnelle sur un vrai
+  wp-admin (impossible de modifier ou de saisir une race, sans aucun contrôle de repli), malgré des
+  logs prouvant un chargement et une initialisation intégralement réussis. Deux volets distincts :
+  (A) la réécriture de l'instrumentation avait réintroduit exactement le caractère Unicode littéral
+  déjà corrigé en 0.14.2, détecté et corrigé avant livraison par une vérification octet-par-octet du
+  fichier ; (B) la cause exacte de la panne runtime observée par l'utilisateur reste non reproduite
+  en environnement de test malgré une instrumentation exhaustive désormais en place (dix points de
+  diagnostic, `try`/`catch` dédié sur chaque interaction réelle). En complément, indépendamment de la
+  résolution de cette cause : un `<select>` natif de secours est désormais TOUJOURS rendu à côté du
+  composant de recherche (identité et pedigree), actif et fonctionnel par défaut, et n'est désactivé
+  qu'une fois l'initialisation JavaScript confirmée réussie sans exception — garantissant qu'une race
+  reste toujours saisissable même si le composant échoue. La prévisualisation d'import IFCE affiche
+  désormais l'identité détectée en lignes explicitement étiquetées (Race/Stud-book, Sexe, Robe,
+  Taille, Année de naissance) plutôt qu'en un résumé ambigu concaténé par des virgules. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.14.3) pour le détail complet.
+
 ## 1.17.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif runtime : cause racine réelle de l'autocomplétion, robustesse de l'extraction IFCE

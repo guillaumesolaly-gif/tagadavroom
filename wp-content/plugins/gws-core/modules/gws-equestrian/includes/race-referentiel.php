@@ -411,12 +411,27 @@ function gwseq_race_referentiel_record_recent_codes_from_external_tree($node, $u
 
 /* -------------------------------------------------------------------------------------------
  * Composant de saisie partagé (§8 de la demande : "le même composant partout") — un champ de
- * recherche/autocomplétion, jamais un <select>. Utilisé identiquement par l'identité du cheval
- * (cheval-fields.php) et par chaque génération d'ascendant externe (cheval-pedigree.php). Rendu
- * PHP minimal (texte affiché + code cru en hidden + repli "Autre") ; toute l'interactivité vit dans
+ * recherche/autocomplétion. Utilisé identiquement par l'identité du cheval (cheval-fields.php) et
+ * par chaque génération d'ascendant externe (cheval-pedigree.php). Toute l'interactivité vit dans
  * assets/race-referentiel-autocomplete.js, qui cible cette structure par attributs data-*
  * génériques, jamais par un identifiant codé en dur — un même script sert un nombre arbitraire de
  * champs sur la même page (identité + N ascendants).
+ *
+ * FILET DE SÉCURITÉ OBLIGATOIRE (correctif runtime, §6 de la demande) : la race/le stud-book est
+ * une donnée métier essentielle qui ne doit JAMAIS devenir impossible à saisir, même si le
+ * JavaScript ne s'exécute pas, échoue à l'initialisation, ou rencontre une erreur au clavier. Un
+ * `<select>` natif complet (`gwseq-race-field__fallback-wrap`) est donc TOUJOURS rendu, avec le
+ * VRAI attribut `name` par défaut — fonctionnel sans JavaScript, comme n'importe quel formulaire
+ * HTML classique. Le composant de recherche (`gwseq-race-field`, masqué par défaut via
+ * `style="display:none"`, jamais par une classe CSS qui dépendrait elle-même de la feuille de
+ * style) porte volontairement son `name` sur un attribut `data-gwseq-race-field-name` plutôt que
+ * `name` directement : c'est UNIQUEMENT une fois l'initialisation JS RÉELLEMENT réussie (à la toute
+ * fin de `initField()`, après que tout le reste a fonctionné sans exception) que le script
+ * "transfère" ce nom réel du `<select>` vers le champ caché de recherche, désactive et masque le
+ * `<select>`. Si le JavaScript ne s'exécute jamais, échoue à charger, ou qu'une exception survient
+ * n'importe où avant ce transfert, le `<select>` reste le SEUL contrôle actif et continue de
+ * soumettre normalement — jamais un champ métier rendu inutilisable par un souci purement
+ * d'affichage.
  */
 function gwseq_render_race_referentiel_field($args) {
   $args = wp_parse_args($args, array(
@@ -434,24 +449,39 @@ function gwseq_render_race_referentiel_field($args) {
   } elseif ($current_code !== '') {
     $display_value = gwseq_race_referentiel_display_label($current_code);
   }
+  $fallback_id = $args['input_id'] !== '' ? $args['input_id'] . '-fallback' : '';
   ?>
-  <span class="gwseq-race-field" data-gwseq-race-field>
-    <input
-      type="text"
-      class="regular-text gwseq-race-field__search"
-      id="<?php echo esc_attr($args['input_id']); ?>"
-      value="<?php echo esc_attr($display_value); ?>"
-      autocomplete="off"
-      role="combobox"
-      aria-expanded="false"
-      aria-autocomplete="list"
-      placeholder="<?php esc_attr_e('Rechercher une race, un stud-book ou une appellation…', 'gws-core'); ?>"
-    >
-    <input type="hidden" class="gwseq-race-field__code" name="<?php echo esc_attr($args['field_name']); ?>" value="<?php echo esc_attr($current_code); ?>">
-    <ul class="gwseq-race-field__results" role="listbox" hidden></ul>
-    <span class="gwseq-race-field__autre-wrap" style="<?php echo $current_code === 'autre' ? '' : 'display:none;'; ?>">
-      <label><?php esc_html_e('Préciser', 'gws-core'); ?></label>
-      <input type="text" class="regular-text gwseq-race-field__autre" name="<?php echo esc_attr($args['autre_field_name']); ?>" value="<?php echo esc_attr($args['current_autre']); ?>">
+  <span class="gwseq-race-field-wrap">
+    <span class="gwseq-race-field__fallback-wrap">
+      <select class="gwseq-race-field__fallback" id="<?php echo esc_attr($fallback_id); ?>" name="<?php echo esc_attr($args['field_name']); ?>">
+        <option value=""><?php esc_html_e('— Non renseignée —', 'gws-core'); ?></option>
+        <?php foreach (gwseq_race_referentiel_entries() as $entry) : ?>
+          <option value="<?php echo esc_attr($entry['code']); ?>" <?php selected($current_code, $entry['code']); ?>><?php echo esc_html($entry['gws']); ?> (<?php echo esc_html($entry['code']); ?>)</option>
+        <?php endforeach; ?>
+        <option value="autre" <?php selected($current_code, 'autre'); ?>><?php esc_html_e('Autre — préciser', 'gws-core'); ?></option>
+      </select>
+      <br>
+      <label><?php esc_html_e('Si « Autre » : préciser', 'gws-core'); ?></label>
+      <input type="text" class="regular-text gwseq-race-field__fallback-autre" name="<?php echo esc_attr($args['autre_field_name']); ?>" value="<?php echo esc_attr($args['current_autre']); ?>">
+    </span>
+    <span class="gwseq-race-field" data-gwseq-race-field style="display:none;">
+      <input
+        type="text"
+        class="regular-text gwseq-race-field__search"
+        id="<?php echo esc_attr($args['input_id']); ?>"
+        value="<?php echo esc_attr($display_value); ?>"
+        autocomplete="off"
+        role="combobox"
+        aria-expanded="false"
+        aria-autocomplete="list"
+        placeholder="<?php esc_attr_e('Rechercher une race, un stud-book ou une appellation…', 'gws-core'); ?>"
+      >
+      <input type="hidden" class="gwseq-race-field__code" data-gwseq-race-field-name="<?php echo esc_attr($args['field_name']); ?>" value="<?php echo esc_attr($current_code); ?>">
+      <ul class="gwseq-race-field__results" role="listbox" hidden></ul>
+      <span class="gwseq-race-field__autre-wrap" style="<?php echo $current_code === 'autre' ? '' : 'display:none;'; ?>">
+        <label><?php esc_html_e('Préciser', 'gws-core'); ?></label>
+        <input type="text" class="regular-text gwseq-race-field__autre" data-gwseq-race-field-name="<?php echo esc_attr($args['autre_field_name']); ?>" value="<?php echo esc_attr($args['current_autre']); ?>">
+      </span>
     </span>
   </span>
   <?php

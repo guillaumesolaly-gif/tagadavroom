@@ -11,9 +11,11 @@
  *   si aucun historique, voir PHP) — jamais l'intégralité du référentiel (§1/§5 de la demande).
  *   Champ déjà rempli au focus (import IFCE, valeur déjà enregistrée) : le TEXTE EST SÉLECTIONNÉ
  *   ENTIÈREMENT (comme un champ de recherche classique), pour qu'une frappe immédiate REMPLACE la
- *   valeur affichée plutôt que de s'y concaténer (correctif runtime — voir plus bas).
- * - Saisie -> recherche LOCALE (aucun aller-retour serveur, le référentiel entier tient en mémoire)
- *   sur le code, le libellé IFCE, le libellé GWS et les alias — accents/casse ignorés — avec les
+ *   valeur affichée plutôt que de s'y concaténer.
+ * - Saisie -> recherche LOCALE (aucun aller-retour serveur, le référentiel entier tient en mémoire,
+ *   TOUJOURS `config.entries` — les 154 entrées complètes — jamais `config.suggestions`, qui n'est
+ *   qu'un repli d'AU PLUS 10 valeurs affiché uniquement quand le champ est VIDE, voir plus bas) sur
+ *   le code, le libellé IFCE, le libellé GWS et les alias — accents/casse ignorés — avec les
  *   correspondances en DÉBUT de champ affichées avant les correspondances partielles.
  * - "Autre — préciser" reste TOUJOURS proposé en dernière position (§7 : filet de sécurité, jamais
  *   un repli automatique sur une valeur mal reconnue).
@@ -24,57 +26,55 @@
  *   automatiquement sur "Autre" + le texte tapé s'il est non vide, ou sur une valeur vide sinon —
  *   jamais un champ affichant un texte qui ne correspond plus au code réellement mémorisé.
  *
- * CORRECTIF RUNTIME (recette post-livraison 0.14.0) — « autocomplétion inutilisable en édition » :
- * deux causes racines distinctes, corrigées ensemble :
- * 1. Le champ de recherche n'était JAMAIS vidé/sélectionné au focus : reprendre la saisie sur un
- *    champ déjà rempli (ex. « Selle Français » importé depuis IFCE) concaténait le texte tapé
- *    (« Selle FrançaisOLD ») au lieu de le remplacer — une chaîne qui ne correspond à RIEN du
- *    référentiel, d'où l'impression qu'« aucune suggestion n'apparaît ». Corrigé par une sélection
- *    intégrale du texte au focus (`search.select()`), comportement standard d'un champ de
- *    recherche.
- * 2. La mise à jour du code cru (`codeInput.value`) après une saisie libre non validée par un clic
- *    était différée de 150 ms APRÈS l'événement `blur` (délai initialement pensé pour laisser un
- *    `mousedown` sur un résultat s'exécuter avant la fermeture de la liste). Or un clic sur le
- *    bouton natif « Enregistrer »/« Publier » de WordPress déclenche la soumission du formulaire
- *    QUASI IMMÉDIATEMENT après le `blur` du champ — largement avant l'écoulement de ces 150 ms — de
- *    sorte que le formulaire partait avec l'ANCIEN code caché, jamais mis à jour : la race importée
- *    « revenait » après enregistrement, et il était impossible de vider le champ. Un `mousedown`
- *    avec `preventDefault()` sur un résultat empêche NATIVEMENT le focus de quitter le champ de
- *    recherche (donc `blur` ne se déclenche JAMAIS lors d'un clic sur un résultat) : le délai n'a
- *    donc plus aucune raison d'exister et la mise à jour est désormais SYNCHRONE sur `blur`. Un
- *    filet de sécurité supplémentaire committe explicitement chaque champ Race au moment de la
- *    SOUMISSION du formulaire (avant même que `blur` ait pu se déclencher dans un enchaînement
- *    clavier inhabituel), et la touche Entrée à l'intérieur du champ de recherche ne soumet plus
- *    jamais le formulaire par accident (elle valide le premier résultat affiché, ou committe la
- *    saisie libre exactement comme une perte de focus).
+ * `config.suggestions` EXPLIQUÉ (recette runtime — le log "entries: 154, suggestions: 5" a soulevé
+ * la question) : ce sont les valeurs RÉCEMMENT UTILISÉES par l'utilisateur courant (ou un repli
+ * neutre s'il n'en a aucune, voir gwseq_race_referentiel_suggestions_for_user() côté PHP),
+ * affichées UNIQUEMENT quand le champ est vide au focus — un confort pour retrouver vite ses
+ * valeurs habituelles, jamais le périmètre de la recherche elle-même. Une frappe non vide
+ * (`query.trim() !== ''`) appelle TOUJOURS `searchEntries(config.entries, ...)`, jamais
+ * `config.suggestions` — voir `showSuggestionsOrSearch()` plus bas. Le nombre de suggestions
+ * n'explique donc structurellement pas une recherche non fonctionnelle sur un texte non vide comme
+ * "old" ; l'instrumentation ci-dessous logue explicitement les deux tailles séparément pour le
+ * démontrer sur le runtime réel.
  *
- * SANS JAVASCRIPT : le champ caché texte + hidden reste soumissible tel quel (le code déjà
- * enregistré, le cas échéant, continue d'être envoyé sans modification) — seule l'interactivité de
- * recherche est absente, jamais un formulaire bloqué.
+ * FILET DE SÉCURITÉ OBLIGATOIRE (correctif runtime, §6 de la demande) : un `<select>` natif complet
+ * est TOUJOURS rendu par PHP (voir gwseq_render_race_referentiel_field()), fonctionnel sans
+ * JavaScript. `activateField()` ci-dessous ne le désactive/masque, et ne montre ce composant de
+ * recherche, qu'à la TOUTE FIN d'une initialisation qui n'a rencontré AUCUNE exception — si le
+ * script ne s'exécute pas, échoue à charger, ou qu'une erreur survient n'importe où avant ce point,
+ * le `<select>` reste le SEUL contrôle actif et continue de soumettre normalement.
+ *
+ * SANS JAVASCRIPT (ou en cas d'échec) : le `<select>` de secours reste le contrôle actif et soumis
+ * — jamais un champ métier essentiel rendu impossible à renseigner par un souci purement
+ * d'affichage/script.
  */
 (function () {
   'use strict';
 
-  // Instrumentation TEMPORAIRE (recette runtime post-0.14.1, à retirer une fois le composant
-  // confirmé fonctionnel en conditions réelles) : quelques traces `console.*` à faible volume (une
-  // ligne par étape-clé d'initialisation, jamais par frappe/interaction) préfixées "[gwseq-race]"
-  // pour permettre de diagnostiquer, directement depuis la console du navigateur sur une vraie
-  // fiche WordPress, où l'exécution diverge éventuellement d'un environnement de test — script
-  // chargé, configuration présente et son nombre d'entrées, nombre de champs trouvés, résultat de
-  // l'initialisation de CHAQUE champ. Sans effet sur le fonctionnement : aucune de ces lignes ne
-  // modifie le comportement, uniquement des lectures d'état déjà calculées par ailleurs.
+  // Instrumentation TEMPORAIRE (recette runtime, à retirer une fois le composant confirmé
+  // fonctionnel en conditions réelles) : traces `console.*` préfixées "[gwseq-race]", couvrant
+  // aussi bien l'initialisation (une ligne par étape-clé) que CHAQUE interaction clavier/souris
+  // réelle sur un champ (valeur brute reçue, valeur normalisée, nombre de résultats, premiers
+  // résultats, code caché avant/après, présence du conteneur de résultats, nombre d'éléments
+  // injectés, état de visibilité réel via getComputedStyle) — exactement les dix points demandés
+  // en recette pour localiser où le flux diverge entre `input` et la synchronisation finale du code
+  // caché. Chaque gestionnaire d'événement est en outre entouré d'un `try`/`catch` DÉDIÉ (distinct
+  // de celui de l'initialisation) : une exception survenant PENDANT une frappe réelle — jamais
+  // reproduite par un événement synthétique de test — serait sinon silencieusement avalée par le
+  // navigateur, laissant croire à tort à une simple absence de résultat. Messages ASCII uniquement
+  // (y compris dans les chaînes), cohérent avec la robustesse déjà recherchée dans ce fichier.
   function log() {
     if (window.console && window.console.log) window.console.log.apply(window.console, ['[gwseq-race]'].concat(Array.prototype.slice.call(arguments)));
   }
   function warn() {
     if (window.console && window.console.warn) window.console.warn.apply(window.console, ['[gwseq-race]'].concat(Array.prototype.slice.call(arguments)));
   }
+  function visibilityReport(el) {
+    if (!el || !window.getComputedStyle) return 'n/a';
+    var cs = window.getComputedStyle(el);
+    return 'display=' + cs.display + ' visibility=' + cs.visibility + ' opacity=' + cs.opacity + ' overflow=' + cs.overflow + ' zIndex=' + cs.zIndex + ' offsetParent=' + (el.offsetParent ? 'present' : 'null');
+  }
 
-  // Messages ASCII uniquement, y compris dans les chaines de caracteres (pas seulement dans le
-  // code executable lui-meme) : cette instrumentation vise justement a etre fiable dans un
-  // environnement de production potentiellement fragile a l'encodage (voir normalize() plus bas) ;
-  // un accent dans une simple chaine de log ne casserait pas le script, mais autant ne prendre
-  // aucun risque, meme cosmetique, dans ce fichier precis.
   log('script loaded');
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -84,7 +84,7 @@
       warn('window.gwseqRaceReferentiel missing or invalid - the referential was not correctly passed by wp_localize_script() (check that gwseq_enqueue_race_referentiel_assets() actually runs on this screen):', config);
       return;
     }
-    log('referential loaded, entries:', config.entries.length, 'suggestions:', (config.suggestions || []).length);
+    log('referential loaded, entries (full search pool):', config.entries.length, '- suggestions (empty-field default only, NEVER the search pool):', (config.suggestions || []).length);
 
     var fields = document.querySelectorAll('[data-gwseq-race-field]');
     log('[data-gwseq-race-field] fields found in the DOM:', fields.length);
@@ -94,12 +94,14 @@
     fields.forEach(function (field, index) {
       // Un champ malformé (structure inattendue) ne doit jamais empêcher l'initialisation des
       // AUTRES champs de la page (Array.prototype.forEach interrompt son parcours à la première
-      // exception non rattrapée dans son callback) — chaque champ reste isolé des autres.
+      // exception non rattrapée dans son callback) — chaque champ reste isolé des autres. Le
+      // <select> de secours de CE champ reste actif tant que initField() n'a pas explicitement
+      // réussi jusqu'à activateField() (voir plus bas) — jamais désactivé par anticipation.
       try {
-        initField(field, config);
-        log('field #' + index + ' (id=' + (field.querySelector('.gwseq-race-field__search') || {}).id + ') initialized successfully');
+        initField(field, config, index);
+        log('field #' + index + ' (id=' + (field.querySelector('.gwseq-race-field__search') || {}).id + ') initialized successfully, fallback <select> deactivated, search UI active');
       } catch (e) {
-        warn('field #' + index + ' - initialization failed:', e);
+        warn('field #' + index + ' - initialization failed, fallback <select> remains the active control:', e);
       }
     });
   });
@@ -111,12 +113,9 @@
       // caractères Unicode littéraux : un caractère multi-octet écrit en clair dans le fichier
       // source dépend d'un encodage/transfert fidèle (hébergement, CDN, minification...) — corrompu
       // par n'importe quel maillon qui ne le préserverait pas en UTF-8, il produirait une ERREUR DE
-      // SYNTAXE qui tuerait silencieusement TOUT le script au chargement (correctif runtime post
-      // 0.14.1 : symptôme observé en environnement WordPress réel — "rien ne fonctionne du tout" —
-      // jamais reproductible avec ce même fichier exécuté directement, par exemple via Node, où le
-      // texte source reste toujours fidèle). Un échappement \uXXXX est constitué exclusivement de
-      // caractères ASCII : il ne peut structurellement plus être corrompu par un problème
-      // d'encodage de fichier.
+      // SYNTAXE qui tuerait silencieusement TOUT le script au chargement. Un échappement \uXXXX est
+      // constitué exclusivement de caractères ASCII : il ne peut structurellement plus être corrompu
+      // par un problème d'encodage de fichier.
       text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
     return text.toLowerCase().replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -144,14 +143,50 @@
     return prefixMatches.concat(substringMatches).slice(0, limit || 20);
   }
 
-  function initField(field, config) {
+  /**
+   * Active le composant de recherche à la place du <select> de secours — appelée UNIQUEMENT à la
+   * toute fin de initField(), une fois tous les éléments trouvés et tous les écouteurs attachés
+   * sans exception. Transfère le VRAI attribut `name` du <select> (et de son champ de précision
+   * "Autre") vers les champs cachés du composant de recherche (portés jusqu'ici sur
+   * `data-gwseq-race-field-name`, jamais `name`, pour ne jamais soumettre deux valeurs à la fois),
+   * puis désactive et masque le <select> — qui ne soumettra donc plus rien, le composant de
+   * recherche devenant le SEUL contrôle actif. Si cette fonction n'est jamais atteinte (exception
+   * plus haut dans initField), le <select> reste tel quel : actif, visible, et c'est LUI qui
+   * soumet — jamais un champ sans aucun contrôle fonctionnel.
+   */
+  function activateField(field, codeInput, autreInput) {
+    var wrap = field.parentNode;
+    var fallbackWrap = wrap ? wrap.querySelector('.gwseq-race-field__fallback-wrap') : null;
+    var fallbackSelect = fallbackWrap ? fallbackWrap.querySelector('.gwseq-race-field__fallback') : null;
+    var fallbackAutre = fallbackWrap ? fallbackWrap.querySelector('.gwseq-race-field__fallback-autre') : null;
+    if (fallbackSelect) {
+      var realName = codeInput.getAttribute('data-gwseq-race-field-name');
+      if (realName) codeInput.name = realName;
+      fallbackSelect.disabled = true;
+      fallbackSelect.removeAttribute('name');
+    }
+    if (fallbackAutre) {
+      var realAutreName = autreInput ? autreInput.getAttribute('data-gwseq-race-field-name') : null;
+      if (autreInput && realAutreName) autreInput.name = realAutreName;
+      fallbackAutre.disabled = true;
+      fallbackAutre.removeAttribute('name');
+    }
+    if (fallbackWrap) fallbackWrap.style.display = 'none';
+    field.style.display = '';
+  }
+
+  function initField(field, config, fieldIndex) {
     var search = field.querySelector('.gwseq-race-field__search');
     var codeInput = field.querySelector('.gwseq-race-field__code');
     var resultsList = field.querySelector('.gwseq-race-field__results');
     var autreWrap = field.querySelector('.gwseq-race-field__autre-wrap');
     var autreInput = field.querySelector('.gwseq-race-field__autre');
-    if (!search || !codeInput || !resultsList) return;
+    if (!search || !codeInput || !resultsList) {
+      warn('field #' + fieldIndex + ' - missing expected sub-elements (search=' + !!search + ' codeInput=' + !!codeInput + ' resultsList=' + !!resultsList + '), aborting init for this field only');
+      return;
+    }
 
+    var tag = '[field #' + fieldIndex + ']';
     var hasPickedThisSession = false;
     var currentEntries = [];
     var activeIndex = -1;
@@ -195,10 +230,14 @@
         item.addEventListener('mousedown', function (event) {
           // mousedown (pas click) AVEC preventDefault() : empêche NATIVEMENT le focus de quitter
           // le champ de recherche, donc `blur` ne se déclenche jamais pour ce clic — jamais de
-          // course avec une éventuelle fermeture/committe sur blur (voir le correctif documenté en
-          // tête de fichier).
-          event.preventDefault();
-          selectEntry(entry.code, entry.label);
+          // course avec une éventuelle fermeture/committe sur blur.
+          try {
+            event.preventDefault();
+            log(tag, 'result clicked:', entry.code, entry.label);
+            selectEntry(entry.code, entry.label);
+          } catch (e) {
+            warn(tag, 'exception in result mousedown handler:', e);
+          }
         });
         resultsList.appendChild(item);
       });
@@ -209,22 +248,32 @@
       autreItem.className = 'gwseq-race-field__autre-option';
       autreItem.textContent = config.i18n.autre;
       autreItem.addEventListener('mousedown', function (event) {
-        event.preventDefault();
-        selectEntry(config.autreCode, '');
-        search.value = '';
+        try {
+          event.preventDefault();
+          selectEntry(config.autreCode, '');
+          search.value = '';
+        } catch (e) {
+          warn(tag, 'exception in "Autre" mousedown handler:', e);
+        }
       });
       resultsList.appendChild(autreItem);
 
       resultsList.hidden = false;
       search.setAttribute('aria-expanded', 'true');
+      log(tag, 'results container: created =', !!resultsList, '- items injected:', entries.length + 1, '(including "Autre") - visibility:', visibilityReport(resultsList));
     }
 
     function showSuggestionsOrSearch() {
       var query = search.value;
+      var normalizedQuery = normalize(query);
       if (query.trim() === '') {
-        renderResults(config.suggestions || []);
+        var suggestions = config.suggestions || [];
+        log(tag, 'empty field -> showing suggestions (recent/default), count:', suggestions.length, '- NOT searching the 154-entry pool (nothing to search on empty input)');
+        renderResults(suggestions);
       } else {
-        renderResults(searchEntries(config.entries, query, 20));
+        var results = searchEntries(config.entries, query, 20);
+        log(tag, 'raw input value:', JSON.stringify(query), '- normalized for search:', JSON.stringify(normalizedQuery), '- search pool size:', config.entries.length, '- results found:', results.length, '- first results:', results.slice(0, 5).map(function (e) { return e.code + '/' + e.label; }));
+        renderResults(results);
       }
     }
 
@@ -248,54 +297,69 @@
     }
 
     search.addEventListener('focus', function () {
-      // Champ déjà rempli (valeur importée/déjà enregistrée) : sélectionne tout le texte pour
-      // qu'une frappe immédiate REMPLACE la valeur affichée au lieu de s'y concaténer (cause
-      // racine du bug « aucune suggestion n'apparaît » — voir le correctif documenté en tête de
-      // fichier). `hasPickedThisSession` est réinitialisé : reprendre l'édition d'un champ déjà
-      // validé doit de nouveau pouvoir committer un changement au prochain blur/submit.
-      hasPickedThisSession = false;
-      if (search.value !== '') search.select();
-      showSuggestionsOrSearch();
+      try {
+        // Champ déjà rempli (valeur importée/déjà enregistrée) : sélectionne tout le texte pour
+        // qu'une frappe immédiate REMPLACE la valeur affichée au lieu de s'y concaténer.
+        // `hasPickedThisSession` est réinitialisé : reprendre l'édition d'un champ déjà validé doit
+        // de nouveau pouvoir committer un changement au prochain blur/submit.
+        hasPickedThisSession = false;
+        if (search.value !== '') search.select();
+        showSuggestionsOrSearch();
+      } catch (e) {
+        warn(tag, 'exception in focus handler:', e);
+      }
     });
     search.addEventListener('input', function () {
-      hasPickedThisSession = false;
-      showSuggestionsOrSearch();
+      try {
+        var codeBefore = codeInput.value;
+        hasPickedThisSession = false;
+        showSuggestionsOrSearch();
+        log(tag, 'hidden code before this input event:', JSON.stringify(codeBefore), '- after (unchanged until a pick/blur/submit commits it):', JSON.stringify(codeInput.value));
+      } catch (e) {
+        warn(tag, 'exception in input handler (this is what would silently swallow a keystroke in a real browser):', e);
+      }
     });
 
     search.addEventListener('blur', function () {
-      // Synchrone — AUCUN délai : un clic sur un résultat ne déclenche jamais ce `blur` (voir
-      // preventDefault() ci-dessus), donc rien n'a besoin d'attendre ici. Un délai a longtemps
-      // introduit une course perdue face à un clic sur "Enregistrer"/"Publier", qui soumet le
-      // formulaire avant que la valeur ne soit committée (voir le correctif documenté en tête de
-      // fichier).
-      closeResults();
-      commitPendingValue();
+      try {
+        // Synchrone — AUCUN délai : un clic sur un résultat ne déclenche jamais ce `blur` (voir
+        // preventDefault() ci-dessus), donc rien n'a besoin d'attendre ici.
+        var codeBefore = codeInput.value;
+        closeResults();
+        commitPendingValue();
+        log(tag, 'blur -> committed. hidden code before:', JSON.stringify(codeBefore), '- after:', JSON.stringify(codeInput.value));
+      } catch (e) {
+        warn(tag, 'exception in blur handler:', e);
+      }
     });
 
     search.addEventListener('keydown', function (event) {
-      if (event.key === 'ArrowDown') {
-        if (resultsList.hidden) { showSuggestionsOrSearch(); return; }
-        event.preventDefault();
-        highlight(Math.min(activeIndex + 1, resultsList.children.length - 1));
-      } else if (event.key === 'ArrowUp') {
-        if (resultsList.hidden) return;
-        event.preventDefault();
-        highlight(Math.max(activeIndex - 1, 0));
-      } else if (event.key === 'Enter') {
-        // Ne JAMAIS laisser Entrée soumettre le formulaire cheval entier depuis ce champ : soit on
-        // valide le résultat mis en évidence (ou le premier de la liste), soit on committe la
-        // saisie libre exactement comme une perte de focus — jamais un enregistrement accidentel
-        // de toute la fiche avant que la race n'ait été réellement prise en compte.
-        event.preventDefault();
-        if (!resultsList.hidden && currentEntries.length > 0) {
-          var index = activeIndex >= 0 && activeIndex < currentEntries.length ? activeIndex : 0;
-          selectEntry(currentEntries[index].code, currentEntries[index].label);
-        } else {
+      try {
+        if (event.key === 'ArrowDown') {
+          if (resultsList.hidden) { showSuggestionsOrSearch(); return; }
+          event.preventDefault();
+          highlight(Math.min(activeIndex + 1, resultsList.children.length - 1));
+        } else if (event.key === 'ArrowUp') {
+          if (resultsList.hidden) return;
+          event.preventDefault();
+          highlight(Math.max(activeIndex - 1, 0));
+        } else if (event.key === 'Enter') {
+          // Ne JAMAIS laisser Entrée soumettre le formulaire cheval entier depuis ce champ : soit
+          // on valide le résultat mis en évidence (ou le premier de la liste), soit on committe la
+          // saisie libre exactement comme une perte de focus.
+          event.preventDefault();
+          if (!resultsList.hidden && currentEntries.length > 0) {
+            var index = activeIndex >= 0 && activeIndex < currentEntries.length ? activeIndex : 0;
+            selectEntry(currentEntries[index].code, currentEntries[index].label);
+          } else {
+            closeResults();
+            commitPendingValue();
+          }
+        } else if (event.key === 'Escape') {
           closeResults();
-          commitPendingValue();
         }
-      } else if (event.key === 'Escape') {
-        closeResults();
+      } catch (e) {
+        warn(tag, 'exception in keydown handler:', e);
       }
     });
 
@@ -306,8 +370,16 @@
     var form = field.closest('form');
     if (form) {
       form.addEventListener('submit', function () {
-        commitPendingValue();
+        try {
+          commitPendingValue();
+        } catch (e) {
+          warn(tag, 'exception in submit safety-net handler:', e);
+        }
       });
     }
+
+    // Tout ce qui précède a réussi sans exception : le composant de recherche peut désormais
+    // remplacer le <select> de secours en toute sécurité (voir activateField() ci-dessus).
+    activateField(field, codeInput, autreInput);
   }
 })();

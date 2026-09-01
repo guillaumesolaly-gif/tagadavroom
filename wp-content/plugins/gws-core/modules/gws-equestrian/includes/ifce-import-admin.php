@@ -466,7 +466,20 @@ function gwseq_render_ifce_import_preview($token, $parsed) {
     : __('non détectée', 'gws-core');
   $annee_label = $identity['annee_naissance'] !== '' ? $identity['annee_naissance'] : __('non détectée', 'gws-core');
 
-  $identity_summary = sprintf('%s, %s, %s, %s, %s', $race_label, $sexe_label, $robe_label, $taille_label, $annee_label);
+  // Ajustement UX (recette runtime, §8 de la demande) : chaque valeur détectée était auparavant
+  // concaténée sur une seule ligne séparée par des virgules (ex. "KWPN, Mâle, Gris, non détectée,
+  // 2001"), sans jamais préciser à QUOI chaque terme correspondait — un "non détectée" isolé ne
+  // permettait pas de savoir s'il s'agissait de la taille, de la robe ou d'autre chose. Remplacé par
+  // des lignes explicitement étiquetées, une par donnée, strictement à partir des MÊMES variables
+  // déjà calculées ci-dessus (aucune donnée ni logique de reconnaissance modifiée, purement
+  // l'affichage).
+  $identity_rows = array(
+    __('Race / Stud-book', 'gws-core') => $race_label,
+    __('Sexe', 'gws-core') => $sexe_label,
+    __('Robe', 'gws-core') => $robe_label,
+    __('Taille', 'gws-core') => $taille_label,
+    __('Année de naissance', 'gws-core') => $annee_label,
+  );
 
   $indices_labels = array();
   foreach (gwseq_cheval_sport_indice_keys() as $key) {
@@ -487,7 +500,12 @@ function gwseq_render_ifce_import_preview($token, $parsed) {
     <h1><?php esc_html_e('Prévisualisation de l’import IFCE', 'gws-core'); ?></h1>
     <p class="description"><?php esc_html_e('Vérifiez attentivement les données ci-dessous avant de valider — rien n’a encore été enregistré sur une fiche Cheval.', 'gws-core'); ?></p>
     <p><strong><?php echo esc_html(sprintf(/* translators: %s: nom du cheval détecté */ __('Cheval reconnu : %s', 'gws-core'), $identity['nom'])); ?></strong></p>
-    <p><?php echo esc_html(sprintf(/* translators: %s: résumé identité détectée */ __('Identité détectée : %s', 'gws-core'), $identity_summary)); ?></p>
+    <p><strong><?php esc_html_e('Identité détectée :', 'gws-core'); ?></strong></p>
+    <ul class="gwseq-ifce-preview-identity">
+      <?php foreach ($identity_rows as $row_label => $row_value) : ?>
+        <li><?php echo esc_html($row_label); ?> : <?php echo esc_html($row_value); ?></li>
+      <?php endforeach; ?>
+    </ul>
     <p><?php echo esc_html(sprintf(/* translators: %s: résumé indices détectés */ __('Indices détectés : %s', 'gws-core'), $indices_labels ? implode(', ', $indices_labels) : __('aucun', 'gws-core'))); ?></p>
     <p><?php echo esc_html(sprintf(
       /* translators: %d: nombre d'ascendants détectés dans le pedigree */

@@ -901,6 +901,56 @@ elle-même, plutôt qu'une position supposée. Un même stud-book (KWPN, BWP, HA
 désormais aussi vers un code canonique unique quel que soit son libellé IFCE rencontré (identité ou
 pedigree) — voir `includes/race-referentiel.php`.
 
+#### Correctif runtime 0.14.3 — filet de sécurité obligatoire sur le champ Race, régression Unicode réintroduite, ajustement UX de la prévisualisation IFCE
+
+Recette du correctif 0.14.2 : l'extraction IFCE et la normalisation croisée (points B et C
+ci-dessus) confirmées fonctionnelles en conditions réelles, mais l'autocomplétion Race restait
+totalement non fonctionnelle sur un vrai wp-admin — race non modifiable sur une fiche déjà
+renseignée, race non saisissable du tout sur une fiche vide, sans aucun contrôle de repli — malgré
+des logs navigateur prouvant un chargement, une analyse et une initialisation intégralement réussis
+(référentiel de 154 entrées chargé, 15 champs trouvés et initialisés sans exception). Ces logs
+écartaient toute cause de chargement/syntaxe/initialisation déjà envisagée, orientant la recherche
+vers l'exécution réelle des gestionnaires d'événement (frappe, clic), jamais exercée par le test
+Node synthétique existant.
+
+**Régression détectée avant livraison.** La réécriture de l'instrumentation de diagnostic pour cette
+recette avait réintroduit EXACTEMENT le défaut corrigé en 0.14.2 : un caractère Unicode combinant
+littéral multi-octet dans le code exécutable de `normalize()`, au lieu de l'échappement ASCII
+`\u0300-\u036f`. Détecté par une vérification octet-par-octet du fichier (`od -c`) plutôt qu'une
+simple relecture — une réécriture complète d'un fichier JS ne garantit jamais par elle-même
+l'absence de cette classe de risque. Corrigé avant toute livraison ; cette régression n'a jamais
+atteint la version 0.14.2 elle-même.
+
+**Instrumentation exhaustive ajoutée, cause runtime non encore reproduite en test.** Dix points de
+diagnostic (valeur brute reçue, valeur normalisée, nombre de résultats, premiers résultats, code
+caché avant/après, création et contenu du conteneur de suggestions, rapport de visibilité réel via
+`getComputedStyle`) couvrent désormais tout le flux `input → normalisation → recherche → résultats →
+rendu DOM → visibilité → sélection → synchronisation du code caché`. Chaque gestionnaire d'événement
+(focus, saisie, perte de focus, clavier, clic sur un résultat, soumission) est désormais entouré de
+son propre `try`/`catch` : une exception survenant pendant une interaction réelle serait maintenant
+visible dans la console (`[gwseq-race] ... exception in ... handler:`) plutôt que silencieusement
+avalée par le navigateur. `config.suggestions` (le "5" observé dans les logs) est explicitement
+documenté et tracé comme le repli affiché UNIQUEMENT au focus d'un champ vide (valeurs récentes de
+l'utilisateur) — toute saisie non vide recherche TOUJOURS dans les 154 entrées de `config.entries`.
+
+**Filet de sécurité obligatoire, indépendant de la résolution de la cause runtime.** Une donnée
+métier essentielle comme la race ne doit jamais devenir impossible à saisir. `includes/race-referentiel.php`
+(`gwseq_render_race_referentiel_field()`) rend désormais TOUJOURS, à côté du composant de recherche,
+un `<select>` natif complet portant par défaut le VRAI nom de champ soumis — fonctionnel sans
+JavaScript. `activateField()` (`assets/race-referentiel-autocomplete.js`) ne transfère ce nom réel
+vers le composant de recherche, puis ne désactive et ne masque ce `<select>`, qu'à la toute fin d'une
+initialisation ayant réussi sans la moindre exception ; si le script ne s'exécute jamais, échoue à
+charger, ou lève une erreur n'importe où avant ce point, le `<select>` reste le SEUL contrôle actif —
+pour l'identité du cheval comme pour chaque génération d'ascendant externe du pedigree (même
+composant partagé). `assets/cheval-admin.js` (suppression d'un ascendant externe) réinitialise
+désormais aussi ce `<select>` de secours.
+
+**Ajustement UX de la prévisualisation IFCE** (`includes/ifce-import-admin.php`, purement
+l'affichage — ni le parseur ni les données extraites ne sont modifiés) : l'identité détectée
+s'affiche désormais en lignes explicitement étiquetées (Race / Stud-book, Sexe, Robe, Taille, Année
+de naissance) plutôt qu'en un résumé unique concaténé par des virgules, où un « non détectée » isolé
+ne permettait pas de savoir à quelle donnée il se rapportait.
+
 #### Correctif BLOQUANT 0.7.0 — corruption des noms accentués
 
 La reprise de la recette a révélé qu'un nom accentué (« Native de Félines ») était corrompu en
