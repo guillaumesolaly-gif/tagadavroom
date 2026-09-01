@@ -17,6 +17,53 @@ function gws_test_assert($condition, $label) {
   else { echo "FAIL - $label\n"; $failures++; }
 }
 
+/**
+ * Détecte la cause exacte du bug runtime 0.14.4 ("resultsList=false" au moment de
+ * l'initialisation JS, malgré search/codeInput trouvés) : un `<p>` ne peut structurellement JAMAIS
+ * contenir un élément de contenu "flow" (spécification HTML5/WHATWG — `<ul>`, `<div>`, `<table>`...
+ * liste exhaustive ci-dessous). Un VRAI navigateur ferme IMPLICITEMENT le `<p>` (et tout ce qui est
+ * encore ouvert à l'intérieur) dès qu'il rencontre l'un de ces éléments, expulsant tout le reste du
+ * contenu prévu hors de la structure attendue — exactement ce qui arrachait le `<ul class="gwseq-
+ * race-field__results">` du composant hors de `.gwseq-race-field`. AUCUN parseur PHP disponible ici
+ * (`DOMDocument`/libxml2) ne reproduit fidèlement cette règle précise (vérifié : libxml2 laisse le
+ * `<ul>` imbriqué sans le fermer, contrairement à un vrai navigateur) — ce scanner reproduit donc
+ * directement, à la main, la règle de fermeture implicite du `<p>` telle que définie par la
+ * spécification, en suivant littéralement la pile d'éléments ouverts. C'est un test STRUCTUREL sur
+ * le HTML source réellement produit par PHP, jamais un test d'exécution navigateur — voir le CR pour
+ * les limites de ce qui reste à confirmer manuellement.
+ */
+function gws_test_assert_no_flow_content_inside_p($html, $label) {
+  global $failures;
+  // Liste exacte de la spécification WHATWG (élément qui, immédiatement après un <p> ouvert,
+  // provoque sa fermeture implicite) : address, article, aside, blockquote, details, div, dl,
+  // fieldset, figcaption, figure, footer, form, h1-h6, header, hgroup, hr, main, menu, nav, ol, p,
+  // pre, section, table, ul.
+  $autoclose_p_tags = array('address','article','aside','blockquote','details','div','dl','fieldset','figcaption','figure','footer','form','h1','h2','h3','h4','h5','h6','header','hgroup','hr','main','menu','nav','ol','p','pre','section','table','ul');
+  $violation = null;
+  if (preg_match_all('/<(\/)?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/', $html, $matches, PREG_OFFSET_CAPTURE)) {
+    $p_depth = 0;
+    foreach ($matches[0] as $i => $full_match) {
+      $is_closing = $matches[1][$i][0] === '/';
+      $tag_name = strtolower($matches[2][$i][0]);
+      if (!$is_closing && $tag_name === 'p') {
+        $p_depth++;
+        continue;
+      }
+      if ($is_closing && $tag_name === 'p') {
+        $p_depth = max(0, $p_depth - 1);
+        continue;
+      }
+      if ($p_depth > 0 && !$is_closing && in_array($tag_name, $autoclose_p_tags, true)) {
+        $violation = $tag_name;
+        break;
+      }
+    }
+  }
+  gws_test_assert($violation === null, $violation === null
+    ? $label
+    : "$label (ÉCHEC : <$violation> trouvé à l'intérieur d'un <p> encore ouvert — un vrai navigateur fermerait ce <p> implicitement avant, expulsant tout son contenu prévu restant)");
+}
+
 // --- Stubs WordPress minimaux ---
 function wp_unslash($value) { return is_array($value) ? array_map('wp_unslash', $value) : $value; }
 function sanitize_text_field($value) { return trim(strip_tags((string) $value)); }
@@ -483,6 +530,10 @@ $identite_html = ob_get_clean();
 foreach (array('_gwseq_sexe', '_gwseq_annee_naissance', '_gwseq_robe', '_gwseq_race', '_gwseq_taille_cm', '_gwseq_eleveur', '_gwseq_proprietaire', '_gwseq_ueln', '_gwseq_sire') as $field_name) {
   gws_test_assert(strpos($identite_html, 'name="' . $field_name . '"') !== false, "Meta box Identité : le champ $field_name est réellement rendu");
 }
+// --- Correctif runtime 0.14.4 : le champ Race (qui imprime un <ul> de résultats) n'est plus jamais
+// enveloppé dans un <p>, ce qui provoquerait sa fermeture implicite par un vrai navigateur avant le
+// <ul> — voir gws_test_assert_no_flow_content_inside_p() ci-dessus pour la règle HTML5 exacte ---
+gws_test_assert_no_flow_content_inside_p($identite_html, 'Meta box Identité : aucun <p> encore ouvert ne contient d’élément de contenu "flow" (le champ Race n’est plus enveloppé dans un <p>, cause exacte du bug runtime "resultsList=false")');
 
 // --- Rendu réel de l'âge sur une fiche avec année de naissance renseignée : format correct,
 // aucune mention interdite, aide discrète présente uniquement en attribut title (pas de texte

@@ -642,17 +642,26 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   créée, et l'écran de choix "Ajouter un cheval") n'a jamais été exercé dans un vrai WordPress. C'est
   précisément pour cette raison que la prévisualisation obligatoire avant écriture (§9 de la demande
   initiale) reste la garantie réelle contre une donnée mal interprétée — jamais ce test automatisé.
-- **Composant d'autocomplétion Race/Stud-book — cause runtime exacte NON reproduite en test
-  automatisé (0.14.3)** : malgré une instrumentation exhaustive (dix points de diagnostic, `try`/
-  `catch` dédié sur chaque interaction réelle, voir plus haut) ajoutée précisément pour cette recette,
-  ce fichier de test n'a pas reproduit le symptôme signalé sur un vrai wp-admin (aucune suggestion à
-  la frappe malgré une initialisation confirmée réussie par les logs) — un DOM simulé fait main, quel
-  que soit son degré de fidélité, ne peut pas structurellement garantir l'absence de tout écart avec
-  un VRAI moteur de rendu de navigateur. C'est précisément la raison d'être du filet de sécurité
-  obligatoire (`<select>` de secours, voir plus haut) : indépendamment de la résolution éventuelle de
-  cette cause, la saisie d'une race reste garantie possible. Reste à confirmer en conditions réelles :
-  (1) que l'instrumentation ajoutée révèle effectivement, dans la console d'un vrai navigateur, le
-  point exact où l'exécution diverge lors d'une frappe réelle ; (2) le comportement visuel réel du
-  `<select>` de secours (positionnement, lisibilité) tel que rendu par le vrai CSS d'administration
-  WordPress ; (3) la transition visuelle entre `<select>` de secours et composant de recherche une
-  fois l'initialisation JS réussie (aucun scintillement, aucun état intermédiaire visible).
+- **Composant d'autocomplétion Race/Stud-book — cause exacte identifiée et corrigée (0.14.4), mais
+  NON reproduite en test automatisé** : la recette du filet de sécurité 0.14.3 a fourni la preuve
+  déterminante — `search=true codeInput=true` mais `resultsList=false` au moment de
+  l'initialisation. Cause exacte, confirmée par analyse de la spécification HTML5/WHATWG (voir
+  `gws_test_assert_no_flow_content_inside_p()` dans `gws-equestrian-cheval-logic-test.php` et
+  `gws-equestrian-pedigree-logic-test.php`, et le CHANGELOG du module, entrée 0.14.4) : le composant
+  imprime un `<ul>` de résultats, or il était enveloppé dans un `<p>` par ses deux appelants — un
+  `<p>` ne peut structurellement contenir aucun contenu "flow" (`<ul>` inclus), et un navigateur réel
+  ferme implicitement le `<p>` dès qu'il rencontre le `<ul>`, l'expulsant hors de
+  `.gwseq-race-field`. PROUVÉ AUTOMATIQUEMENT : le nouveau test structurel reproduit à la main la
+  règle exacte de fermeture implicite du `<p>` sur le HTML source réellement produit par PHP,
+  vérifié positif contre l'ancien balisage (`<p>`) et négatif contre le nouveau (`<div>`) — c'est un
+  test STRUCTUREL sur le HTML source, jamais une exécution de navigateur. DÉDUIT DU CODE : le
+  correctif (envelopper les deux appels dans un `<div>` plutôt qu'un `<p>`) supprime la cause
+  structurelle avec certitude, puisque `<div>` autorise tout contenu "flow" sans restriction — aucun
+  parseur PHP disponible ici (`DOMDocument`/libxml2, vérifié empiriquement) ni le DOM simulé fait
+  main du test JS (construit par `appendChild()`, jamais par un vrai parseur HTML) ne peuvent
+  reproduire fidèlement la règle WHATWG elle-même, d'où ce contournement par scanner structurel
+  dédié plutôt qu'un test d'exécution réelle. RESTE À CONFIRMER DANS UN VRAI NAVIGATEUR : que le
+  champ de recherche s'affiche réellement et réagisse à la frappe de bout en bout (suggestion,
+  sélection, code caché synchronisé, sauvegarde, rechargement) — sur la fiche identité ET sur un
+  ascendant du pedigree ; le filet de sécurité (`<select>` de secours, voir plus haut) reste la
+  garantie immédiate tant que cette confirmation n'a pas eu lieu.

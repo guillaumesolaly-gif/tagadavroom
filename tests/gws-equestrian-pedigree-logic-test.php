@@ -18,6 +18,45 @@ function gws_test_assert($condition, $label) {
   else { echo "FAIL - $label\n"; $failures++; }
 }
 
+/**
+ * Détecte la cause exacte du bug runtime 0.14.4 ("resultsList=false" au moment de
+ * l'initialisation JS, malgré search/codeInput trouvés) : un `<p>` ne peut structurellement JAMAIS
+ * contenir un élément de contenu "flow" (spécification HTML5/WHATWG — `<ul>`, `<div>`, `<table>`...
+ * liste exhaustive ci-dessous). Un VRAI navigateur ferme IMPLICITEMENT le `<p>` (et tout ce qui est
+ * encore ouvert à l'intérieur) dès qu'il rencontre l'un de ces éléments, expulsant tout le reste du
+ * contenu prévu hors de la structure attendue — exactement ce qui arrachait le `<ul class="gwseq-
+ * race-field__results">` du composant hors de `.gwseq-race-field`. Voir la même fonction dans
+ * gws-equestrian-cheval-logic-test.php pour le détail complet (fichiers de test autonomes, sans
+ * dépendance partagée, même convention que le reste de cette suite).
+ */
+function gws_test_assert_no_flow_content_inside_p($html, $label) {
+  global $failures;
+  $autoclose_p_tags = array('address','article','aside','blockquote','details','div','dl','fieldset','figcaption','figure','footer','form','h1','h2','h3','h4','h5','h6','header','hgroup','hr','main','menu','nav','ol','p','pre','section','table','ul');
+  $violation = null;
+  if (preg_match_all('/<(\/)?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/', $html, $matches, PREG_OFFSET_CAPTURE)) {
+    $p_depth = 0;
+    foreach ($matches[0] as $i => $full_match) {
+      $is_closing = $matches[1][$i][0] === '/';
+      $tag_name = strtolower($matches[2][$i][0]);
+      if (!$is_closing && $tag_name === 'p') {
+        $p_depth++;
+        continue;
+      }
+      if ($is_closing && $tag_name === 'p') {
+        $p_depth = max(0, $p_depth - 1);
+        continue;
+      }
+      if ($p_depth > 0 && !$is_closing && in_array($tag_name, $autoclose_p_tags, true)) {
+        $violation = $tag_name;
+        break;
+      }
+    }
+  }
+  gws_test_assert($violation === null, $violation === null
+    ? $label
+    : "$label (ÉCHEC : <$violation> trouvé à l'intérieur d'un <p> encore ouvert — un vrai navigateur fermerait ce <p> implicitement avant, expulsant tout son contenu prévu restant)");
+}
+
 // --- Stubs WordPress minimaux ---
 // wp_unslash() FIDÈLE au comportement réel (stripslashes_deep()) — CRUCIAL pour ce fichier :
 // c'est précisément parce qu'un stub précédent (ici et dans update_post_meta() ci-dessous)
@@ -1170,6 +1209,10 @@ foreach (array('_gwseq_pere_mode', '_gwseq_pere_id', '_gwseq_pere_externe[name]'
 }
 gws_test_assert(strpos($pedigree_box_html, 'name="_gwseq_pere_externe[father][name]"') !== false, 'Meta box Pedigree : les champs de la génération suivante (père du père externe) sont bien rendus, jusqu’à la profondeur autorisée');
 gws_test_assert(strpos($pedigree_box_html, '<details') !== false, 'Meta box Pedigree : la divulgation progressive (§5) utilise l’élément natif <details>, sans JavaScript nécessaire pour se déplier');
+// --- Correctif runtime 0.14.4 : le champ Race de CHAQUE ascendant externe (à toutes les
+// générations rendues ci-dessus) n'est plus jamais enveloppé dans un <p> — voir
+// gws_test_assert_no_flow_content_inside_p() ci-dessus pour la règle HTML5 exacte ---
+gws_test_assert_no_flow_content_inside_p($pedigree_box_html, 'Meta box Pedigree : aucun <p> encore ouvert ne contient d’élément de contenu "flow" (le champ Race de chaque ascendant externe n’est plus enveloppé dans un <p>, cause exacte du bug runtime "resultsList=false")');
 
 // --- Corrections lexicales validées (passe intégrité du pedigree) ---
 gws_test_assert(strpos($pedigree_box_html, 'Cheval déjà enregistré') !== false, 'Correction lexicale : le libellé "Cheval déjà enregistré" est bien utilisé pour le mode GWS');

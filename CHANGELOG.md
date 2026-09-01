@@ -1,5 +1,22 @@
 # Changelog — GWS Starter
 
+## 1.17.4 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif runtime : cause exacte de l'échec d'initialisation du champ Race, un `<ul>` ne peut
+  être placé dans un `<p>` (GWS Equestrian 0.14.4).** Recette du filet de sécurité 0.14.3 (`<select>`
+  de secours) : le `<select>` s'affichait bien, mais confirmait que le composant de recherche
+  restait non initialisé (logs : `resultsList=false`, `aborting init for this field only`, malgré
+  `search=true codeInput=true`). Cause exacte : le composant imprime un `<ul>` de résultats, or les
+  deux appelants (identité et pedigree) l'enveloppaient dans un `<p>` — la spécification HTML5
+  interdit tout contenu "flow" (`<ul>` inclus) dans un `<p>`, et un navigateur réel ferme
+  implicitement le `<p>` dès qu'il rencontre le `<ul>`, expulsant celui-ci hors de la structure
+  attendue. Un défaut qu'aucun test simulé (DOM construit sans vrai parseur HTML) ne pouvait
+  révéler. Corrigé en enveloppant ces deux appels dans un `<div>` plutôt qu'un `<p>` — aucune
+  modification de la fonction partagée, du parseur IFCE, du référentiel ou du pedigree. Nouveau test
+  structurel dédié, vérifié positif contre l'ancien balisage. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.14.4) pour le détail complet
+  et les limites de ce qui reste à confirmer dans un vrai navigateur.
+
 ## 1.17.3 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif runtime : régression de la 0.14.2 réintroduite lors de l'instrumentation, filet de

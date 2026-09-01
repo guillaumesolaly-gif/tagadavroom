@@ -762,9 +762,12 @@ function gwseq_render_external_ancestor_fields($field_name, $node, $depth_remain
       <label><?php esc_html_e('Nom', 'gws-core'); ?></label><br>
       <input type="text" class="regular-text gwseq-external-name-input" name="<?php echo esc_attr($field_name); ?>[name]" value="<?php echo esc_attr($node['name'] ?? ''); ?>">
     </p>
-    <p>
+    <div class="gwseq-race-field-row" style="margin: 1em 0;">
       <label><?php esc_html_e('Race / Stud-book / Appellation', 'gws-core'); ?></label><br>
       <?php
+      // CORRECTIF RUNTIME 0.14.4 : un <div>, jamais un <p>, enveloppe ce champ — même cause et même
+      // correctif que l'identité, voir cheval-fields.php et le docblock de
+      // gwseq_render_race_referentiel_field() (includes/race-referentiel.php).
       gwseq_render_race_referentiel_field(array(
         'field_name' => $field_name . '[race]',
         'autre_field_name' => $field_name . '[race_autre]',
@@ -773,7 +776,7 @@ function gwseq_render_external_ancestor_fields($field_name, $node, $depth_remain
         'current_autre' => $node['race_autre'] ?? '',
       ));
       ?>
-    </p>
+    </div>
     <p>
       <label><?php esc_html_e('Année de naissance', 'gws-core'); ?></label><br>
       <input type="number" step="1" class="small-text" name="<?php echo esc_attr($field_name); ?>[annee_naissance]" value="<?php echo esc_attr($node['annee_naissance'] ?? ''); ?>">

@@ -951,6 +951,32 @@ s'affiche désormais en lignes explicitement étiquetées (Race / Stud-book, Sex
 de naissance) plutôt qu'en un résumé unique concaténé par des virgules, où un « non détectée » isolé
 ne permettait pas de savoir à quelle donnée il se rapportait.
 
+#### Correctif runtime 0.14.4 — cause exacte de l'échec d'initialisation : un `<ul>` ne peut être placé dans un `<p>`
+
+Recette du filet de sécurité 0.14.3 : le `<select>` de secours s'affichait bien (garantie tenue),
+mais confirmait que le composant de recherche restait non initialisé sur un vrai wp-admin — logs
+montrant `search=true codeInput=true` mais **`resultsList=false`** au moment de `initField()`, avec
+`aborting init for this field only`.
+
+**Cause exacte** : `gwseq_render_race_referentiel_field()` imprime un `<ul class="gwseq-race-field__results">`.
+Les deux appelants (`cheval-fields.php` pour l'identité, `cheval-pedigree.php` pour chaque
+génération d'ascendant externe) enveloppaient cet appel dans un `<p>...</p>`. La spécification
+HTML5 (WHATWG) interdit tout contenu "flow" (`<ul>`, `<div>`, `<table>`...) dans un `<p>` : un
+navigateur réel ferme IMPLICITEMENT le `<p>` (et tout ce qui est encore ouvert à l'intérieur, y
+compris les `<span>` du composant) dès qu'il rencontre le `<ul>`, l'expulsant hors de
+`.gwseq-race-field` — exactement ce que révélait `resultsList=false`. Le test d'exécution JS de ce
+dépôt construit son DOM simulé via `appendChild()`, jamais via un vrai parseur HTML : il ne pouvait
+structurellement pas révéler ce défaut, d'où un nouveau test structurel dédié
+(`gws_test_assert_no_flow_content_inside_p()` dans `gws-equestrian-cheval-logic-test.php` et
+`gws-equestrian-pedigree-logic-test.php`) qui rejoue à la main, sur le HTML source réellement
+produit par PHP, la règle exacte de fermeture implicite du `<p>` — vérifié positif contre l'ancien
+balisage, négatif contre le nouveau.
+
+**Correctif minimal** : les deux appels sont désormais enveloppés dans un `<div>`, jamais un `<p>` —
+aucune modification de la fonction partagée, du parseur IFCE, du référentiel, du pedigree ou de la
+logique métier. Le docblock de `gwseq_render_race_referentiel_field()` documente désormais
+explicitement cette contrainte.
+
 #### Correctif BLOQUANT 0.7.0 — corruption des noms accentués
 
 La reprise de la recette a révélé qu'un nom accentué (« Native de Félines ») était corrompu en

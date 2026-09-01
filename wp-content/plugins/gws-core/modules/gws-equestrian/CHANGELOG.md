@@ -5,6 +5,48 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.14.4 — Correctif runtime : cause exacte de l'échec d'initialisation (ul dans un p), champ de recherche opérationnel
+
+Recette du filet de sécurité 0.14.3 : le `<select>` de secours s'affichait bien (garantie tenue),
+mais confirmait que le composant de recherche restait non initialisé — malgré des logs montrant
+`search=true codeInput=true` mais **`resultsList=false`** au moment précis de `initField()`, avec
+`aborting init for this field only`.
+
+**Cause exacte identifiée.** `gwseq_render_race_referentiel_field()` imprime un
+`<ul class="gwseq-race-field__results">` (liste de résultats). Les deux appelants
+(`cheval-fields.php` pour l'identité, `cheval-pedigree.php` pour chaque génération d'ascendant
+externe) enveloppaient cet appel dans un `<p>...</p>`. Or la spécification HTML5 (WHATWG) est
+formelle : un `<p>` ne peut contenir aucun élément de contenu "flow" — `<ul>`, `<div>`, `<table>`
+et une liste fermée d'une trentaine d'autres — et un NAVIGATEUR RÉEL ferme IMPLICITEMENT le `<p>`
+(et tout ce qui est encore ouvert à l'intérieur, y compris les `<span>` du composant) dès qu'il
+rencontre l'un de ces éléments, AVANT de le placer. Le `<ul>` de résultats se retrouvait donc
+structurellement expulsé hors de `.gwseq-race-field`, devenant un simple frère du `<p>` refermé de
+force — exactement ce que révélait `resultsList=false` : `field.querySelector('.gwseq-race-field__results')`
+ne trouvait plus rien, puisque l'élément n'était plus un descendant de `field` une fois interprété
+par un vrai moteur de rendu.
+
+**Pourquoi ce défaut était invisible jusqu'ici.** Le test d'exécution JS de ce dépôt construit son
+DOM simulé programmatiquement via `appendChild()` (jamais en analysant une chaîne HTML) — il ne
+peut donc structurellement jamais exercer cette règle de fermeture implicite d'un VRAI parseur HTML,
+et restait vert alors que le vrai wp-admin échouait. `DOMDocument`/libxml2 (PHP) ne reproduit pas
+non plus fidèlement cette règle précise (vérifié empiriquement : il laisse le `<ul>` imbriqué),
+d'où un nouveau test structurel dédié (`gws_test_assert_no_flow_content_inside_p()`) qui rejoue à la
+main, sur le HTML source réellement produit par PHP, la règle de fermeture exacte de la
+spécification — vérifié qu'il échoue bien contre l'ancien balisage (`<p>`) et passe contre le
+nouveau (`<div>`).
+
+**Correctif minimal.** Les deux appels à `gwseq_render_race_referentiel_field()` sont désormais
+enveloppés dans un `<div>` (jamais un `<p>`) — aucune modification de la fonction partagée
+elle-même, ni du parseur IFCE, ni du référentiel, ni du pedigree, ni de la logique métier. Le
+docblock de `gwseq_render_race_referentiel_field()` documente désormais explicitement cette
+contrainte pour empêcher toute régression future.
+
+**Ce qui reste à confirmer dans un vrai navigateur** (voir tests/README.md pour le détail) : que le
+champ de recherche s'affiche et réagisse réellement à la frappe sur un vrai wp-admin — le correctif
+supprime la cause structurelle identifiée avec certitude, mais seul un test réel en conditions de
+production peut confirmer le comportement de bout en bout (suggestion, sélection, sauvegarde,
+rechargement).
+
 ## 0.14.3 — Correctif runtime : régression de la 0.14.2 réintroduite lors de l'instrumentation, filet de sécurité obligatoire, ajustement UX de la prévisualisation IFCE
 
 Recette en conditions réelles du correctif 0.14.2 : les points B et C (extraction IFCE, normalisation

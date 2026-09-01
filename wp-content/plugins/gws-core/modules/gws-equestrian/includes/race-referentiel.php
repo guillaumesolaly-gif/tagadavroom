@@ -432,6 +432,22 @@ function gwseq_race_referentiel_record_recent_codes_from_external_tree($node, $u
  * n'importe où avant ce transfert, le `<select>` reste le SEUL contrôle actif et continue de
  * soumettre normalement — jamais un champ métier rendu inutilisable par un souci purement
  * d'affichage.
+ *
+ * ATTENTION APPELANT — NE JAMAIS ENVELOPPER CET APPEL DANS UN `<p>` (cause exacte du bug runtime
+ * 0.14.4, "resultsList=false" au moment de l'initialisation JS malgré search/codeInput trouvés) :
+ * cette fonction imprime un `<ul class="gwseq-race-field__results">` (liste de résultats). Un `<p>`
+ * ne peut contenir, par SPÉCIFICATION HTML5 (WHATWG), aucun élément de contenu "flow" tel que
+ * `<ul>`/`<div>`/`<table>`... — dès qu'un navigateur RÉEL rencontre l'un de ces éléments alors qu'un
+ * `<p>` est encore ouvert, il ferme IMPLICITEMENT ce `<p>` (et tout ce qui était encore ouvert à
+ * l'intérieur, y compris les `<span>` de ce composant) AVANT de placer l'élément bloquant — le
+ * `<ul>` de résultats se retrouve alors structurellement EXPULSÉ hors de `.gwseq-race-field`,
+ * devenant un simple FRÈRE du `<p>` refermé de force, non un descendant. `field.querySelector('.gwseq-race-field__results')`
+ * renvoie alors `null` bien que le HTML source, lu tel quel, semble parfaitement correct — un défaut
+ * qu'aucune exécution directe du texte source (Node, `php -l`, ou un DOM construit par
+ * `appendChild()` plutôt que par un VRAI PARSEUR HTML comme dans le test d'exécution JS de ce
+ * dépôt) ne peut structurellement révéler. Toujours envelopper cet appel dans un `<div>` (ou tout
+ * autre élément acceptant du contenu "flow"), jamais un `<p>` — voir cheval-fields.php et
+ * cheval-pedigree.php pour l'usage correct.
  */
 function gwseq_render_race_referentiel_field($args) {
   $args = wp_parse_args($args, array(

@@ -479,9 +479,12 @@ function gwseq_render_cheval_identite_box($post) {
     <label for="gwseq-cheval-robe-autre"><strong><?php esc_html_e('Préciser la robe', 'gws-core'); ?></strong></label><br>
     <input type="text" class="regular-text" id="gwseq-cheval-robe-autre" name="_gwseq_robe_autre" value="<?php echo esc_attr($identity['robe_autre']); ?>">
   </p>
-  <p>
+  <div class="gwseq-race-field-row" style="margin: 1em 0;">
     <label for="gwseq-cheval-race"><strong><?php esc_html_e('Race / Stud-book / Appellation', 'gws-core'); ?></strong></label><br>
     <?php
+    // CORRECTIF RUNTIME 0.14.4 : un <div>, jamais un <p>, enveloppe ce champ — voir le docblock de
+    // gwseq_render_race_referentiel_field() (includes/race-referentiel.php) pour la cause exacte
+    // (un <p> ne peut structurellement jamais contenir le <ul> du composant de recherche).
     gwseq_render_race_referentiel_field(array(
       'field_name' => '_gwseq_race',
       'autre_field_name' => '_gwseq_race_autre',
@@ -490,7 +493,7 @@ function gwseq_render_cheval_identite_box($post) {
       'current_autre' => $identity['race_autre'],
     ));
     ?>
-  </p>
+  </div>
   <p>
     <label for="gwseq-cheval-taille"><strong><?php esc_html_e('Taille (cm)', 'gws-core'); ?></strong></label><br>
     <input type="number" step="1" class="small-text" id="gwseq-cheval-taille" name="_gwseq_taille_cm" value="<?php echo esc_attr($identity['taille_cm']); ?>">
