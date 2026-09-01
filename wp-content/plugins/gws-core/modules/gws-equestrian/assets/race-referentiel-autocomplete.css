@@ -30,7 +30,8 @@
 }
 
 .gwseq-race-field__results li:hover,
-.gwseq-race-field__results li:focus {
+.gwseq-race-field__results li:focus,
+.gwseq-race-field__results li.gwseq-race-field__result--active {
   background: #2271b1;
   color: #fff;
 }

@@ -693,6 +693,15 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
   voir « Correctif référentiel » plus bas —, sinon "Autre" + texte libre — jamais une valeur
   inventée), sexe, robe (même principe de correspondance que la race), taille (`1m68` → 168 cm),
   année de naissance, naisseur/éleveur si identifiable clairement, numéro SIRE et UELN si présents.
+  **Nom officiel et alias IFCE** (correctif runtime post-livraison, §8-10) : quand la fiche porte un
+  alias ("NOM_OFFICIEL Alias NOM_D'USAGE"), c'est le nom d'usage/alias qui devient le nom de la
+  fiche GWS (`post_title`) — jamais le mot littéral "Alias", jamais le seul nom officiel qui
+  perdrait le nom réellement utilisé dans le sport (ex. "UNTOUCHABLE (NLD) Alias UNTOUCHABLE 27" ->
+  nom GWS "UNTOUCHABLE 27"). Le nom officiel reste conservé séparément, jamais perdu, en donnée
+  technique (`_gwseq_ifce_nom_officiel`, jamais exposée dans le formulaire manuel). Un marqueur pays
+  IFCE entre parenthèses ("(NLD)", "(BEL)", "(DEU)"...) est retiré du nom via une liste FERMÉE de
+  codes ISO 3166-1 alpha-3 reconnus (`gwseq_ifce_country_codes()`) — jamais une suppression aveugle
+  de toute parenthèse (un contenu parenthésé qui n'est pas un vrai code pays reste intact).
 - **Indices** (§5) : sportifs ISO/ICC/IDR — **le modèle existant a été étendu** pour stocker
   désormais aussi le coefficient de détermination (CD, `_gwseq_{cle}_cd`, jusqu'ici réservé aux
   indices génétiques) puisqu'une fiche IFCE officielle le fournit systématiquement (exemple exact :
@@ -703,7 +712,8 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
   générations (14 ascendants) à partir du tableau généalogique du PDF, réutilisant directement
   `gwseq_sanitize_external_ancestor_tree()` / `gwseq_set_horse_parent()` /
   `gwseq_match_race_to_canonical_code()` déjà existants (Étape 5) — validé exactement contre
-  l'exemple Jamerose de Félines fourni dans la demande (Père : UNTOUCHABLE (Père : HORS LA LOI II
+  l'exemple Jamerose de Félines fourni dans la demande (Père : UNTOUCHABLE 27, alias de
+  "UNTOUCHABLE" — voir le correctif runtime alias ci-dessous (Père : HORS LA LOI II
   (Père : PAPILLON ROUGE, Mère : ARIANE DU PLESSIS II), Mère : PROMESSE (Père : HEARTBREAKER, Mère :
   CHABLIS)) ; Mère : NATIVE DE FELINES (Père : ROSIRE (Père : URIEL, Mère : EOLIENNE), Mère : FALINE
   GENEVRIS (Père : PEGASE GERBAUX, Mère : LOUVE VARFEUIL))). Race/stud-book des ascendants récupérée
@@ -711,7 +721,14 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
   jamais rangé dans "Autre"). **Depuis le correctif référentiel : l'année de naissance d'un
   ascendant EST extraite** quand le document la porte et stockée dans le nouveau champ
   `annee_naissance` du modèle d'ascendant externe (`{name, race, race_autre, annee_naissance,
-  father, mother}`) — jamais un âge calculé ou stocké, uniquement l'année brute.
+  father, mother}`) — jamais un âge calculé ou stocké, uniquement l'année brute. **Nom officiel et
+  alias d'un ascendant** (correctif runtime, même règle que pour l'identité ci-dessus) : un
+  ascendant portant un alias (ex. "CARTHAGO Alias CARTHAGO Z (DEU) HOLST 1987") est stocké sous son
+  nom d'usage ("CARTHAGO Z") — le nom officiel ("CARTHAGO") est calculé et disponible côté parseur
+  IFCE (`official_name`) mais n'est, à ce stade, pas persisté dans l'arbre d'ascendant partagé avec
+  la saisie manuelle (choix de portée délibéré, pour ne pas modifier ce modèle commun) ; le marqueur
+  pays et le stud-book, quand présents, qualifient l'alias exactement comme pour un ascendant sans
+  alias.
 - **Ascendants toujours importés en mode "externe"** (§8) : aucune fiche `gwseq_cheval` n'est
   jamais créée automatiquement pour un ascendant, aucune tentative de rapprochement/déduplication
   par nom avec une fiche GWS existante.

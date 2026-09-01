@@ -53,6 +53,13 @@ function gwseq_ifce_map_import($post_id, $parsed, $sections) {
       '_gwseq_ueln' => $identity['ueln'],
       '_gwseq_sire' => $identity['sire'],
     ));
+    // Nom officiel IFCE (correctif runtime, §8) : quand un alias existe, `post_title`/`nom` porte
+    // désormais le nom d'usage (voir la création de la fiche dans ifce-import-admin.php et
+    // gwseq_ifce_parse_identity_from_lines()) — le nom officiel n'est alors jamais perdu, conservé
+    // séparément comme donnée technique/source, jamais exposée dans le formulaire manuel.
+    if (!empty($identity['nom_officiel'])) {
+      gwseq_set_cheval_ifce_nom_officiel($post_id, $identity['nom_officiel']);
+    }
   }
 
   if (!empty($sections['indices'])) {

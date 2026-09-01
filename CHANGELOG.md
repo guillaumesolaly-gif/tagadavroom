@@ -1,5 +1,19 @@
 # Changelog — GWS Starter
 
+## 1.17.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif runtime : autocomplétion Race inutilisable en édition, alias/code pays IFCE (GWS
+  Equestrian 0.14.1).** Recette du référentiel 0.14.0 : impossible de modifier ou de vider la
+  Race/Stud-book/Appellation d'une fiche déjà importée (aucune suggestion à la frappe, l'ancienne
+  valeur revenait à l'enregistrement) — deux causes racines dans le composant JavaScript
+  d'autocomplétion (absence de sélection du texte existant au focus, et une mise à jour du code
+  différée de 150 ms perdant la course face à un clic sur "Enregistrer"), toutes deux corrigées.
+  Par ailleurs, un cheval ou un ascendant IFCE portant un alias voit désormais son alias retenu comme
+  nom (au lieu d'être supprimé), le nom officiel restant conservé séparément ; un marqueur pays entre
+  parenthèses est retiré via une liste fermée de codes ISO reconnus, jamais une suppression aveugle
+  de toute parenthèse. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.14.1) pour le détail complet.
+
 ## 1.17.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Référentiel Race / Stud-book / Appellation, ascendant + année de naissance, pedigree sur 3

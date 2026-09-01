@@ -25,20 +25,23 @@ php tests/gws-equestrian-cheval-editorial-logic-test.php
 php tests/gws-equestrian-cheval-admin-tabs-test.php
 node tests/gws-equestrian-cheval-admin-tabs-runtime-test.js
 php tests/gws-equestrian-ifce-import-test.php
+node tests/gws-equestrian-race-referentiel-autocomplete-runtime-test.js
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
 un processus PHP séparé — il peut aussi être lancé seul.)
 
-**`gws-equestrian-cheval-admin-tabs-runtime-test.js`** est le SEUL fichier de ce dossier qui ne
-s'exécute pas via `php` : il nécessite `node` (aucune dépendance npm, aucun `package.json` — un
-script Node autonome). Contrairement aux autres fichiers, qui ne peuvent que scanner le TEXTE
-SOURCE d'un script JavaScript (présence de motifs, jamais son exécution réelle), celui-ci exécute
-réellement `assets/cheval-tabs-admin.js` contre une reproduction fidèle et minimale du DOM produit
-par l'écran classique d'édition de WordPress (colonnes latérale/principale bien distinctes, avec le
-vrai bouton `#publish`) — c'est ce type de test qui a permis de détecter puis de corriger la
-régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basées sur du texte de
-`gws-equestrian-cheval-admin-tabs-test.php`.
+**`gws-equestrian-cheval-admin-tabs-runtime-test.js`** et
+**`gws-equestrian-race-referentiel-autocomplete-runtime-test.js`** sont les SEULS fichiers de ce
+dossier qui ne s'exécutent pas via `php` : ils nécessitent `node` (aucune dépendance npm, aucun
+`package.json` — des scripts Node autonomes, DOM minimal fait main via le module `vm`). Contrairement
+aux autres fichiers, qui ne peuvent que scanner le TEXTE SOURCE d'un script JavaScript (présence de
+motifs, jamais son exécution réelle), ceux-ci exécutent RÉELLEMENT le fichier JS du module contre
+une reproduction fidèle et minimale du DOM produit par l'écran d'édition WordPress correspondant —
+c'est ce type de test qui a permis de détecter puis de corriger la régression bloquante 0.12.1 (voir
+plus bas, `cheval-tabs-admin.js`) et le bug de recette runtime « autocomplétion Race inutilisable en
+édition » (correctif référentiel post-livraison, `race-referentiel-autocomplete.js`) — invisibles
+tous deux à des assertions basées uniquement sur du texte source ou sur les helpers PHP.
 
 ## Ce qui est couvert
 
@@ -166,6 +169,33 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   donnée Cheval, idempotent, plafonné, un code inconnu ou "autre" jamais enregistré comme récent,
   repli neutre tant qu'aucun historique n'existe, jamais un profil métier rigide CSO/dressage/
   poney codé en dur, enregistrement récursif depuis un arbre d'ascendants externes déjà sanitisé).
+  **Correctif runtime post-livraison — « autocomplétion inutilisable en édition »
+  (`gws-equestrian-race-referentiel-autocomplete-runtime-test.js`)** : la recette a révélé que si le
+  référentiel métier (helpers PHP) fonctionnait parfaitement, le COMPOSANT JAVASCRIPT réellement
+  chargé dans l'écran d'édition, lui, ne l'était pas — invisible à la suite PHP, qui ne teste que les
+  helpers. DEUX causes racines identifiées et corrigées : (1) le champ ne sélectionnait jamais son
+  texte existant au focus, si bien que reprendre l'édition d'un champ déjà rempli (ex. "Selle
+  Français" importé) concaténait toute nouvelle frappe ("OLD") à la valeur affichée au lieu de la
+  remplacer — d'où l'impression qu'aucune suggestion n'apparaissait ; (2) la mise à jour du code
+  caché après une saisie libre était différée de 150 ms après `blur`, largement plus long que le
+  délai entre ce `blur` et la soumission native du formulaire déclenchée par un clic sur
+  "Enregistrer"/"Publier" — le formulaire partait alors avec l'ANCIEN code, jamais mis à jour,
+  rendant impossible toute modification ou suppression d'une race déjà enregistrée. Ce nouveau
+  fichier exécute RÉELLEMENT `assets/race-referentiel-autocomplete.js` (via le module `vm` de Node,
+  DOM minimal fait main, aucune dépendance npm — même méthodologie que
+  `gws-equestrian-cheval-admin-tabs-runtime-test.js`) et vérifie : sélection intégrale du texte au
+  focus d'un champ déjà rempli ; recherche réellement exécutée après une frappe sur un champ
+  précédemment rempli ; sélection d'un résultat par clic mise à jour de façon SYNCHRONE (aucun délai,
+  aucune dépendance à `blur`) ; la touche Entrée valide le premier résultat affiché et empêche
+  activement la soumission native du formulaire (plus jamais un enregistrement accidentel de toute
+  la fiche) ; un filet de sécurité committe chaque champ Race à la soumission du formulaire même sans
+  `blur` préalable (permet de vider le champ, "Non renseignée") ; une saisie libre jamais validée par
+  un clic retombe honnêtement sur "Autre" + le texte tapé, JAMAIS un retour silencieux à l'ancienne
+  valeur ; un champ Race malformé sur la même page n'empêche jamais l'initialisation des AUTRES
+  champs (résilience `try`/`catch` de la boucle d'initialisation). Vérifié positivement contre le
+  test lui-même : rejouer ce fichier contre l'ancienne version (pré-correctif) du script fait
+  effectivement échouer les scénarios concernés (touche Entrée, filet de sécurité à la soumission),
+  la preuve que ce test détecte réellement la régression et n'est pas vacueusement vert.
 
 - Pedigree de `gws-equestrian`, Étape 5 (`gws-equestrian-pedigree-logic-test.php`) : relations
   Père/Mère (référence à un cheval GWS existant, jamais par nom, jamais d'auto-référence, jamais
@@ -445,6 +475,26 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   déjà utilisé pour délimiter la fin du nom) et importée dans le nouveau champ `annee_naissance` du
   modèle d'ascendant externe — vérifiée exacte sur chacun des 6 ascendants du pedigree Jamerose qui
   en portent une, et laissée vide (jamais devinée) pour ceux qui n'en ont pas.
+  **Correctif runtime post-livraison — nom officiel, alias et code pays** : la recette sur d'autres
+  vraies fiches IFCE a révélé qu'un cheval (ou un ascendant) portant un alias IFCE
+  ("NOM_OFFICIEL Alias NOM_D'USAGE") voyait auparavant l'alias intégralement supprimé, ne conservant
+  que le nom officiel — inversé par ce correctif : c'est désormais le nom d'usage/alias qui devient
+  le nom retenu (`name`/`nom`, utilisé comme nom de la fiche GWS), jamais le mot littéral "Alias",
+  le nom officiel restant disponible séparément (`official_name` côté parseur pour un ascendant ;
+  `nom_officiel` de l'identité, persisté en donnée technique `_gwseq_ifce_nom_officiel` via la
+  nouvelle fonction métier `gwseq_set_cheval_ifce_nom_officiel()`, jamais exposée dans le formulaire
+  manuel) — jamais perdu. Vérifié sur les quatre exemples réels exacts de la demande (Untouchable ->
+  "UNTOUCHABLE 27", Bush vd Heffinck -> "ASB CONQUISTADOR", Windows vh Costersveld -> "CORNET
+  OBOLENSKY", What A Quickstar R -> "BIG STAR"), sur un ascendant du pedigree Jamerose lui-même
+  (UNTOUCHABLE, alias de "UNTOUCHABLE 27", avec son stud-book KWPN et son année 2001 correctement
+  rattachés à l'alias), sur un cheval sans aucun alias (nom et nom officiel identiques), et sur la
+  ligne combinée aussi bien que sur deux lignes consécutives ("NOM" puis "Alias ALIAS"). **Codes
+  pays IFCE** (`gwseq_ifce_country_codes()`, liste FERMÉE norme ISO 3166-1 alpha-3, JAMAIS "toute
+  séquence de 2-3 lettres majuscules entre parenthèses") : un marqueur reconnu ("(NLD)", "(BEL)",
+  "(DEU)"...) est retiré du nom, un contenu parenthésé qui n'en est PAS un reste intact (vérifié
+  explicitement) — jamais une suppression aveugle de toute parenthèse. Chiffres romains en fin de
+  nom officiel ("CORRADO I") et suffixes courts d'alias ("CARTHAGO Z") toujours conservés, jamais
+  confondus avec un stud-book (aucune régression du piège déjà écarté).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

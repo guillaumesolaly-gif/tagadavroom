@@ -31,13 +31,22 @@
  *   fourni dans la demande).
  *   Chaque ligne d'ascendant réelle porte le nom suivi, quand présent, d'un code de stud-book en
  *   MAJUSCULES et d'une année à 4 chiffres (ex. "HORS LA LOI II SFA 1995"), parfois précédés d'un
- *   code pays entre parenthèses (ex. "HEARTBREAKER (NLD) KWPN 1989") — voir
- *   gwseq_ifce_parse_pedigree_entry_line(). Une éventuelle mention "Alias ..." (nom d'enregistrement
- *   alternatif, rencontrée sur le premier ascendant du document réel) est retirée : seul le nom
- *   canonique avant "Alias" est conservé, jamais les deux. Un ascendant dont le libellé complet
- *   dépasse la largeur de sa case peut se poursuivre sur la ligne suivante par la seule année sur
- *   une ligne isolée (rencontré sur le vrai document) : une ligne composée uniquement de 4 chiffres
- *   est alors rattachée à la ligne précédente plutôt que comptée comme un ascendant séparé.
+ *   code pays IFCE reconnu entre parenthèses (ex. "HEARTBREAKER (NLD) KWPN 1989", voir
+ *   gwseq_ifce_country_codes() — liste FERMÉE, jamais une suppression aveugle de toute parenthèse)
+ *   — voir gwseq_ifce_parse_pedigree_entry_line(). Un ascendant dont le libellé complet dépasse la
+ *   largeur de sa case peut se poursuivre sur la ligne suivante par la seule année sur une ligne
+ *   isolée (rencontré sur le vrai document) : une ligne composée uniquement de 4 chiffres est alors
+ *   rattachée à la ligne précédente plutôt que comptée comme un ascendant séparé.
+ * - **Alias IFCE** (§7 du correctif runtime post-recette) : quand un cheval — l'ascendant lui-même
+ *   OU le cheval de la fiche — possède un alias ("NOM_OFFICIEL Alias NOM_D'USAGE", rencontré aussi
+ *   bien sur une ligne combinée d'ascendant que sur deux lignes consécutives dans la zone
+ *   d'identité), c'est désormais le NOM D'USAGE (l'alias) qui devient le nom retenu (`name`/`nom`
+ *   — jamais le mot littéral "Alias" ni le nom officiel, qui perdrait le nom réellement utilisé
+ *   dans le sport). Le nom officiel reste disponible séparément (`official_name`/`nom_officiel`),
+ *   jamais perdu — voir gwseq_ifce_parse_pedigree_entry_line() et
+ *   gwseq_ifce_parse_identity_from_lines(). AVANT ce correctif, la mention "Alias ..." et tout ce
+ *   qui la suivait étaient simplement retirés, ne conservant que le nom officiel — comportement
+ *   inversé par ce correctif.
  *
  * L'ANNÉE DE NAISSANCE D'UN ASCENDANT (correctif référentiel, §9 de la demande) EST désormais
  * extraite quand elle figure dans la fiche IFCE (même token `\d{4}` déjà repéré pour délimiter la
@@ -83,6 +92,74 @@ function gwseq_ifce_split_text_lines($text) {
 }
 
 /**
+ * Codes pays reconnus par la convention IFCE pour marquer l'origine d'un cheval entre parenthèses
+ * juste après son nom (ex. « HEARTBREAKER (NLD) », « CARTHAGO Z (DEU) ») — correctif runtime
+ * post-recette (§9-10 de la demande) : liste FERMÉE (norme ISO 3166-1 alpha-3), jamais "toute
+ * séquence de 2-3 lettres majuscules entre parenthèses", pour ne jamais confondre un vrai marqueur
+ * pays avec un autre contenu parenthésé qui n'en serait pas un.
+ */
+function gwseq_ifce_country_codes() {
+  static $codes = null;
+  if ($codes !== null) return $codes;
+  $codes = array(
+    'AFG', 'ALB', 'DZA', 'ASM', 'AND', 'AGO', 'AIA', 'ATA', 'ATG', 'ARG', 'ARM', 'ABW', 'AUS', 'AUT',
+    'AZE', 'BHS', 'BHR', 'BGD', 'BRB', 'BLR', 'BEL', 'BLZ', 'BEN', 'BMU', 'BTN', 'BOL', 'BIH', 'BWA',
+    'BRA', 'BRN', 'BGR', 'BFA', 'BDI', 'CPV', 'KHM', 'CMR', 'CAN', 'CYM', 'CAF', 'TCD', 'CHL', 'CHN',
+    'COL', 'COM', 'COG', 'COD', 'COK', 'CRI', 'CIV', 'HRV', 'CUB', 'CUW', 'CYP', 'CZE', 'DNK', 'DJI',
+    'DMA', 'DOM', 'ECU', 'EGY', 'SLV', 'GNQ', 'ERI', 'EST', 'SWZ', 'ETH', 'FJI', 'FIN', 'FRA', 'GUF',
+    'PYF', 'GAB', 'GMB', 'GEO', 'DEU', 'GHA', 'GIB', 'GRC', 'GRL', 'GRD', 'GLP', 'GUM', 'GTM', 'GGY',
+    'GIN', 'GNB', 'GUY', 'HTI', 'HND', 'HKG', 'HUN', 'ISL', 'IND', 'IDN', 'IRN', 'IRQ', 'IRL', 'IMN',
+    'ISR', 'ITA', 'JAM', 'JPN', 'JEY', 'JOR', 'KAZ', 'KEN', 'KIR', 'PRK', 'KOR', 'KWT', 'KGZ', 'LAO',
+    'LVA', 'LBN', 'LSO', 'LBR', 'LBY', 'LIE', 'LTU', 'LUX', 'MAC', 'MDG', 'MWI', 'MYS', 'MDV', 'MLI',
+    'MLT', 'MHL', 'MTQ', 'MRT', 'MUS', 'MYT', 'MEX', 'FSM', 'MDA', 'MCO', 'MNG', 'MNE', 'MSR', 'MAR',
+    'MOZ', 'MMR', 'NAM', 'NRU', 'NPL', 'NLD', 'NCL', 'NZL', 'NIC', 'NER', 'NGA', 'NIU', 'MKD', 'NOR',
+    'OMN', 'PAK', 'PLW', 'PAN', 'PNG', 'PRY', 'PER', 'PHL', 'POL', 'PRT', 'PRI', 'QAT', 'ROU', 'RUS',
+    'RWA', 'KNA', 'LCA', 'VCT', 'WSM', 'SMR', 'STP', 'SAU', 'SEN', 'SRB', 'SYC', 'SLE', 'SGP', 'SVK',
+    'SVN', 'SLB', 'SOM', 'ZAF', 'ESP', 'LKA', 'SDN', 'SUR', 'SWE', 'CHE', 'SYR', 'TWN', 'TJK', 'TZA',
+    'THA', 'TLS', 'TGO', 'TON', 'TTO', 'TUN', 'TUR', 'TKM', 'TUV', 'UGA', 'UKR', 'ARE', 'GBR', 'USA',
+    'URY', 'UZB', 'VUT', 'VAT', 'VEN', 'VNM', 'YEM', 'ZMB', 'ZWE',
+  );
+  return $codes;
+}
+
+/**
+ * Retire un marqueur pays IFCE (`(NLD)`, `(BEL)`, `(DEU)`...) de $text — UNIQUEMENT s'il s'agit
+ * d'un vrai code reconnu (voir gwseq_ifce_country_codes()), jamais une suppression aveugle de
+ * toute parenthèse (§9 du correctif runtime : "ne pas supprimer arbitrairement toutes les
+ * parenthèses"). Espaces multiples résultant du retrait recollés proprement.
+ */
+function gwseq_ifce_strip_country_markers($text) {
+  $stripped = preg_replace_callback('/\(([A-Za-z]{2,3})\)/u', function ($m) {
+    return in_array(strtoupper($m[1]), gwseq_ifce_country_codes(), true) ? '' : $m[0];
+  }, (string) $text);
+  return trim(preg_replace('/\s+/', ' ', $stripped));
+}
+
+/**
+ * Analyse un segment "NOM [(PAYS)] [CODE_STUDBOOK] [ANNEE]" déjà isolé (sans mention "Alias" — voir
+ * gwseq_ifce_parse_pedigree_entry_line() pour la gestion de l'alias) : cœur commun factorisé entre
+ * le nom officiel et le nom d'usage (alias) d'une même entrée, chacun pouvant porter sa propre
+ * mention de pays/stud-book/année. Le marqueur pays est retiré AVANT la détection du stud-book —
+ * jamais confondu avec lui, jamais laissé dans le nom. Voir le piège du chiffre romain final
+ * documenté sur gwseq_ifce_parse_pedigree_entry_line() : la même protection s'applique ici, et le
+ * suffixe court "Z" (ex. "ESCAPE Z") n'est jamais confondu avec un stud-book (le groupe de
+ * stud-book exige au moins 2 lettres).
+ */
+function gwseq_ifce_parse_name_studbook_year($text) {
+  $text = gwseq_ifce_strip_country_markers($text);
+  if ($text === '') return array('name' => '', 'race_text' => '', 'annee_naissance' => '');
+  $roman_numerals = 'I|II|III|IV|V|VI|VII|VIII|IX|X';
+  if (preg_match('/^(.+?)\s+(?!(?:' . $roman_numerals . ')(?:\s+\d{4})?$)([A-Z]{2,6})(?:\s+(\d{4}))?$/u', $text, $m)) {
+    return array(
+      'name' => trim($m[1]),
+      'race_text' => trim($m[2]),
+      'annee_naissance' => (isset($m[3]) && $m[3] !== '') ? (int) $m[3] : '',
+    );
+  }
+  return array('name' => $text, 'race_text' => '', 'annee_naissance' => '');
+}
+
+/**
  * Tente de faire correspondre un texte de robe à un code canonique de gwseq_cheval_robe_options()
  * (cheval-fields.php) — même principe que gwseq_match_race_to_canonical_code() pour la race, mais
  * appliqué au référentiel des robes ; aucune seconde liste de robes n'est créée ici.
@@ -108,7 +185,7 @@ function gwseq_ifce_match_robe_to_canonical_code($text) {
  */
 function gwseq_ifce_parse_identity_from_lines($lines) {
   $result = array(
-    'nom' => '', 'race' => '', 'race_autre' => '', 'sexe' => '', 'robe' => '', 'robe_autre' => '',
+    'nom' => '', 'nom_officiel' => '', 'race' => '', 'race_autre' => '', 'sexe' => '', 'robe' => '', 'robe_autre' => '',
     'taille_cm' => '', 'annee_naissance' => '', 'eleveur' => '', 'sire' => '', 'ueln' => '',
   );
 
@@ -131,13 +208,35 @@ function gwseq_ifce_parse_identity_from_lines($lines) {
   }
   if ($identity_line_index === null) return $result;
 
+  $name_line_index = null;
   for ($j = $identity_line_index - 1; $j >= 0; $j--) {
-    if (trim($lines[$j]) !== '') {
-      $result['nom'] = trim($lines[$j]);
-      break;
-    }
+    if (trim($lines[$j]) !== '') { $name_line_index = $j; break; }
   }
-  if ($result['nom'] === '') return $result; // sans nom, rien d'exploitable (§10)
+  if ($name_line_index === null) return $result;
+
+  // Alias IFCE du cheval lui-même (correctif runtime, §7 de la demande) : « le nom officiel puis
+  // l'alias » peut apparaître sur une seule ligne combinée ("NOM Alias ALIAS", même convention que
+  // pour un ascendant du pedigree) OU sur deux lignes distinctes consécutives ("NOM" puis, juste
+  // en dessous, "Alias ALIAS" seule) — les deux formes sont gérées. Quand un alias existe, c'est
+  // LUI qui devient le nom d'usage (`nom`, utilisé comme nom de la fiche GWS) ; le nom officiel
+  // reste disponible séparément dans `nom_officiel`, jamais perdu.
+  $name_line = trim($lines[$name_line_index]);
+  $official_name = '';
+  $usage_name = '';
+  if (preg_match('/^Alias\s+(.+)$/iu', $name_line, $am)) {
+    $usage_name = gwseq_ifce_strip_country_markers(trim($am[1]));
+    for ($k = $name_line_index - 1; $k >= 0; $k--) {
+      if (trim($lines[$k]) !== '') { $official_name = gwseq_ifce_strip_country_markers(trim($lines[$k])); break; }
+    }
+  } elseif (preg_match('/^(.+?)\bAlias\b\s*(.*)$/iu', $name_line, $am)) {
+    $official_name = gwseq_ifce_strip_country_markers(trim($am[1]));
+    $usage_name = gwseq_ifce_strip_country_markers(trim($am[2]));
+  } else {
+    $official_name = gwseq_ifce_strip_country_markers($name_line);
+  }
+  if ($official_name === '' && $usage_name === '') return $result; // sans nom, rien d'exploitable (§10)
+  $result['nom'] = $usage_name !== '' ? $usage_name : $official_name;
+  $result['nom_officiel'] = $official_name !== '' ? $official_name : $usage_name;
 
   $race_text = trim($identity_parts[0]);
   if ($race_text !== '') {
@@ -278,34 +377,52 @@ function gwseq_ifce_build_ancestor_subtree(&$queue, $levels) {
 
 /**
  * Analyse UNE ligne d'ascendant déjà isolée (une fois les continuations d'année déjà fusionnées,
- * voir gwseq_ifce_parse_pedigree_from_lines()) en {name, race_text} — voir la convention de lecture
- * documentée en tête de fichier pour les formes réelles rencontrées :
+ * voir gwseq_ifce_parse_pedigree_from_lines()) en {name, official_name, race_text,
+ * annee_naissance} — voir la convention de lecture documentée en tête de fichier pour les formes
+ * réelles rencontrées :
  * - "NOM" (aucune information de stud-book/année — cas le plus simple, ex. saisie manuelle) ;
  * - "NOM CODE_STUDBOOK" ou "NOM CODE_STUDBOOK ANNEE" (cas réel le plus courant) ;
- * - "NOM (CODE_PAYS) CODE_STUDBOOK ANNEE" (code pays entre parenthèses avant le stud-book) ;
- * - toute forme ci-dessus précédée d'une mention "Alias ..." (nom d'enregistrement alternatif) :
- *   retirée avant analyse, seul le nom canonique avant "Alias" est conservé.
- * L'année, quand présente, est désormais retenue dans la valeur de retour (`annee_naissance`,
- * correctif référentiel §9) — son repérage sert toujours aussi à délimiter correctement la fin du
- * nom, comme avant ce correctif.
+ * - "NOM (CODE_PAYS) CODE_STUDBOOK ANNEE" (code pays IFCE reconnu entre parenthèses avant le
+ *   stud-book — voir gwseq_ifce_country_codes(), jamais une suppression aveugle de toute
+ *   parenthèse) ;
+ * - "NOM_OFFICIEL Alias NOM_D'USAGE [(PAYS)] [CODE_STUDBOOK] [ANNEE]" — CORRECTIF RUNTIME (§7-10 de
+ *   la demande) : quand un cheval possède un alias IFCE, c'est ce nom d'usage qui doit apparaître
+ *   comme `name` (utilisé tel quel comme nom affiché/nom de la fiche GWS, jamais le mot littéral
+ *   "Alias"), le nom officiel restant disponible séparément dans `official_name` (donnée
+ *   source/technique, jamais perdue). Le pays/stud-book/année éventuels, quand présents,
+ *   qualifient le nom d'usage (ils suivent l'alias dans le document réel) — voir
+ *   gwseq_ifce_parse_name_studbook_year(), appliqué indépendamment à chaque partie.
  *
  * PIÈGE ÉCARTÉ (constaté en développement) : un nom de cheval se termine très souvent par un
- * chiffre romain ("HORS LA LOI II", "ARIANE DU PLESSIS II"...), qui a exactement la forme d'un code
- * de stud-book (lettres majuscules). Sans précaution, un nom SANS aucune information de stud-book
- * verrait alors son chiffre romain final amputé et mal classé comme "race". Le groupe de code de
- * stud-book exclut donc explicitement les chiffres romains isolés (I à X) en fin de ligne.
+ * chiffre romain ("HORS LA LOI II", "CORRADO I"...), qui a exactement la forme d'un code de
+ * stud-book (lettres majuscules) — le groupe de stud-book exclut donc explicitement les chiffres
+ * romains isolés (I à X) en fin de ligne. Un suffixe court de nom ("ESCAPE Z") n'est pas non plus
+ * confondu avec un stud-book (le groupe de stud-book exige au moins 2 lettres).
  */
 function gwseq_ifce_parse_pedigree_entry_line($line) {
-  $line = trim(preg_replace('/\bAlias\b.*$/iu', '', $line));
-  $roman_numerals = 'I|II|III|IV|V|VI|VII|VIII|IX|X';
-  if (preg_match('/^(.+?)\s+(?:\(([A-Z]{2,3})\)\s+)?(?!(?:' . $roman_numerals . ')(?:\s+\d{4})?$)([A-Z]{2,6})(?:\s+(\d{4}))?$/u', $line, $m)) {
+  $line = trim((string) $line);
+  if (preg_match('/^(.*?)\bAlias\b\s*(.*)$/iu', $line, $am)) {
+    $official_raw = trim($am[1]);
+    $usage_raw = trim($am[2]);
+    $official_parsed = gwseq_ifce_parse_name_studbook_year($official_raw);
+    $usage_parsed = gwseq_ifce_parse_name_studbook_year($usage_raw);
+    // Le nom d'usage (alias) porte le pays/stud-book/année dans le document réel ; à défaut (alias
+    // manquant après un "Alias" isolé), on retombe sur le nom officiel plutôt que de perdre la ligne.
+    $chosen = $usage_parsed['name'] !== '' ? $usage_parsed : $official_parsed;
     return array(
-      'name' => trim($m[1]),
-      'race_text' => trim($m[3]),
-      'annee_naissance' => (isset($m[4]) && $m[4] !== '') ? (int) $m[4] : '',
+      'name' => $chosen['name'],
+      'official_name' => $official_parsed['name'] !== '' ? $official_parsed['name'] : $chosen['name'],
+      'race_text' => $chosen['race_text'],
+      'annee_naissance' => $chosen['annee_naissance'],
     );
   }
-  return array('name' => $line, 'race_text' => '', 'annee_naissance' => '');
+  $parsed = gwseq_ifce_parse_name_studbook_year($line);
+  return array(
+    'name' => $parsed['name'],
+    'official_name' => $parsed['name'],
+    'race_text' => $parsed['race_text'],
+    'annee_naissance' => $parsed['annee_naissance'],
+  );
 }
 
 /**

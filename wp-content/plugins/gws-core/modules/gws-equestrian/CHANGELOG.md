@@ -5,6 +5,54 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.14.1 — Correctif runtime : autocomplétion Race inutilisable en édition, alias/code pays IFCE
+
+Recette du référentiel 0.14.0 : le référentiel métier (mapping IFCE, pedigree sur 3 générations)
+fonctionnait, mais deux défauts distincts rendaient l'édition manuelle de la Race/Stud-book/
+Appellation inutilisable, et le nommage d'un cheval/ascendant portant un alias IFCE était incorrect.
+
+**A — Autocomplétion Race inutilisable en édition (bug bloquant).** Sur une fiche déjà importée
+(ex. race "Selle Français"), taper "OLD" n'affichait aucune suggestion, et enregistrer restaurait
+l'ancienne valeur — impossible de modifier ou de vider le champ. DEUX causes racines dans
+`assets/race-referentiel-autocomplete.js`, corrigées ensemble :
+1. Le champ ne sélectionnait jamais son texte existant au focus : reprendre l'édition d'un champ
+   déjà rempli concaténait la frappe à la valeur affichée ("Selle FrançaisOLD") au lieu de la
+   remplacer — une chaîne qui ne correspond à RIEN du référentiel, d'où l'absence de suggestion.
+   Corrigé par une sélection intégrale du texte au focus (`search.select()`).
+2. La mise à jour du code caché après une saisie libre non validée par un clic était différée de
+   150 ms après `blur` — largement plus long que le délai entre ce `blur` et la soumission native du
+   formulaire déclenchée par un clic sur "Enregistrer"/"Publier". Le formulaire partait alors avec
+   l'ANCIEN code, jamais mis à jour. Un `mousedown` avec `preventDefault()` sur un résultat empêche
+   déjà nativement `blur` de se déclencher lors d'un clic sur ce résultat — le délai n'avait donc
+   plus aucune raison d'exister : la mise à jour est désormais SYNCHRONE sur `blur`, complétée par un
+   filet de sécurité committant chaque champ Race à la soumission du formulaire (couvre tout
+   enchaînement où `blur` n'aurait pas eu l'occasion de se déclencher), et par une touche Entrée qui
+   ne soumet plus jamais le formulaire par accident (elle valide le premier résultat affiché, ou
+   committe la saisie libre exactement comme une perte de focus). Une boucle d'initialisation
+   `try`/`catch` par champ empêche en plus un champ malformé de compromettre les autres champs Race
+   de la même page.
+
+**B — Nom officiel, alias et code pays IFCE.** Un cheval ou un ascendant portant un alias IFCE
+("NOM_OFFICIEL Alias NOM_D'USAGE") voyait auparavant l'alias intégralement supprimé, ne conservant
+que le nom officiel — comportement INVERSÉ par ce correctif : c'est désormais le nom d'usage/alias
+qui devient le nom retenu (jamais le mot littéral "Alias", jamais le seul nom officiel qui perdrait
+le nom réellement utilisé dans le sport), le nom officiel restant disponible séparément et jamais
+perdu (nouvelle fonction métier `gwseq_set_cheval_ifce_nom_officiel()`, meta technique
+`_gwseq_ifce_nom_officiel`, jamais exposée dans le formulaire manuel). Un marqueur pays IFCE entre
+parenthèses ("(NLD)", "(BEL)", "(DEU)"...) est désormais retiré du nom via une liste FERMÉE de codes
+ISO 3166-1 alpha-3 (`gwseq_ifce_country_codes()`) — jamais une suppression aveugle de toute
+parenthèse. Chiffres romains et suffixes courts (ex. "CARTHAGO Z") restent conservés, jamais
+confondus avec un stud-book.
+
+**Tests** : nouveau fichier
+`tests/gws-equestrian-race-referentiel-autocomplete-runtime-test.js` — exécute RÉELLEMENT
+`race-referentiel-autocomplete.js` (module `vm` de Node, DOM minimal fait main, même méthodologie
+que `gws-equestrian-cheval-admin-tabs-runtime-test.js`, aucune dépendance npm) ; vérifié positivement
+contre l'ancienne version du script (fait bien échouer les scénarios concernés). `ifce-import-parser.php`
+mis à jour et testé sur les quatre exemples réels exacts de la demande (Untouchable, Bush vd
+Heffinck, Windows vh Costersveld, What A Quickstar R) et sur le pedigree Jamerose. Aucune régression
+sur la suite existante.
+
 ## 0.14.0 — Référentiel Race / Stud-book / Appellation, ascendant + année de naissance, pedigree sur 3 générations
 
 Refonte complète de la gestion de la race/du stud-book/de l'appellation du cheval, à partir du

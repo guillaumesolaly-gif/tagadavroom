@@ -599,6 +599,23 @@ function gwseq_set_cheval_identity($post_id, $raw) {
   return true;
 }
 
+/**
+ * Nom officiel IFCE (correctif runtime, §8 de la demande) — donnée TECHNIQUE/source distincte du
+ * nom d'usage (`post_title`, utilisé comme nom de la fiche GWS ; l'alias IFCE quand il existe,
+ * voir includes/ifce-import-parser.php). Jamais exposée dans le formulaire d'édition manuel (aucun
+ * champ correspondant, aucune saisie possible) — uniquement alimentée par l'import IFCE, pour ne
+ * jamais perdre le nom officiel même quand l'alias devient le nom affiché. Fonction métier pure,
+ * même architecture que gwseq_set_cheval_identity() ; ne fait rien si $nom_officiel est vide (rien
+ * à conserver).
+ */
+function gwseq_set_cheval_ifce_nom_officiel($post_id, $nom_officiel) {
+  $post_id = (int) $post_id;
+  $nom_officiel = gws_core_field_sanitize('text', $nom_officiel);
+  if (!$post_id || $nom_officiel === '') return false;
+  update_post_meta($post_id, '_gwseq_ifce_nom_officiel', $nom_officiel);
+  return true;
+}
+
 function gwseq_save_cheval_meta($post_id) {
   if (!isset($_POST[GWSEQ_CHEVAL_NONCE_FIELD]) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST[GWSEQ_CHEVAL_NONCE_FIELD])), GWSEQ_CHEVAL_NONCE_ACTION)) return;
   if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;

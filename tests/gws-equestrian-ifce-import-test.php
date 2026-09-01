@@ -283,6 +283,37 @@ gws_test_assert($identity['taille_cm'] === 168, 'Identité (vrai PDF) : taille "
 gws_test_assert($identity['annee_naissance'] === 2019, 'Identité (vrai PDF) : année de naissance exacte (« né(e) en 2019 »)');
 gws_test_assert(strpos($identity['eleveur'], 'Haras De Felines') !== false, 'Identité (vrai PDF) : naisseur/éleveur identifié (raison sociale réelle du document, « Naisseur: S.a.s. Haras De Felines... »)');
 gws_test_assert($identity['sire'] === '' && $identity['ueln'] === '', 'Identité (vrai PDF) : SIRE/UELN absents de la zone exploitée de cette fiche réelle -> restent vides, jamais devinés (le mot « SIRE » apparaît dans l’en-tête du document sans numéro associé, correctement ignoré)');
+gws_test_assert($identity['nom_officiel'] === 'JAMEROSE DE FELINES', 'Identité (vrai PDF, cheval sans alias) : le nom officiel est identique au nom d’usage quand le document ne porte aucun alias');
+
+// =====================================================================================
+// 2ter. Correctif runtime (§7-10 de la demande) : alias IFCE du cheval lui-même — priorité au nom
+// d'usage, nom officiel jamais perdu, code pays jamais confondu avec le nom. Cas synthétiques
+// reproduisant exactement les exemples réels fournis (les quatre chevaux cités dans la demande).
+// =====================================================================================
+
+function gws_test_ifce_identity_name($name_line, $second_line = null) {
+  $lines = $second_line !== null ? array($name_line, $second_line, 'Selle Francais, Male, Bai, 1m70, né(e) en 2015') : array($name_line, 'Selle Francais, Male, Bai, 1m70, né(e) en 2015');
+  return gwseq_ifce_parse_identity_from_lines($lines);
+}
+
+$r = gws_test_ifce_identity_name('UNTOUCHABLE (NLD) Alias UNTOUCHABLE 27');
+gws_test_assert($r['nom'] === 'UNTOUCHABLE 27' && $r['nom_officiel'] === 'UNTOUCHABLE', 'Alias identité (exemple exact de la demande, ligne combinée) : "UNTOUCHABLE (NLD)" + "Alias UNTOUCHABLE 27" -> nom GWS "UNTOUCHABLE 27", nom officiel "UNTOUCHABLE" conservé, code pays retiré');
+
+$r = gws_test_ifce_identity_name('BUSH VD HEFFINCK (BEL)', 'Alias ASB CONQUISTADOR');
+gws_test_assert($r['nom'] === 'ASB CONQUISTADOR' && $r['nom_officiel'] === 'BUSH VD HEFFINCK', 'Alias identité (exemple exact de la demande, deux lignes) : "BUSH VD HEFFINCK (BEL)" puis "Alias ASB CONQUISTADOR" -> nom GWS "ASB CONQUISTADOR", nom officiel "BUSH VD HEFFINCK"');
+
+$r = gws_test_ifce_identity_name('WINDOWS VH COSTERSVELD (BEL)', 'Alias CORNET OBOLENSKY');
+gws_test_assert($r['nom'] === 'CORNET OBOLENSKY' && $r['nom_officiel'] === 'WINDOWS VH COSTERSVELD', 'Alias identité (exemple exact de la demande) : "WINDOWS VH COSTERSVELD (BEL)" + "Alias CORNET OBOLENSKY" -> nom GWS "CORNET OBOLENSKY"');
+
+$r = gws_test_ifce_identity_name('WHAT A QUICKSTAR R (NLD)', 'Alias BIG STAR');
+gws_test_assert($r['nom'] === 'BIG STAR' && $r['nom_officiel'] === 'WHAT A QUICKSTAR R', 'Alias identité (exemple exact de la demande) : "WHAT A QUICKSTAR R (NLD)" + "Alias BIG STAR" -> nom GWS "BIG STAR"');
+
+$r = gws_test_ifce_identity_name('JAMEROSE DE FELINES');
+gws_test_assert($r['nom'] === 'JAMEROSE DE FELINES' && $r['nom_officiel'] === 'JAMEROSE DE FELINES', 'Identité sans alias (cas synthétique) : nom et nom officiel identiques, aucune mention "Alias" à traiter');
+
+foreach (array($r['nom'], $r['nom_officiel']) as $value) {
+  gws_test_assert(strpos($value, 'Alias') === false, 'Identité : le mot littéral "Alias" n’apparaît jamais dans le nom retenu ni dans le nom officiel');
+}
 
 $indices = $jamerose_parsed['indices'];
 gws_test_assert($indices['iso']['valeur'] === 115 && $indices['iso']['cd'] === 0.7 && $indices['iso']['annee'] === 2023, 'Indices (vrai PDF) : ISO 115 (CD 0.70) (2023) — exemple exact de la demande, retrouvé dans le vrai document');
@@ -295,7 +326,7 @@ gws_test_assert($pedigree['count'] === 14, 'Pedigree (vrai PDF) : exactement 14 
 
 $father = $pedigree['father'];
 $mother = $pedigree['mother'];
-gws_test_assert($father['name'] === 'UNTOUCHABLE', 'Pedigree (vrai PDF) : Père exact (UNTOUCHABLE — mention "Alias UNTOUCHABLE 27 (NLD)" correctement retirée)');
+gws_test_assert($father['name'] === 'UNTOUCHABLE 27', 'Pedigree (vrai PDF, correctif runtime §7) : Père exact — le document porte "UNTOUCHABLE Alias UNTOUCHABLE 27 (NLD)", et c’est désormais le nom d’usage/alias "UNTOUCHABLE 27" qui est retenu comme nom (jamais le mot littéral "Alias", jamais le seul nom officiel qui perdrait le nom réellement utilisé dans le sport)');
 gws_test_assert($father['father']['name'] === 'HORS LA LOI II' && $father['father']['race'] === 'SF' && $father['father']['race_autre'] === '', 'Pedigree (vrai PDF, exemple important §2 de la demande référentiel) : Père du Père exact (HORS LA LOI II), l’alias historique "SFA" est reconnu et résolu au code canonique "SF", JAMAIS rangé dans "Autre"');
 gws_test_assert($father['father']['annee_naissance'] === 1995, 'Pedigree (vrai PDF, correctif référentiel §9) : l’année de naissance de HORS LA LOI II ("SFA 1995") est bien extraite et importée');
 gws_test_assert($father['father']['father']['name'] === 'PAPILLON ROUGE' && $father['father']['father']['annee_naissance'] === 1981, 'Pedigree (vrai PDF) : Père du Père du Père exact (PAPILLON ROUGE), année de naissance importée');
@@ -315,16 +346,54 @@ gws_test_assert($father['father']['father']['father'] === null && $father['fathe
 // --- Robustesse de la sanitation en aval : l'arbre produit est bien accepté tel quel par
 // gwseq_sanitize_external_ancestor_tree() (même fonction que la saisie manuelle, §7) ---
 $father_sanitized = gwseq_sanitize_external_ancestor_tree($father, GWSEQ_PEDIGREE_MAX_DEPTH - 1);
-gws_test_assert($father_sanitized['name'] === 'UNTOUCHABLE' && $father_sanitized['father']['name'] === 'HORS LA LOI II', 'Pedigree (vrai PDF) : l’arbre produit par le parseur IFCE est accepté sans perte par le sanitiseur existant du pedigree manuel');
+gws_test_assert($father_sanitized['name'] === 'UNTOUCHABLE 27' && $father_sanitized['father']['name'] === 'HORS LA LOI II', 'Pedigree (vrai PDF) : l’arbre produit par le parseur IFCE est accepté sans perte par le sanitiseur existant du pedigree manuel');
 
 // =====================================================================================
 // 2bis. Cas particuliers de gwseq_ifce_parse_pedigree_entry_line() constatés sur le vrai document
 // =====================================================================================
 
-gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('HORS LA LOI II') === array('name' => 'HORS LA LOI II', 'race_text' => '', 'annee_naissance' => ''), 'Entrée pedigree : un nom SANS stud-book se terminant par un chiffre romain (« II ») n’est jamais amputé — le chiffre romain n’est jamais confondu avec un code de stud-book');
-gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('ARIANE DU PLESSIS II SFA 1988') === array('name' => 'ARIANE DU PLESSIS II', 'race_text' => 'SFA', 'annee_naissance' => 1988), 'Entrée pedigree : le même nom AVEC un vrai stud-book/année distingue correctement les deux (le chiffre romain reste dans le nom, "SFA" est bien isolé comme stud-book, l’année est extraite — correctif référentiel §9)');
-gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('UNTOUCHABLE Alias UNTOUCHABLE 27 (NLD) KWPN 2001') === array('name' => 'UNTOUCHABLE', 'race_text' => '', 'annee_naissance' => ''), 'Entrée pedigree : la mention "Alias ..." (nom d’enregistrement alternatif) est intégralement retirée, y compris le stud-book/l’année qui la suivent');
-gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('CHABLIS OES') === array('name' => 'CHABLIS', 'race_text' => 'OES', 'annee_naissance' => ''), 'Entrée pedigree : un stud-book sans année associée reste correctement reconnu');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('HORS LA LOI II') === array('name' => 'HORS LA LOI II', 'official_name' => 'HORS LA LOI II', 'race_text' => '', 'annee_naissance' => ''), 'Entrée pedigree : un nom SANS stud-book se terminant par un chiffre romain (« II ») n’est jamais amputé — le chiffre romain n’est jamais confondu avec un code de stud-book (maintien des chiffres romains, §11)');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('ARIANE DU PLESSIS II SFA 1988') === array('name' => 'ARIANE DU PLESSIS II', 'official_name' => 'ARIANE DU PLESSIS II', 'race_text' => 'SFA', 'annee_naissance' => 1988), 'Entrée pedigree : le même nom AVEC un vrai stud-book/année distingue correctement les deux (le chiffre romain reste dans le nom, "SFA" est bien isolé comme stud-book, l’année est extraite — correctif référentiel §9)');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('CHABLIS OES') === array('name' => 'CHABLIS', 'official_name' => 'CHABLIS', 'race_text' => 'OES', 'annee_naissance' => ''), 'Entrée pedigree : un stud-book sans année associée reste correctement reconnu');
+
+// --- Correctif runtime (§7-11 de la demande) : nom d'usage (alias) prioritaire sur le nom officiel
+// pour un ASCENDANT, code pays IFCE retiré, chiffres romains et suffixe court jamais confondus
+// avec un stud-book ---
+gws_test_assert(
+  gwseq_ifce_parse_pedigree_entry_line('UNTOUCHABLE Alias UNTOUCHABLE 27 (NLD) KWPN 2001') === array('name' => 'UNTOUCHABLE 27', 'official_name' => 'UNTOUCHABLE', 'race_text' => 'KWPN', 'annee_naissance' => 2001),
+  'Entrée pedigree (alias d’un ascendant, exemple exact du vrai document Jamerose) : le nom d’usage/alias "UNTOUCHABLE 27" est retenu comme nom, jamais le mot littéral "Alias" ; le nom officiel "UNTOUCHABLE" reste disponible séparément ; le code pays "(NLD)", le stud-book "KWPN" et l’année 2001 (qui qualifient l’alias dans le document réel) sont correctement rattachés'
+);
+gws_test_assert(
+  gwseq_ifce_parse_pedigree_entry_line('CARTHAGO Alias CARTHAGO Z (DEU) HOLST 1987') === array('name' => 'CARTHAGO Z', 'official_name' => 'CARTHAGO', 'race_text' => 'HOLST', 'annee_naissance' => 1987),
+  'Entrée pedigree (exemple exact de la demande) : "CARTHAGO Alias CARTHAGO Z (DEU) HOLST 1987" -> nom affiché "CARTHAGO Z", nom officiel "CARTHAGO", race "HOLST", année 1987 — le suffixe court "Z" de l’alias reste bien dans le nom, jamais confondu avec un stud-book'
+);
+gws_test_assert(
+  gwseq_ifce_parse_pedigree_entry_line('CORRADO I Alias SAN PATRIGNANO CORRADO (DEU) HOLST 1985') === array('name' => 'SAN PATRIGNANO CORRADO', 'official_name' => 'CORRADO I', 'race_text' => 'HOLST', 'annee_naissance' => 1985),
+  'Entrée pedigree (exemple exact de la demande) : "CORRADO I Alias SAN PATRIGNANO CORRADO (DEU) HOLST 1985" -> nom affiché "SAN PATRIGNANO CORRADO", nom officiel "CORRADO I" (le chiffre romain "I" du nom officiel reste intact, jamais confondu avec un stud-book), race "HOLST", année 1985'
+);
+gws_test_assert(
+  gwseq_ifce_parse_pedigree_entry_line('HEARTBREAKER (NLD) KWPN 1989') === array('name' => 'HEARTBREAKER', 'official_name' => 'HEARTBREAKER', 'race_text' => 'KWPN', 'annee_naissance' => 1989),
+  'Entrée pedigree (suppression du code pays, sans alias) : "HEARTBREAKER (NLD) KWPN 1989" -> le marqueur pays "(NLD)" ne fait pas partie du nom, jamais confondu avec le stud-book "KWPN"'
+);
+gws_test_assert(
+  gwseq_ifce_parse_pedigree_entry_line('ESCAPE Z (BEL)') === array('name' => 'ESCAPE Z', 'official_name' => 'ESCAPE Z', 'race_text' => '', 'annee_naissance' => ''),
+  'Entrée pedigree (exemple exact de la demande) : "ESCAPE Z (BEL)" -> "ESCAPE Z", le marqueur pays retiré mais le suffixe "Z" du nom conservé (jamais confondu avec un stud-book, aucune information de stud-book/année ici)'
+);
+gws_test_assert(
+  gwseq_ifce_parse_pedigree_entry_line('CLINTON (DEU)') === array('name' => 'CLINTON', 'official_name' => 'CLINTON', 'race_text' => '', 'annee_naissance' => ''),
+  'Entrée pedigree (exemple exact de la demande) : "CLINTON (DEU)" -> "CLINTON", marqueur pays retiré'
+);
+gws_test_assert(
+  strpos(gwseq_ifce_parse_pedigree_entry_line('UNTOUCHABLE Alias UNTOUCHABLE 27 (NLD) KWPN 2001')['name'], 'Alias') === false,
+  'Entrée pedigree : le mot littéral "Alias" n’apparaît JAMAIS dans le nom retenu'
+);
+// --- Ne pas supprimer arbitrairement toute parenthèse : un contenu parenthésé qui n’est PAS un
+// code pays IFCE reconnu doit rester intact (§9 : "ne pas supprimer arbitrairement toutes les
+// parenthèses") ---
+gws_test_assert(
+  gwseq_ifce_strip_country_markers('CHEVAL (ABC) KWPN 1999') === 'CHEVAL (ABC) KWPN 1999',
+  'Retrait du code pays : un contenu parenthésé de forme similaire mais qui n’est PAS un code pays IFCE reconnu ("ABC") n’est jamais retiré arbitrairement'
+);
 
 // =====================================================================================
 // 3. Documents non reconnus (§10) — jamais un import "best effort"
@@ -352,6 +421,17 @@ gws_test_assert(
   && strpos($mapped_identity['eleveur'], 'Haras De Felines') !== false && $mapped_identity['sire'] === '',
   'Mapping identité : toutes les valeurs sont bien persistées via gwseq_set_cheval_identity(), relecture exacte'
 );
+gws_test_assert(get_post_meta(60, '_gwseq_ifce_nom_officiel', true) === 'JAMEROSE DE FELINES', 'Mapping identité (correctif runtime §8) : le nom officiel IFCE est conservé en donnée technique séparée, même quand il est identique au nom d’usage (aucun alias sur cette fiche)');
+
+// --- Alias sur la fiche importée elle-même : post_title/nom utilise le nom d’usage, le nom
+// officiel reste disponible séparément (jamais perdu, jamais exposé dans le formulaire manuel) ---
+gws_test_make_post(62, GWSEQ_CPT_CHEVAL, 'ASB CONQUISTADOR');
+$aliased_parsed = $jamerose_parsed;
+$aliased_parsed['identity']['nom'] = 'ASB CONQUISTADOR';
+$aliased_parsed['identity']['nom_officiel'] = 'BUSH VD HEFFINCK';
+gwseq_ifce_map_import(62, $aliased_parsed, array('identity' => true, 'indices' => false, 'pedigree' => false));
+gws_test_assert(get_post_meta(62, '_gwseq_ifce_nom_officiel', true) === 'BUSH VD HEFFINCK', 'Mapping identité (correctif runtime §8, alias) : le nom officiel "BUSH VD HEFFINCK" est bien conservé alors que la fiche porte le nom d’usage "ASB CONQUISTADOR"');
+gws_test_assert(strpos($ifce_mapper_source, 'gwseq_set_cheval_ifce_nom_officiel') !== false, 'Mapping identité : le nom officiel passe bien par une fonction métier dédiée (gwseq_set_cheval_ifce_nom_officiel()), jamais un accès direct à update_post_meta() dans ce fichier');
 
 $mapped_iso = gwseq_get_cheval_sport_indice(60, 'iso');
 gws_test_assert($mapped_iso['valeur'] === 115 && $mapped_iso['cd'] === 0.7 && $mapped_iso['annee'] === 2023, 'Mapping indices : ISO persisté via gwseq_set_cheval_sport_indice(), valeur/CD/année exacts');
@@ -361,7 +441,7 @@ gws_test_assert($mapped_bso['valeur'] === 12.0 && $mapped_bso['cd'] === 0.59, 'M
 $mapped_father = gwseq_get_horse_parent(60, 'father');
 $mapped_mother = gwseq_get_horse_parent(60, 'mother');
 gws_test_assert($mapped_father['mode'] === 'external' && $mapped_father['horse_id'] === 0, 'Mapping pedigree : le Père est importé en mode "external" — jamais "gws" (§8, aucune fiche GWS créée pour un ascendant)');
-gws_test_assert($mapped_father['external']['name'] === 'UNTOUCHABLE' && $mapped_father['external']['father']['name'] === 'HORS LA LOI II', 'Mapping pedigree : l’arbre Père est bien persisté via gwseq_set_horse_parent(), relecture exacte');
+gws_test_assert($mapped_father['external']['name'] === 'UNTOUCHABLE 27' && $mapped_father['external']['father']['name'] === 'HORS LA LOI II', 'Mapping pedigree : l’arbre Père est bien persisté via gwseq_set_horse_parent(), relecture exacte (nom d’usage/alias "UNTOUCHABLE 27" conservé)');
 gws_test_assert($mapped_mother['mode'] === 'external' && $mapped_mother['external']['name'] === 'NATIVE DE FELINES', 'Mapping pedigree : la Mère est bien persistée en mode "external"');
 
 // --- Import partiel (§9) : seule l’Identité est cochée -> Indices/Pedigree jamais touchés ---

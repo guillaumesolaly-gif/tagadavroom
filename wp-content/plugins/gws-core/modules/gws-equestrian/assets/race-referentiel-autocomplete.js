@@ -9,18 +9,46 @@
  * COMPORTEMENT :
  * - Champ vide au focus -> affiche les suggestions (récents de l'utilisateur, ou un repli neutre
  *   si aucun historique, voir PHP) — jamais l'intégralité du référentiel (§1/§5 de la demande).
+ *   Champ déjà rempli au focus (import IFCE, valeur déjà enregistrée) : le TEXTE EST SÉLECTIONNÉ
+ *   ENTIÈREMENT (comme un champ de recherche classique), pour qu'une frappe immédiate REMPLACE la
+ *   valeur affichée plutôt que de s'y concaténer (correctif runtime — voir plus bas).
  * - Saisie -> recherche LOCALE (aucun aller-retour serveur, le référentiel entier tient en mémoire)
  *   sur le code, le libellé IFCE, le libellé GWS et les alias — accents/casse ignorés — avec les
  *   correspondances en DÉBUT de champ affichées avant les correspondances partielles.
  * - "Autre — préciser" reste TOUJOURS proposé en dernière position (§7 : filet de sécurité, jamais
  *   un repli automatique sur une valeur mal reconnue).
- * - Un choix cliqué (ou validé au clavier) fixe le CODE réellement soumis (champ caché) et affiche
- *   son libellé GWS dans le champ de recherche ; "Autre" affiche/vide le champ de précision libre.
- * - Une saisie libre jamais validée par un clic (perte de focus sans sélection) retombe
+ * - Un choix cliqué, ou validé au clavier (flèches puis Entrée), fixe le CODE réellement soumis
+ *   (champ caché) et affiche son libellé GWS dans le champ de recherche ; "Autre" affiche/vide le
+ *   champ de précision libre.
+ * - Une saisie libre jamais validée par un clic/Entrée (perte de focus sans sélection) retombe
  *   automatiquement sur "Autre" + le texte tapé s'il est non vide, ou sur une valeur vide sinon —
  *   jamais un champ affichant un texte qui ne correspond plus au code réellement mémorisé.
  *
- * SANS JAVASCRIPT : le champ cassé texte + hidden reste soumissible tel quel (le code déjà
+ * CORRECTIF RUNTIME (recette post-livraison 0.14.0) — « autocomplétion inutilisable en édition » :
+ * deux causes racines distinctes, corrigées ensemble :
+ * 1. Le champ de recherche n'était JAMAIS vidé/sélectionné au focus : reprendre la saisie sur un
+ *    champ déjà rempli (ex. « Selle Français » importé depuis IFCE) concaténait le texte tapé
+ *    (« Selle FrançaisOLD ») au lieu de le remplacer — une chaîne qui ne correspond à RIEN du
+ *    référentiel, d'où l'impression qu'« aucune suggestion n'apparaît ». Corrigé par une sélection
+ *    intégrale du texte au focus (`search.select()`), comportement standard d'un champ de
+ *    recherche.
+ * 2. La mise à jour du code cru (`codeInput.value`) après une saisie libre non validée par un clic
+ *    était différée de 150 ms APRÈS l'événement `blur` (délai initialement pensé pour laisser un
+ *    `mousedown` sur un résultat s'exécuter avant la fermeture de la liste). Or un clic sur le
+ *    bouton natif « Enregistrer »/« Publier » de WordPress déclenche la soumission du formulaire
+ *    QUASI IMMÉDIATEMENT après le `blur` du champ — largement avant l'écoulement de ces 150 ms — de
+ *    sorte que le formulaire partait avec l'ANCIEN code caché, jamais mis à jour : la race importée
+ *    « revenait » après enregistrement, et il était impossible de vider le champ. Un `mousedown`
+ *    avec `preventDefault()` sur un résultat empêche NATIVEMENT le focus de quitter le champ de
+ *    recherche (donc `blur` ne se déclenche JAMAIS lors d'un clic sur un résultat) : le délai n'a
+ *    donc plus aucune raison d'exister et la mise à jour est désormais SYNCHRONE sur `blur`. Un
+ *    filet de sécurité supplémentaire committe explicitement chaque champ Race au moment de la
+ *    SOUMISSION du formulaire (avant même que `blur` ait pu se déclencher dans un enchaînement
+ *    clavier inhabituel), et la touche Entrée à l'intérieur du champ de recherche ne soumet plus
+ *    jamais le formulaire par accident (elle valide le premier résultat affiché, ou committe la
+ *    saisie libre exactement comme une perte de focus).
+ *
+ * SANS JAVASCRIPT : le champ caché texte + hidden reste soumissible tel quel (le code déjà
  * enregistré, le cas échéant, continue d'être envoyé sans modification) — seule l'interactivité de
  * recherche est absente, jamais un formulaire bloqué.
  */
@@ -33,7 +61,14 @@
 
     var fields = document.querySelectorAll('[data-gwseq-race-field]');
     fields.forEach(function (field) {
-      initField(field, config);
+      // Un champ malformé (structure inattendue) ne doit jamais empêcher l'initialisation des
+      // AUTRES champs de la page (Array.prototype.forEach interrompt son parcours à la première
+      // exception non rattrapée dans son callback) — chaque champ reste isolé des autres.
+      try {
+        initField(field, config);
+      } catch (e) {
+        if (window.console && window.console.error) window.console.error('gwseq-race-field init failed', e);
+      }
     });
   });
 
@@ -76,10 +111,14 @@
     if (!search || !codeInput || !resultsList) return;
 
     var hasPickedThisSession = false;
+    var currentEntries = [];
+    var activeIndex = -1;
 
     function closeResults() {
       resultsList.hidden = true;
       resultsList.innerHTML = '';
+      currentEntries = [];
+      activeIndex = -1;
       search.setAttribute('aria-expanded', 'false');
     }
 
@@ -93,8 +132,18 @@
       closeResults();
     }
 
+    function highlight(index) {
+      var items = resultsList.children;
+      for (var i = 0; i < items.length; i++) {
+        items[i].classList.toggle('gwseq-race-field__result--active', i === index);
+      }
+      activeIndex = index;
+    }
+
     function renderResults(entries) {
       resultsList.innerHTML = '';
+      currentEntries = entries;
+      activeIndex = -1;
       entries.forEach(function (entry) {
         var item = document.createElement('li');
         item.setAttribute('role', 'option');
@@ -102,8 +151,10 @@
         var typeMark = entry.type === 'appellation' ? ' (' + entry.code + ')' : (entry.label !== entry.code ? ' (' + entry.code + ')' : '');
         item.textContent = entry.label + typeMark;
         item.addEventListener('mousedown', function (event) {
-          // mousedown (pas click) : se déclenche AVANT le blur du champ de recherche, qui
-          // fermerait sinon la liste avant que le clic n'ait eu l'occasion de la cibler.
+          // mousedown (pas click) AVEC preventDefault() : empêche NATIVEMENT le focus de quitter
+          // le champ de recherche, donc `blur` ne se déclenche jamais pour ce clic — jamais de
+          // course avec une éventuelle fermeture/committe sur blur (voir le correctif documenté en
+          // tête de fichier).
           event.preventDefault();
           selectEntry(entry.code, entry.label);
         });
@@ -135,36 +186,86 @@
       }
     }
 
-    search.addEventListener('focus', showSuggestionsOrSearch);
+    // Committe la saisie courante vers le champ caché — appelée sur `blur`, à la soumission du
+    // formulaire, et sur Entrée quand aucun résultat n'est disponible à valider. Idempotente et
+    // sûre à appeler plusieurs fois : ne fait rien si un choix a déjà été explicitement validé
+    // (`hasPickedThisSession`), jamais de double transformation d'une même saisie.
+    function commitPendingValue() {
+      if (hasPickedThisSession) return;
+      var typed = search.value.trim();
+      if (typed === '') {
+        codeInput.value = '';
+        if (autreWrap) autreWrap.style.display = 'none';
+        return;
+      }
+      // Saisie libre jamais validée par un clic/Entrée : repli honnête sur "Autre" plutôt que de
+      // laisser un texte affiché sans rapport avec le code réellement mémorisé.
+      codeInput.value = config.autreCode;
+      if (autreInput) autreInput.value = typed;
+      if (autreWrap) autreWrap.style.display = '';
+    }
+
+    search.addEventListener('focus', function () {
+      // Champ déjà rempli (valeur importée/déjà enregistrée) : sélectionne tout le texte pour
+      // qu'une frappe immédiate REMPLACE la valeur affichée au lieu de s'y concaténer (cause
+      // racine du bug « aucune suggestion n'apparaît » — voir le correctif documenté en tête de
+      // fichier). `hasPickedThisSession` est réinitialisé : reprendre l'édition d'un champ déjà
+      // validé doit de nouveau pouvoir committer un changement au prochain blur/submit.
+      hasPickedThisSession = false;
+      if (search.value !== '') search.select();
+      showSuggestionsOrSearch();
+    });
     search.addEventListener('input', function () {
       hasPickedThisSession = false;
       showSuggestionsOrSearch();
     });
 
     search.addEventListener('blur', function () {
-      // Laisse le temps au mousedown d'un résultat de s'exécuter avant de refermer/retomber sur
-      // "Autre" — voir la note sur mousedown ci-dessus.
-      window.setTimeout(function () {
-        closeResults();
-        if (hasPickedThisSession) return;
-        var typed = search.value.trim();
-        if (typed === '') {
-          codeInput.value = '';
-          if (autreWrap) autreWrap.style.display = 'none';
-          return;
-        }
-        // Saisie libre jamais validée par un clic : repli honnête sur "Autre" plutôt que de
-        // laisser un texte affiché sans rapport avec le code réellement mémorisé.
-        codeInput.value = config.autreCode;
-        if (autreInput) autreInput.value = typed;
-        if (autreWrap) autreWrap.style.display = '';
-      }, 150);
+      // Synchrone — AUCUN délai : un clic sur un résultat ne déclenche jamais ce `blur` (voir
+      // preventDefault() ci-dessus), donc rien n'a besoin d'attendre ici. Un délai a longtemps
+      // introduit une course perdue face à un clic sur "Enregistrer"/"Publier", qui soumet le
+      // formulaire avant que la valeur ne soit committée (voir le correctif documenté en tête de
+      // fichier).
+      closeResults();
+      commitPendingValue();
     });
 
-    document.addEventListener('keydown', function (event) {
-      if (resultsList.hidden) return;
-      if (!field.contains(document.activeElement)) return;
-      if (event.key === 'Escape') closeResults();
+    search.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown') {
+        if (resultsList.hidden) { showSuggestionsOrSearch(); return; }
+        event.preventDefault();
+        highlight(Math.min(activeIndex + 1, resultsList.children.length - 1));
+      } else if (event.key === 'ArrowUp') {
+        if (resultsList.hidden) return;
+        event.preventDefault();
+        highlight(Math.max(activeIndex - 1, 0));
+      } else if (event.key === 'Enter') {
+        // Ne JAMAIS laisser Entrée soumettre le formulaire cheval entier depuis ce champ : soit on
+        // valide le résultat mis en évidence (ou le premier de la liste), soit on committe la
+        // saisie libre exactement comme une perte de focus — jamais un enregistrement accidentel
+        // de toute la fiche avant que la race n'ait été réellement prise en compte.
+        event.preventDefault();
+        if (!resultsList.hidden && currentEntries.length > 0) {
+          var index = activeIndex >= 0 && activeIndex < currentEntries.length ? activeIndex : 0;
+          selectEntry(currentEntries[index].code, currentEntries[index].label);
+        } else {
+          closeResults();
+          commitPendingValue();
+        }
+      } else if (event.key === 'Escape') {
+        closeResults();
+      }
     });
+
+    // Filet de sécurité : au moment où le formulaire est réellement soumis (bouton natif
+    // Enregistrer/Publier, ou Entrée dans un AUTRE champ du formulaire), committe ce champ s'il ne
+    // l'a pas déjà été — couvre tout enchaînement où `blur` n'aurait, pour une raison quelconque,
+    // pas eu l'occasion de se déclencher avant la soumission.
+    var form = field.closest('form');
+    if (form) {
+      form.addEventListener('submit', function () {
+        commitPendingValue();
+      });
+    }
   }
 })();
