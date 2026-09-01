@@ -456,7 +456,7 @@ function gwseq_render_ifce_import_preview($token, $parsed) {
 
   $race_label = $identity['race'] === 'autre'
     ? $identity['race_autre']
-    : (gwseq_cheval_race_options()[$identity['race']] ?? __('non détectée', 'gws-core'));
+    : (gwseq_race_referentiel_display_label($identity['race']) ?: __('non détectée', 'gws-core'));
   $robe_label = $identity['robe'] === 'autre'
     ? $identity['robe_autre']
     : (gwseq_cheval_robe_options()[$identity['robe']] ?? __('non détectée', 'gws-core'));

@@ -17,6 +17,7 @@ php tests/gws-equestrian-repeater-logic-test.php
 php tests/gws-equestrian-prestations-logic-test.php
 php tests/gws-equestrian-prestation-editor-test.php
 php tests/gws-equestrian-cheval-logic-test.php
+php tests/gws-equestrian-race-referentiel-test.php
 php tests/gws-equestrian-pedigree-logic-test.php
 php tests/gws-equestrian-cheval-indices-logic-test.php
 php tests/gws-equestrian-cheval-media-logic-test.php
@@ -145,6 +146,27 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   contexte d'enregistrement réel (`add_meta_box()`, `'normal'`) n'est jamais modifié — il ne l'a
   jamais été depuis l'Étape 4.
 
+- **Référentiel Race / Stud-book / Appellation de `gws-equestrian` (correctif référentiel,
+  `gws-equestrian-race-referentiel-test.php`)** : `includes/race-referentiel.php` — 154 entrées
+  (151 races/stud-books + 3 appellations OC/ONC/OE) générées une fois depuis le fichier XLSX fourni
+  avec la demande, structure de chaque entrée (code canonique STRUCTURÉ, libellés IFCE/GWS, type
+  race/appellation, alias), résolution exacte d'un alias/libellé/code vers le code canonique
+  (`gwseq_race_referentiel_resolve_alias()` — couverture minimale SF, l'exemple important SFA->SF,
+  OLD, HOLST, KWPN, WESTF, Z, OC, ONC, insensible à la casse), aucun code ou alias CONNU jamais
+  transformé en "Autre" (vérifié sur l'intégralité des 154 entrées, pas seulement les exemples),
+  recherche partielle pour l'autocomplétion (`gwseq_race_referentiel_search()` — code, libellé,
+  accents/casse ignorés, préfixe classé en tête, exemples exacts de la demande "sel"->Selle
+  Français, "conn"->Connemara/Connemara Part-Bred, "oc"->Origines Constatées intégrée au même
+  moteur que les races), sanitation d'un code brut vers le code canonique
+  (`gwseq_sanitize_race_referentiel_code()`, UNIQUE implémentation utilisée à l'identique par
+  l'identité du cheval et les ascendants externes — vérifié par lecture directe des deux fichiers
+  appelants), "Autre" toujours disponible comme seul filet de sécurité, et récents/suggestions par
+  utilisateur (`gwseq_race_referentiel_record_recent_code()`/`_suggestions_for_user()` — préférence
+  PROPRE à l'utilisateur en user meta, jamais en post meta donc jamais une modification de la
+  donnée Cheval, idempotent, plafonné, un code inconnu ou "autre" jamais enregistré comme récent,
+  repli neutre tant qu'aucun historique n'existe, jamais un profil métier rigide CSO/dressage/
+  poney codé en dur, enregistrement récursif depuis un arbre d'ascendants externes déjà sanitisé).
+
 - Pedigree de `gws-equestrian`, Étape 5 (`gws-equestrian-pedigree-logic-test.php`) : relations
   Père/Mère (référence à un cheval GWS existant, jamais par nom, jamais d'auto-référence, jamais
   d'ID d'un autre post type accepté), ascendants externes structurés récursifs (un ascendant
@@ -217,6 +239,23 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   mode/conservation des branches externes, câblage UX (option désactivée avec indication de la
   raison, verrouillage `data-gwseq-locked-disabled` empêchant toute réactivation par le script pour
   le sexe/l'année, contrairement au conflit père/mère qui reste resynchronisé en direct).
+  **Correctif référentiel (profondeur 4 -> 3 générations, ascendant + année de naissance)** :
+  `GWSEQ_PEDIGREE_MAX_DEPTH` passé à 3 (désormais 14 ascendants sur 3 générations, aligné sur la
+  fiche de synthèse IFCE) — sanitation, resolver et rendu admin ("Génération N sur 3", arrêt visuel
+  strict à la génération 3) tous vérifiés sur la nouvelle profondeur ; **compatibilité non
+  destructive avec une éventuelle donnée de génération 4 déjà enregistrée avant ce correctif** : le
+  paramètre `$previous_node` de `gwseq_sanitize_external_ancestor_tree()` et la relecture préalable
+  dans `gwseq_set_horse_parent()` préservent intacte une sous-branche de génération 4 tant que le
+  nom de l'ascendant de génération 3 n'a pas changé (le formulaire actuel ne peut plus la soumettre
+  ni la modifier, mais ne la supprime jamais silencieusement), le resolver/rendu standard s'arrêtant
+  bien à la génération 3 sans jamais l'interroger ni l'afficher — et, à l'inverse, un changement de
+  nom de l'ascendant de génération 3 abandonne légitimement l'ancienne sous-branche (elle
+  appartenait à un ascendant différent). Un champ `annee_naissance` a été ajouté au modèle
+  d'ascendant externe (`{name, race, race_autre, annee_naissance, father, mother}`) — optionnel,
+  jamais utilisé pour calculer un âge. La race d'un ascendant externe utilise désormais le
+  référentiel Race/Stud-book/Appellation mutualisé (voir plus haut) via un composant de
+  recherche/autocomplétion partagé avec l'identité du cheval, plutôt qu'un `<select>` séparé —
+  vérifié directement sur les 154 entrées du référentiel, pas seulement quelques exemples.
 - Indices sportifs et génétiques de `gws-equestrian`, Étape 6
   (`gws-equestrian-cheval-indices-logic-test.php`) : ISO/ICC/IDR (valeur et année sanitisées et
   stockées séparément, indépendance totale entre les trois, valeur sans année et année sans valeur
@@ -396,6 +435,16 @@ régression bloquante 0.12.1 (voir plus bas), invisible aux 73 assertions basée
   la cause exacte du bug — ni d'appel direct aux gestionnaires `admin_post_*` ; les deux formulaires
   soumettent bien vers `admin-post.php` avec le champ caché `action` attendu par WordPress pour
   router vers le bon hook.
+  **Correctif référentiel** : le mapping race d'un ascendant IFCE utilise désormais le référentiel
+  Race/Stud-book/Appellation mutualisé (154 entrées, alias historiques inclus) plutôt que l'ancienne
+  liste d'environ 19 races codées en dur — vérifié sur le VRAI pedigree Jamerose de Félines : l'alias
+  historique "SFA" (Hors La Loi II) est reconnu et résolu au code canonique "SF", **jamais** rangé
+  dans "Autre" (contrairement au comportement avant ce correctif), et l'alias "OES" (Chablis) résout
+  de même vers "OE" (Origine Étrangère) ; KWPN reconnu et normalisé en majuscules. **Année de
+  naissance d'un ascendant** : désormais extraite quand le document la porte (même token `\d{4}`
+  déjà utilisé pour délimiter la fin du nom) et importée dans le nouveau champ `annee_naissance` du
+  modèle d'ascendant externe — vérifiée exacte sur chacun des 6 ascendants du pedigree Jamerose qui
+  en portent une, et laissée vide (jamais devinée) pour ceux qui n'en ont pas.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

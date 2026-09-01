@@ -64,34 +64,11 @@ function gwseq_cheval_robe_options() {
   );
 }
 
-/**
- * Liste pratique et non figée (§4) : ni exhaustive, ni permanente. Aucune logique du module ne
- * doit jamais dépendre d'un nom de stud-book précis — cette liste ne fait que proposer des valeurs
- * courantes, "Autre" couvrant tout le reste sans jamais bloquer la saisie.
- */
-function gwseq_cheval_race_options() {
-  return array(
-    'selle_francais' => __('Selle Français', 'gws-core'),
-    'anglo_arabe' => __('Anglo-Arabe', 'gws-core'),
-    'pur_sang' => __('Pur-sang', 'gws-core'),
-    'aqps' => __('AQPS', 'gws-core'),
-    'kwpn' => __('KWPN', 'gws-core'),
-    'bwp' => __('BWP', 'gws-core'),
-    'zangersheide' => __('Zangersheide', 'gws-core'),
-    'holsteiner' => __('Holsteiner', 'gws-core'),
-    'oldenburg' => __('Oldenburg', 'gws-core'),
-    'hanovrien' => __('Hanovrien', 'gws-core'),
-    'westphalien' => __('Westphalien', 'gws-core'),
-    'trakehner' => __('Trakehner', 'gws-core'),
-    'lusitanien' => __('Lusitanien', 'gws-core'),
-    'pre' => __('PRE', 'gws-core'),
-    'connemara' => __('Connemara', 'gws-core'),
-    'poney_francais_selle' => __('Poney Français de Selle', 'gws-core'),
-    'welsh' => __('Welsh', 'gws-core'),
-    'shetland' => __('Shetland', 'gws-core'),
-    'autre' => __('Autre (préciser)', 'gws-core'),
-  );
-}
+// Race/Stud-book/Appellation (correctif référentiel) : l'ancienne liste codée en dur d'environ 19
+// races (gwseq_cheval_race_options()) a été retirée — voir includes/race-referentiel.php pour le
+// référentiel complet (154 entrées, races + appellations, avec alias historiques/import), désormais
+// la seule source de vérité, réutilisée à l'identique par l'identité du cheval et les ascendants
+// externes.
 
 /**
  * Statut commercial (§11) : champ structuré totalement indépendant des catégories de chevaux —
@@ -226,8 +203,7 @@ function gwseq_sanitize_cheval_identity_input($raw) {
   $robe = isset($raw['_gwseq_robe']) ? sanitize_key(wp_unslash($raw['_gwseq_robe'])) : '';
   if ($robe !== '' && !array_key_exists($robe, gwseq_cheval_robe_options())) $robe = '';
 
-  $race = isset($raw['_gwseq_race']) ? sanitize_key(wp_unslash($raw['_gwseq_race'])) : '';
-  if ($race !== '' && !array_key_exists($race, gwseq_cheval_race_options())) $race = '';
+  $race = gwseq_sanitize_race_referentiel_code($raw['_gwseq_race'] ?? '');
 
   return array(
     'sexe' => $sexe,
@@ -328,8 +304,7 @@ function gwseq_cheval_robe_label($robe, $robe_autre) {
 function gwseq_cheval_race_label($race, $race_autre) {
   if ($race === '') return '';
   if ($race === 'autre') return $race_autre !== '' ? $race_autre : __('Autre', 'gws-core');
-  $options = gwseq_cheval_race_options();
-  return $options[$race] ?? '';
+  return gwseq_race_referentiel_display_label($race);
 }
 
 /**
@@ -505,17 +480,16 @@ function gwseq_render_cheval_identite_box($post) {
     <input type="text" class="regular-text" id="gwseq-cheval-robe-autre" name="_gwseq_robe_autre" value="<?php echo esc_attr($identity['robe_autre']); ?>">
   </p>
   <p>
-    <label for="gwseq-cheval-race"><strong><?php esc_html_e('Race / Stud-book', 'gws-core'); ?></strong></label><br>
-    <select id="gwseq-cheval-race" name="_gwseq_race">
-      <option value=""><?php esc_html_e('— Non renseignée —', 'gws-core'); ?></option>
-      <?php foreach (gwseq_cheval_race_options() as $key => $label) : ?>
-        <option value="<?php echo esc_attr($key); ?>" <?php selected($identity['race'], $key); ?>><?php echo esc_html($label); ?></option>
-      <?php endforeach; ?>
-    </select>
-  </p>
-  <p data-gwseq-cheval-fields="race-autre" style="<?php echo $identity['race'] === 'autre' ? '' : 'display:none;'; ?>">
-    <label for="gwseq-cheval-race-autre"><strong><?php esc_html_e('Préciser la race / le stud-book', 'gws-core'); ?></strong></label><br>
-    <input type="text" class="regular-text" id="gwseq-cheval-race-autre" name="_gwseq_race_autre" value="<?php echo esc_attr($identity['race_autre']); ?>">
+    <label for="gwseq-cheval-race"><strong><?php esc_html_e('Race / Stud-book / Appellation', 'gws-core'); ?></strong></label><br>
+    <?php
+    gwseq_render_race_referentiel_field(array(
+      'field_name' => '_gwseq_race',
+      'autre_field_name' => '_gwseq_race_autre',
+      'input_id' => 'gwseq-cheval-race',
+      'current_code' => $identity['race'],
+      'current_autre' => $identity['race_autre'],
+    ));
+    ?>
   </p>
   <p>
     <label for="gwseq-cheval-taille"><strong><?php esc_html_e('Taille (cm)', 'gws-core'); ?></strong></label><br>
@@ -632,6 +606,7 @@ function gwseq_save_cheval_meta($post_id) {
   if (!current_user_can('edit_post', $post_id)) return;
 
   gwseq_set_cheval_identity($post_id, $_POST);
+  gwseq_race_referentiel_record_recent_code(get_current_user_id(), sanitize_key(wp_unslash($_POST['_gwseq_race'] ?? '')));
 
   $commercial = gwseq_sanitize_cheval_commercial_input($_POST);
   update_post_meta($post_id, '_gwseq_statut_commercial', $commercial['statut_commercial']);
@@ -688,5 +663,10 @@ function gwseq_enqueue_cheval_admin_assets($hook) {
   $screen = function_exists('get_current_screen') ? get_current_screen() : null;
   if (!$screen || $screen->post_type !== GWSEQ_CPT_CHEVAL) return;
   wp_enqueue_script('gwseq-cheval-admin', GWSEQ_MODULE_URL . 'assets/cheval-admin.js', array(), GWSEQ_MODULE_VERSION, true);
+  // Composant de recherche/autocomplétion Race / Stud-book / Appellation (correctif référentiel,
+  // §8 : "le même composant partout") : chargé une seule fois sur cet écran, réutilisé à la fois
+  // par la boîte Identité et par chaque génération d'ascendant externe de la boîte Pedigree — voir
+  // includes/race-referentiel.php.
+  gwseq_enqueue_race_referentiel_assets();
 }
 add_action('admin_enqueue_scripts', 'gwseq_enqueue_cheval_admin_assets');

@@ -39,13 +39,15 @@
  *   une ligne isolée (rencontré sur le vrai document) : une ligne composée uniquement de 4 chiffres
  *   est alors rattachée à la ligne précédente plutôt que comptée comme un ascendant séparé.
  *
- * L'ANNÉE DE NAISSANCE D'UN ASCENDANT n'est volontairement PAS extraite/stockée en V1 (§6 : "quand
- * il existe un emplacement de donnée adapté") : le modèle d'ascendant externe existant
- * (cheval-pedigree.php, `{name, race, race_autre, father, mother}`) ne prévoit aucun champ année,
- * et ce fichier n'a pas vocation à modifier ce modèle déjà testé pour ce premier import — une
- * évolution future pourra l'ajouter si un emplacement dédié est créé. Le code de stud-book de
- * chaque ascendant est mappé au référentiel canonique existant exactement comme pour l'identité
- * (gwseq_match_race_to_canonical_code(), sinon "Autre" + texte d'origine, jamais deviné).
+ * L'ANNÉE DE NAISSANCE D'UN ASCENDANT (correctif référentiel, §9 de la demande) EST désormais
+ * extraite quand elle figure dans la fiche IFCE (même token `\d{4}` déjà repéré pour délimiter la
+ * fin du nom, voir gwseq_ifce_parse_pedigree_entry_line()) et stockée dans le champ `annee_naissance`
+ * du modèle d'ascendant externe (cheval-pedigree.php, `{name, race, race_autre, annee_naissance,
+ * father, mother}`) — jamais un âge calculé ou stocké, uniquement l'année brute, exactement comme
+ * pour l'identité du cheval lui-même. Absente du document, elle reste simplement vide, jamais
+ * devinée. Le code de stud-book de chaque ascendant est mappé au référentiel canonique existant
+ * exactement comme pour l'identité (gwseq_match_race_to_canonical_code(), sinon "Autre" + texte
+ * d'origine, jamais deviné).
  */
 
 if (!defined('ABSPATH')) exit;
@@ -237,7 +239,7 @@ function gwseq_ifce_parse_indices_from_text($text) {
  * Construit récursivement une branche d'ascendants externes en dépilant $queue dans l'ordre déjà
  * établi (préordre, branche Père d'abord) — forme directement compatible avec
  * gwseq_sanitize_external_ancestor_tree()/gwseq_set_horse_parent() (cheval-pedigree.php) : {name,
- * race, race_autre, father, mother}. $levels borne la profondeur exactement comme
+ * race, race_autre, annee_naissance, father, mother}. $levels borne la profondeur exactement comme
  * GWSEQ_PEDIGREE_MAX_DEPTH le fait déjà côté saisie manuelle.
  */
 function gwseq_ifce_build_ancestor_subtree(&$queue, $levels) {
@@ -259,7 +261,14 @@ function gwseq_ifce_build_ancestor_subtree(&$queue, $levels) {
     }
   }
 
-  $node = array('name' => $name, 'race' => $race, 'race_autre' => $race_autre, 'father' => null, 'mother' => null);
+  $node = array(
+    'name' => $name,
+    'race' => $race,
+    'race_autre' => $race_autre,
+    'annee_naissance' => $entry['annee_naissance'] ?? '',
+    'father' => null,
+    'mother' => null,
+  );
   if ($levels > 1) {
     $node['father'] = gwseq_ifce_build_ancestor_subtree($queue, $levels - 1);
     $node['mother'] = gwseq_ifce_build_ancestor_subtree($queue, $levels - 1);
@@ -276,9 +285,9 @@ function gwseq_ifce_build_ancestor_subtree(&$queue, $levels) {
  * - "NOM (CODE_PAYS) CODE_STUDBOOK ANNEE" (code pays entre parenthèses avant le stud-book) ;
  * - toute forme ci-dessus précédée d'une mention "Alias ..." (nom d'enregistrement alternatif) :
  *   retirée avant analyse, seul le nom canonique avant "Alias" est conservé.
- * L'année elle-même n'est jamais retenue dans la valeur de retour (voir la note en tête de fichier
- * sur l'absence d'emplacement de donnée pour l'année d'un ascendant) — seul son repérage permet de
- * délimiter correctement la fin du nom.
+ * L'année, quand présente, est désormais retenue dans la valeur de retour (`annee_naissance`,
+ * correctif référentiel §9) — son repérage sert toujours aussi à délimiter correctement la fin du
+ * nom, comme avant ce correctif.
  *
  * PIÈGE ÉCARTÉ (constaté en développement) : un nom de cheval se termine très souvent par un
  * chiffre romain ("HORS LA LOI II", "ARIANE DU PLESSIS II"...), qui a exactement la forme d'un code
@@ -289,10 +298,14 @@ function gwseq_ifce_build_ancestor_subtree(&$queue, $levels) {
 function gwseq_ifce_parse_pedigree_entry_line($line) {
   $line = trim(preg_replace('/\bAlias\b.*$/iu', '', $line));
   $roman_numerals = 'I|II|III|IV|V|VI|VII|VIII|IX|X';
-  if (preg_match('/^(.+?)\s+(?:\(([A-Z]{2,3})\)\s+)?(?!(?:' . $roman_numerals . ')(?:\s+\d{4})?$)([A-Z]{2,6})(?:\s+\d{4})?$/u', $line, $m)) {
-    return array('name' => trim($m[1]), 'race_text' => trim($m[3]));
+  if (preg_match('/^(.+?)\s+(?:\(([A-Z]{2,3})\)\s+)?(?!(?:' . $roman_numerals . ')(?:\s+\d{4})?$)([A-Z]{2,6})(?:\s+(\d{4}))?$/u', $line, $m)) {
+    return array(
+      'name' => trim($m[1]),
+      'race_text' => trim($m[3]),
+      'annee_naissance' => (isset($m[4]) && $m[4] !== '') ? (int) $m[4] : '',
+    );
   }
-  return array('name' => $line, 'race_text' => '');
+  return array('name' => $line, 'race_text' => '', 'annee_naissance' => '');
 }
 
 /**
@@ -353,8 +366,8 @@ function gwseq_ifce_parse_pedigree_from_lines($lines) {
   if (empty($entries)) return $result;
 
   $queue = $entries;
-  $result['father'] = gwseq_ifce_build_ancestor_subtree($queue, 3);
-  $result['mother'] = gwseq_ifce_build_ancestor_subtree($queue, 3);
+  $result['father'] = gwseq_ifce_build_ancestor_subtree($queue, GWSEQ_PEDIGREE_MAX_DEPTH);
+  $result['mother'] = gwseq_ifce_build_ancestor_subtree($queue, GWSEQ_PEDIGREE_MAX_DEPTH);
 
   return $result;
 }

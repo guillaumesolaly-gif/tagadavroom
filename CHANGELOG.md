@@ -1,5 +1,23 @@
 # Changelog — GWS Starter
 
+## 1.17.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Référentiel Race / Stud-book / Appellation, ascendant + année de naissance, pedigree sur 3
+  générations (GWS Equestrian 0.14.0).** Nouveau référentiel unique (`includes/race-referentiel.php`,
+  154 entrées générées depuis le fichier XLSX IFCE fourni) qui dissocie la richesse technique du
+  référentiel de la simplicité de l'interface : plus de `<select>` de plus de 100 valeurs, remplacé
+  par un composant de recherche/autocomplétion partagé (identité du cheval ET chaque génération
+  d'ascendant externe), avec résolution d'alias historiques (l'alias "SFA" résout désormais vers
+  "SF", jamais rangé dans "Autre"), recherche par code IFCE ou libellé, et suggestions "récents"
+  propres à chaque utilisateur (jamais un profil métier rigide codé en dur, jamais une modification
+  de la donnée Cheval). Le modèle d'ascendant externe gagne un champ "année de naissance" optionnel
+  (alimenté automatiquement par l'import IFCE quand disponible, jamais utilisé pour calculer un âge).
+  La profondeur standard du pedigree passe de 4 à 3 générations (14 ascendants, alignée sur la fiche
+  de synthèse IFCE) ; une éventuelle donnée de génération 4 déjà enregistrée lors de recettes
+  précédentes n'est jamais supprimée, simplement plus jamais rendue au-delà de la nouvelle
+  profondeur standard. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.14.0) pour le détail complet.
+
 ## 1.16.2 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif bloquant : « headers already sent » à l'analyse du PDF IFCE (GWS Equestrian 0.13.2).**

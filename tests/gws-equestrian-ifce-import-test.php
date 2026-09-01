@@ -30,7 +30,10 @@ function gws_test_assert($condition, $label) {
 function wp_unslash($value) { return is_array($value) ? array_map('wp_unslash', $value) : stripslashes((string) $value); }
 function sanitize_text_field($value) { return trim(strip_tags((string) $value)); }
 function sanitize_textarea_field($value) { return trim((string) $value); }
-function sanitize_key($value) { return strtolower(preg_replace('/[^a-z0-9_\-]/', '', (string) $value)); }
+// FIDÈLE au comportement réel de sanitize_key() (WordPress core) : mise en minuscules AVANT le
+// filtrage des caractères — voir gws-equestrian-pedigree-logic-test.php pour le détail du bug de
+// stub que cet ordre évite (codes de race en MAJUSCULES du référentiel).
+function sanitize_key($value) { return preg_replace('/[^a-z0-9_\-]/', '', strtolower((string) $value)); }
 function esc_url_raw($value) { $value = trim((string) $value); return $value === '' ? '' : $value; }
 function esc_url($value) { return $value; }
 function absint($value) { return abs((int) $value); }
@@ -108,6 +111,15 @@ function get_transient($key) { return $GLOBALS['__gwseq_test_transients'][$key] 
 function delete_transient($key) { unset($GLOBALS['__gwseq_test_transients'][$key]); return true; }
 
 function get_current_user_id() { return $GLOBALS['__gwseq_test_current_user_id'] ?? 1; }
+$GLOBALS['__gwseq_test_user_meta'] = array();
+function get_user_meta($user_id, $key, $single = false) { return $GLOBALS['__gwseq_test_user_meta'][$user_id][$key] ?? ''; }
+function update_user_meta($user_id, $key, $value) { $GLOBALS['__gwseq_test_user_meta'][$user_id][$key] = $value; return true; }
+function sanitize_html_class($value) { return preg_replace('/[^A-Za-z0-9_-]/', '', (string) $value); }
+$GLOBALS['__gwseq_enqueued'] = array();
+function wp_enqueue_script($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] = $handle; }
+function wp_enqueue_style($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] = $handle; }
+function wp_script_is($handle, $status = 'enqueued') { return in_array($handle, $GLOBALS['__gwseq_enqueued'], true); }
+function wp_localize_script($handle, $object_name, $data) { $GLOBALS['__gwseq_test_localized'][$handle][$object_name] = $data; }
 function wp_generate_password($length = 32, $special = true, $extra_special = false) { return $GLOBALS['__gwseq_test_next_token'] ?? bin2hex(random_bytes(16)); }
 function admin_url($path = '') { return 'https://example.test/wp-admin/' . $path; }
 function add_query_arg($args, $url) { return $url . '?' . http_build_query($args); }
@@ -148,6 +160,7 @@ $repo_root = dirname(__DIR__);
 $module_dir = $repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/';
 require $repo_root . '/wp-content/plugins/gws-core/includes/fields.php';
 require $module_dir . 'includes/settings.php';
+require $module_dir . 'includes/race-referentiel.php';
 require $module_dir . 'includes/cheval-fields.php';
 require $module_dir . 'includes/pedigree-resolver.php';
 require $module_dir . 'includes/cheval-pedigree.php';
@@ -263,7 +276,7 @@ gws_test_assert($jamerose_parsed['valid'] === true, 'Reconnaissance : le VRAI PD
 
 $identity = $jamerose_parsed['identity'];
 gws_test_assert($identity['nom'] === 'JAMEROSE DE FELINES', 'Identité (vrai PDF) : nom exact');
-gws_test_assert($identity['race'] === 'selle_francais' && $identity['race_autre'] === '', 'Identité (vrai PDF) : race "Selle Francais" reconnue et mappée au code canonique "selle_francais"');
+gws_test_assert($identity['race'] === 'SF' && $identity['race_autre'] === '', 'Identité (vrai PDF) : race "Selle Francais" reconnue et mappée au code canonique du référentiel ("SF")');
 gws_test_assert($identity['sexe'] === 'female', 'Identité (vrai PDF) : sexe "Femelle" mappé à "female"');
 gws_test_assert($identity['robe'] === 'gris', 'Identité (vrai PDF) : robe "Gris" mappée au code canonique');
 gws_test_assert($identity['taille_cm'] === 168, 'Identité (vrai PDF) : taille "1m68" convertie en 168 cm');
@@ -283,12 +296,13 @@ gws_test_assert($pedigree['count'] === 14, 'Pedigree (vrai PDF) : exactement 14 
 $father = $pedigree['father'];
 $mother = $pedigree['mother'];
 gws_test_assert($father['name'] === 'UNTOUCHABLE', 'Pedigree (vrai PDF) : Père exact (UNTOUCHABLE — mention "Alias UNTOUCHABLE 27 (NLD)" correctement retirée)');
-gws_test_assert($father['father']['name'] === 'HORS LA LOI II' && $father['father']['race'] === 'autre' && $father['father']['race_autre'] === 'SFA', 'Pedigree (vrai PDF) : Père du Père exact (HORS LA LOI II), stud-book "SFA" non canonique conservé via "Autre"');
-gws_test_assert($father['father']['father']['name'] === 'PAPILLON ROUGE', 'Pedigree (vrai PDF) : Père du Père du Père exact (PAPILLON ROUGE)');
-gws_test_assert($father['father']['mother']['name'] === 'ARIANE DU PLESSIS II', 'Pedigree (vrai PDF) : Mère du Père du Père exacte (ARIANE DU PLESSIS II — chiffre romain final jamais confondu avec un stud-book)');
-gws_test_assert($father['mother']['name'] === 'PROMESSE' && $father['mother']['race'] === 'kwpn', 'Pedigree (vrai PDF) : Mère du Père exacte (PROMESSE), stud-book "KWPN" mappé au code canonique');
-gws_test_assert($father['mother']['father']['name'] === 'HEARTBREAKER' && $father['mother']['father']['race'] === 'kwpn', 'Pedigree (vrai PDF) : Père de la Mère du Père exact (HEARTBREAKER), code pays "(NLD)" correctement écarté du nom comme du stud-book');
-gws_test_assert($father['mother']['mother']['name'] === 'CHABLIS' && $father['mother']['mother']['race_autre'] === 'OES', 'Pedigree (vrai PDF) : Mère de la Mère du Père exacte (CHABLIS), stud-book "OES" conservé même sans année associée');
+gws_test_assert($father['father']['name'] === 'HORS LA LOI II' && $father['father']['race'] === 'SF' && $father['father']['race_autre'] === '', 'Pedigree (vrai PDF, exemple important §2 de la demande référentiel) : Père du Père exact (HORS LA LOI II), l’alias historique "SFA" est reconnu et résolu au code canonique "SF", JAMAIS rangé dans "Autre"');
+gws_test_assert($father['father']['annee_naissance'] === 1995, 'Pedigree (vrai PDF, correctif référentiel §9) : l’année de naissance de HORS LA LOI II ("SFA 1995") est bien extraite et importée');
+gws_test_assert($father['father']['father']['name'] === 'PAPILLON ROUGE' && $father['father']['father']['annee_naissance'] === 1981, 'Pedigree (vrai PDF) : Père du Père du Père exact (PAPILLON ROUGE), année de naissance importée');
+gws_test_assert($father['father']['mother']['name'] === 'ARIANE DU PLESSIS II' && $father['father']['mother']['annee_naissance'] === 1988, 'Pedigree (vrai PDF) : Mère du Père du Père exacte (ARIANE DU PLESSIS II — chiffre romain final jamais confondu avec un stud-book), année de naissance importée');
+gws_test_assert($father['mother']['name'] === 'PROMESSE' && $father['mother']['race'] === 'KWPN' && $father['mother']['annee_naissance'] === 1997, 'Pedigree (vrai PDF) : Mère du Père exacte (PROMESSE), stud-book "KWPN" mappé au code canonique, année de naissance importée');
+gws_test_assert($father['mother']['father']['name'] === 'HEARTBREAKER' && $father['mother']['father']['race'] === 'KWPN' && $father['mother']['father']['annee_naissance'] === 1989, 'Pedigree (vrai PDF) : Père de la Mère du Père exact (HEARTBREAKER), code pays "(NLD)" correctement écarté du nom comme du stud-book, année de naissance importée');
+gws_test_assert($father['mother']['mother']['name'] === 'CHABLIS' && $father['mother']['mother']['race'] === 'OE' && $father['mother']['mother']['race_autre'] === '' && $father['mother']['mother']['annee_naissance'] === '', 'Pedigree (vrai PDF) : Mère de la Mère du Père exacte (CHABLIS), alias "OES" reconnu et résolu au code canonique "OE" (Origine Étrangère), jamais rangé dans "Autre" ; aucune année associée dans le document -> reste vide, jamais devinée');
 gws_test_assert($mother['name'] === 'NATIVE DE FELINES', 'Pedigree (vrai PDF) : Mère exacte (NATIVE DE FELINES)');
 gws_test_assert($mother['father']['name'] === 'ROSIRE', 'Pedigree (vrai PDF) : Père de la Mère exact (ROSIRE)');
 gws_test_assert($mother['father']['father']['name'] === 'URIEL', 'Pedigree (vrai PDF) : Père du Père de la Mère exact (URIEL)');
@@ -307,10 +321,10 @@ gws_test_assert($father_sanitized['name'] === 'UNTOUCHABLE' && $father_sanitized
 // 2bis. Cas particuliers de gwseq_ifce_parse_pedigree_entry_line() constatés sur le vrai document
 // =====================================================================================
 
-gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('HORS LA LOI II') === array('name' => 'HORS LA LOI II', 'race_text' => ''), 'Entrée pedigree : un nom SANS stud-book se terminant par un chiffre romain (« II ») n’est jamais amputé — le chiffre romain n’est jamais confondu avec un code de stud-book');
-gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('ARIANE DU PLESSIS II SFA 1988') === array('name' => 'ARIANE DU PLESSIS II', 'race_text' => 'SFA'), 'Entrée pedigree : le même nom AVEC un vrai stud-book/année distingue correctement les deux (le chiffre romain reste dans le nom, "SFA" est bien isolé comme stud-book)');
-gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('UNTOUCHABLE Alias UNTOUCHABLE 27 (NLD) KWPN 2001') === array('name' => 'UNTOUCHABLE', 'race_text' => ''), 'Entrée pedigree : la mention "Alias ..." (nom d’enregistrement alternatif) est intégralement retirée, y compris le stud-book/l’année qui la suivent');
-gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('CHABLIS OES') === array('name' => 'CHABLIS', 'race_text' => 'OES'), 'Entrée pedigree : un stud-book sans année associée reste correctement reconnu');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('HORS LA LOI II') === array('name' => 'HORS LA LOI II', 'race_text' => '', 'annee_naissance' => ''), 'Entrée pedigree : un nom SANS stud-book se terminant par un chiffre romain (« II ») n’est jamais amputé — le chiffre romain n’est jamais confondu avec un code de stud-book');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('ARIANE DU PLESSIS II SFA 1988') === array('name' => 'ARIANE DU PLESSIS II', 'race_text' => 'SFA', 'annee_naissance' => 1988), 'Entrée pedigree : le même nom AVEC un vrai stud-book/année distingue correctement les deux (le chiffre romain reste dans le nom, "SFA" est bien isolé comme stud-book, l’année est extraite — correctif référentiel §9)');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('UNTOUCHABLE Alias UNTOUCHABLE 27 (NLD) KWPN 2001') === array('name' => 'UNTOUCHABLE', 'race_text' => '', 'annee_naissance' => ''), 'Entrée pedigree : la mention "Alias ..." (nom d’enregistrement alternatif) est intégralement retirée, y compris le stud-book/l’année qui la suivent');
+gws_test_assert(gwseq_ifce_parse_pedigree_entry_line('CHABLIS OES') === array('name' => 'CHABLIS', 'race_text' => 'OES', 'annee_naissance' => ''), 'Entrée pedigree : un stud-book sans année associée reste correctement reconnu');
 
 // =====================================================================================
 // 3. Documents non reconnus (§10) — jamais un import "best effort"
@@ -333,7 +347,7 @@ gws_test_assert($map_result === true, 'Mapping : l’import complet réussit');
 
 $mapped_identity = gwseq_get_cheval_identity(60);
 gws_test_assert(
-  $mapped_identity['sexe'] === 'female' && $mapped_identity['race'] === 'selle_francais' && $mapped_identity['robe'] === 'gris'
+  $mapped_identity['sexe'] === 'female' && $mapped_identity['race'] === 'SF' && $mapped_identity['robe'] === 'gris'
   && $mapped_identity['taille_cm'] === 168 && $mapped_identity['annee_naissance'] === 2019
   && strpos($mapped_identity['eleveur'], 'Haras De Felines') !== false && $mapped_identity['sire'] === '',
   'Mapping identité : toutes les valeurs sont bien persistées via gwseq_set_cheval_identity(), relecture exacte'
@@ -353,7 +367,7 @@ gws_test_assert($mapped_mother['mode'] === 'external' && $mapped_mother['externa
 // --- Import partiel (§9) : seule l’Identité est cochée -> Indices/Pedigree jamais touchés ---
 gws_test_make_post(61, GWSEQ_CPT_CHEVAL, 'JAMEROSE DE FELINES');
 gwseq_ifce_map_import(61, $jamerose_parsed, array('identity' => true, 'indices' => false, 'pedigree' => false));
-gws_test_assert(gwseq_get_cheval_identity(61)['race'] === 'selle_francais', 'Import partiel : l’Identité est bien importée quand seule cette case est cochée');
+gws_test_assert(gwseq_get_cheval_identity(61)['race'] === 'SF', 'Import partiel : l’Identité est bien importée quand seule cette case est cochée');
 gws_test_assert(gwseq_get_cheval_sport_indice(61, 'iso')['valeur'] === '', 'Import partiel : les Indices ne sont jamais écrits quand la case correspondante est décochée');
 gws_test_assert(gwseq_get_horse_parent(61, 'father')['mode'] === '', 'Import partiel : le Pedigree n’est jamais écrit quand la case correspondante est décochée');
 

@@ -21,7 +21,10 @@ function gws_test_assert($condition, $label) {
 function wp_unslash($value) { return is_array($value) ? array_map('wp_unslash', $value) : $value; }
 function sanitize_text_field($value) { return trim(strip_tags((string) $value)); }
 function sanitize_textarea_field($value) { return trim((string) $value); }
-function sanitize_key($value) { return strtolower(preg_replace('/[^a-z0-9_\-]/', '', (string) $value)); }
+// FIDÈLE au comportement réel de sanitize_key() (WordPress core) : mise en minuscules AVANT le
+// filtrage des caractères (jamais l'inverse) — voir gws-equestrian-pedigree-logic-test.php pour le
+// détail du bug de stub que cet ordre évite (codes de race en MAJUSCULES du référentiel).
+function sanitize_key($value) { return preg_replace('/[^a-z0-9_\-]/', '', strtolower((string) $value)); }
 function esc_url_raw($value) { $value = trim((string) $value); return $value === '' ? '' : $value; }
 function absint($value) { return abs((int) $value); }
 function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
@@ -121,6 +124,9 @@ $GLOBALS['__gwseq_test_screen'] = null;
 function get_current_screen() { return $GLOBALS['__gwseq_test_screen']; }
 $GLOBALS['__gwseq_enqueued'] = array();
 function wp_enqueue_script($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] = $handle; }
+function wp_enqueue_style($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] = $handle; }
+function wp_script_is($handle, $status = 'enqueued') { return in_array($handle, $GLOBALS['__gwseq_enqueued'], true); }
+function wp_localize_script($handle, $object_name, $data) { $GLOBALS['__gwseq_test_localized'][$handle][$object_name] = $data; }
 
 // --- Préférences utilisateur WordPress (Screen Options / ordre des meta boxes), pour le nettoyage
 // de l'état hérité sur la boîte Identité — registre en mémoire par utilisateur, comme un vrai
@@ -140,6 +146,7 @@ $repo_root = dirname(__DIR__);
 $module_dir = $repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/';
 require $repo_root . '/wp-content/plugins/gws-core/includes/fields.php';
 require $module_dir . 'includes/settings.php';
+require $module_dir . 'includes/race-referentiel.php';
 require $module_dir . 'includes/cheval-fields.php';
 require $module_dir . 'includes/cheval-editor.php';
 require $module_dir . 'includes/cheval-categories.php';
@@ -198,15 +205,16 @@ gws_test_assert(gwseq_cheval_robe_label('bai', '') === 'Bai', 'Libellé robe sta
 $i = gwseq_sanitize_cheval_identity_input(array('_gwseq_robe' => 'licorne'));
 gws_test_assert($i['robe'] === '', 'Robe invalide : rejetée, jamais stockée telle quelle');
 
-// --- Race / Stud-book : valeur standard, et "Autre" ; aucune logique ne doit dépendre d’un nom
-// de stud-book précis (vérifié par grep du code source plus bas) ---
-$i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => 'selle_francais'));
-gws_test_assert($i['race'] === 'selle_francais', 'Race standard (Selle Français) : valeur technique conservée');
+// --- Race / Stud-book / Appellation (référentiel Étape 8) : valeur standard résolue au code
+// canonique EXACT du référentiel (toujours en MAJUSCULES, ex. "SF" — jamais "sf" ni un ancien
+// identifiant "selle_francais"), et "Autre" en filet de sécurité ---
+$i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => 'sf'));
+gws_test_assert($i['race'] === 'SF', 'Race standard (Selle Français) : résolue au code canonique "SF" quelle que soit la casse saisie');
 $i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => 'autre', '_gwseq_race_autre' => 'Camargue'));
 gws_test_assert($i['race'] === 'autre' && $i['race_autre'] === 'Camargue', 'Race "Autre" : précision libre conservée telle quelle');
 gws_test_assert(gwseq_cheval_race_label('autre', 'Camargue') === 'Camargue', 'Libellé race "Autre" : la précision saisie est restituée telle quelle');
 $i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => 'stud-book-invente'));
-gws_test_assert($i['race'] === '', 'Race invalide/inconnue : rejetée, jamais stockée telle quelle');
+gws_test_assert($i['race'] === '', 'Race invalide/inconnue : rejetée, jamais stockée telle quelle, JAMAIS transformée automatiquement en "Autre"');
 
 // --- Taille en centimètres, jamais en notation "1m68" ---
 $i = gwseq_sanitize_cheval_identity_input(array('_gwseq_taille_cm' => '168'));
@@ -240,7 +248,7 @@ $set_result = gwseq_set_cheval_identity(60, array(
   '_gwseq_sexe' => 'female',
   '_gwseq_annee_naissance' => '2019',
   '_gwseq_robe' => 'gris',
-  '_gwseq_race' => 'selle_francais',
+  '_gwseq_race' => 'sf',
   '_gwseq_taille_cm' => '168',
   '_gwseq_eleveur' => 'Haras de Félines',
   '_gwseq_sire' => '05123456A',
@@ -249,7 +257,7 @@ gws_test_assert($set_result === true, 'gwseq_set_cheval_identity() : l’enregis
 $identity_60 = gwseq_get_cheval_identity(60);
 gws_test_assert(
   $identity_60['sexe'] === 'female' && $identity_60['annee_naissance'] === 2019 && $identity_60['robe'] === 'gris'
-  && $identity_60['race'] === 'selle_francais' && $identity_60['taille_cm'] === 168
+  && $identity_60['race'] === 'SF' && $identity_60['taille_cm'] === 168
   && $identity_60['eleveur'] === 'Haras de Félines' && $identity_60['sire'] === '05123456A',
   'gwseq_set_cheval_identity() : toutes les données sont bien persistées, relecture exacte via gwseq_get_cheval_identity()'
 );
@@ -293,11 +301,10 @@ foreach (array('_gwseq_nom_cheval', '_gwseq_photo_principale', '_gwseq_nom', '_g
   );
 }
 
-// --- Aucune logique ne dépend d’un nom de stud-book précis (§4) : le mot "Selle Français" ou
-// "KWPN" n’apparaît nulle part en dehors de la liste d’options elle-même ---
-$race_options_block = substr($cheval_fields_source, strpos($cheval_fields_source, 'function gwseq_cheval_race_options'), strpos($cheval_fields_source, 'function gwseq_cheval_statut_commercial_options') - strpos($cheval_fields_source, 'function gwseq_cheval_race_options'));
-$rest_of_file_without_race_options = str_replace($race_options_block, '', $cheval_fields_source);
-gws_test_assert(strpos($rest_of_file_without_race_options, 'selle_francais') === false, 'Race/Stud-book : aucune logique du fichier ne dépend du stud-book "Selle Français" en dehors de la liste d’options elle-même');
+// --- Aucune logique ne dépend d’un nom de stud-book précis (§4) : depuis le référentiel de
+// l'Étape 8, la liste elle-même n'existe plus dans ce fichier (voir includes/race-referentiel.php)
+// — l'ancien identifiant technique "selle_francais" ne doit donc plus apparaître nulle part ici ---
+gws_test_assert(strpos($cheval_fields_source, 'selle_francais') === false, 'Race/Stud-book : aucune logique du fichier ne dépend de l’ancien identifiant technique "selle_francais" (référentiel désormais dans race-referentiel.php)');
 
 // =====================================================================================
 // Catégories de chevaux : interface à cases à cocher (native), affordance de création rapide
@@ -568,14 +575,14 @@ gws_test_assert(empty($GLOBALS['__gwseq_enqueued']), 'Assets Cheval : jamais cha
 $GLOBALS['__gwseq_test_domains_used'] = array();
 gwseq_cheval_sexe_options();
 gwseq_cheval_robe_options();
-gwseq_cheval_race_options();
+gwseq_race_referentiel_display_label('SF');
 gwseq_cheval_statut_commercial_options();
 gwseq_cheval_prix_mode_options();
 $other_domains = array_diff(array_unique($GLOBALS['__gwseq_test_domains_used']), array('gws-core'));
 gws_test_assert(count($GLOBALS['__gwseq_test_domains_used']) > 0, 'i18n : les fonctions de traduction WordPress sont réellement appelées');
 gws_test_assert(empty($other_domains), 'i18n : text domain cohérent "gws-core" sur tous les appels rencontrés');
 
-foreach (glob($module_dir . 'includes/cheval-*.php') as $file) {
+foreach (array_merge(glob($module_dir . 'includes/cheval-*.php'), array($module_dir . 'includes/race-referentiel.php')) as $file) {
   preg_match_all('/\b(?:__|_e|esc_html__|esc_html_e|esc_attr__|esc_attr_e)\(\s*[\'"](?:[^\'"\\\\]|\\\\.)*[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/', file_get_contents($file), $domain_matches);
   $mismatched = array_diff(array_unique($domain_matches[1]), array('gws-core'));
   gws_test_assert(empty($mismatched), basename($file) . ' : aucun appel de traduction n’utilise un text domain autre que "gws-core" (trouvé : ' . implode(', ', $mismatched) . ')');

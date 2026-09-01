@@ -1,0 +1,46 @@
+/* Composant de recherche/autocomplétion Race / Stud-book / Appellation (Étape 8 de la demande) —
+   mise en forme minimale, aucune dépendance. Réutilise les couleurs/bordures natives de
+   l'administration WordPress (mêmes teintes que les champs et boîtes déjà en place). */
+
+.gwseq-race-field {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.gwseq-race-field__results {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #8c8f94;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.gwseq-race-field__results li {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.gwseq-race-field__results li:hover,
+.gwseq-race-field__results li:focus {
+  background: #2271b1;
+  color: #fff;
+}
+
+.gwseq-race-field__autre-option {
+  border-top: 1px solid #dcdcde;
+  font-style: italic;
+}
+
+.gwseq-race-field__autre-wrap {
+  display: block;
+  margin-top: 6px;
+}

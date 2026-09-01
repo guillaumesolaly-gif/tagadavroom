@@ -688,11 +688,11 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
 
 ### Données extraites en V1
 
-- **Identité** (§4) : nom, race/stud-book (mappée au référentiel existant de la fiche Cheval,
-  `gwseq_cheval_race_options()`/`gwseq_match_race_to_canonical_code()` déjà existants, sinon
-  "Autre" + texte libre — jamais une valeur inventée), sexe, robe (même principe de correspondance
-  que la race), taille (`1m68` → 168 cm), année de naissance, naisseur/éleveur si identifiable
-  clairement, numéro SIRE et UELN si présents.
+- **Identité** (§4) : nom, race/stud-book/appellation (mappée au référentiel Race/Stud-book/
+  Appellation mutualisé, `includes/race-referentiel.php` — 154 entrées avec alias historiques,
+  voir « Correctif référentiel » plus bas —, sinon "Autre" + texte libre — jamais une valeur
+  inventée), sexe, robe (même principe de correspondance que la race), taille (`1m68` → 168 cm),
+  année de naissance, naisseur/éleveur si identifiable clairement, numéro SIRE et UELN si présents.
 - **Indices** (§5) : sportifs ISO/ICC/IDR — **le modèle existant a été étendu** pour stocker
   désormais aussi le coefficient de détermination (CD, `_gwseq_{cle}_cd`, jusqu'ici réservé aux
   indices génétiques) puisqu'une fiche IFCE officielle le fournit systématiquement (exemple exact :
@@ -707,10 +707,11 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
   (Père : PAPILLON ROUGE, Mère : ARIANE DU PLESSIS II), Mère : PROMESSE (Père : HEARTBREAKER, Mère :
   CHABLIS)) ; Mère : NATIVE DE FELINES (Père : ROSIRE (Père : URIEL, Mère : EOLIENNE), Mère : FALINE
   GENEVRIS (Père : PEGASE GERBAUX, Mère : LOUVE VARFEUIL))). Race/stud-book des ascendants récupérée
-  quand présente ; **l'année de naissance d'un ascendant n'est volontairement PAS extraite/stockée**
-  en V1 — le modèle d'ascendant externe existant (`{name, race, race_autre, father, mother}`) ne
-  prévoit aucun champ dédié, et ce premier import n'a pas vocation à modifier ce modèle déjà
-  testé.
+  quand présente (référentiel mutualisé — l'alias historique "SFA" résout par exemple vers "SF",
+  jamais rangé dans "Autre"). **Depuis le correctif référentiel : l'année de naissance d'un
+  ascendant EST extraite** quand le document la porte et stockée dans le nouveau champ
+  `annee_naissance` du modèle d'ascendant externe (`{name, race, race_autre, annee_naissance,
+  father, mother}`) — jamais un âge calculé ou stocké, uniquement l'année brute.
 - **Ascendants toujours importés en mode "externe"** (§8) : aucune fiche `gwseq_cheval` n'est
   jamais créée automatiquement pour un ascendant, aucune tentative de rapprochement/déduplication
   par nom avec une fiche GWS existante.
@@ -771,18 +772,22 @@ acceptable, voir §25 : l'absence de donnée reste une absence, jamais un « Non
 affiché artificiellement demain sur le site).
 
 **Un ascendant externe n'est pas une feuille terminale** : il peut lui-même avoir un père et une
-mère, également externes, jusqu'à 4 générations — pensé spécifiquement pour un marchand de
-chevaux ou un cavalier professionnel dont la quasi-totalité des ascendants ne sont pas des
-chevaux qu'il gère dans GWS. Une telle structure permet de saisir un pedigree complet sans jamais
-créer une seule fiche `gwseq_cheval` artificielle pour un ancêtre qui n'a aucune raison métier
-d'être géré comme un cheval du client. Chaque génération reste facultative : l'utilisateur
-s'arrête où il connaît son pedigree.
+mère, également externes, jusqu'à 3 générations (14 ascendants, alignée sur la fiche de synthèse
+IFCE — voir « Correctif référentiel » plus bas, ce standard était de 4 générations avant ce
+correctif) — pensé spécifiquement pour un marchand de chevaux ou un cavalier professionnel dont la
+quasi-totalité des ascendants ne sont pas des chevaux qu'il gère dans GWS. Une telle structure
+permet de saisir un pedigree complet sans jamais créer une seule fiche `gwseq_cheval` artificielle
+pour un ancêtre qui n'a aucune raison métier d'être géré comme un cheval du client. Chaque
+génération reste facultative : l'utilisateur s'arrête où il connaît son pedigree.
 
-**Race/Stud-book d'un ascendant externe harmonisé avec la fiche Cheval** (correction post-recette,
-0.6.0) : ce champ était initialement un texte libre, source constatée d'hétérogénéité en usage
-réel (« SF »/« sf »/« Selle Français »...). Il réutilise désormais très exactement le référentiel
-de la fiche Cheval (`gwseq_cheval_race_options()`, jamais dupliqué) à chaque génération de chaque
-branche externe : liste fermée + « Autre » avec précision libre.
+**Race/Stud-book/Appellation d'un ascendant externe harmonisé avec la fiche Cheval** (correction
+post-recette 0.6.0, puis référentiel complet depuis le correctif référentiel) : ce champ était
+initialement un texte libre, source constatée d'hétérogénéité en usage réel (« SF »/« sf »/« Selle
+Français »...). Il réutilise désormais le référentiel Race/Stud-book/Appellation mutualisé
+(`includes/race-referentiel.php`, 154 entrées avec alias historiques, jamais dupliqué) via le MÊME
+composant de recherche/autocomplétion que l'identité du cheval, à chaque génération de chaque
+branche externe — plus un `<select>` fermé, mais toujours « Autre » avec précision libre en filet
+de sécurité.
 
 **Interface en divulgation progressive, désormais contextuelle** : Nom et Race d'un ascendant
 externe sont toujours visibles ; un bouton natif « + Renseigner ses origines de KANNAN » (élément
@@ -801,12 +806,47 @@ nom fraîchement saisi ne se reflétait dans ces intitulés qu'après enregistre
 ces intitulés à jour EN DIRECT pendant la frappe — sans jamais lire ni modifier la valeur du champ
 Nom lui-même (aucune normalisation de casse, aucune suppression d'accent appliquée à la donnée
 envoyée au serveur ; la transformation visuelle est une prévisualisation, le rendu réellement
-autoritaire restant celui produit par le serveur). Un compteur discret (« Génération N sur 4 »,
-« Génération 4 sur 4 — dernière génération ») accompagne chaque niveau — la recette a aussi
-montré que l'utilisateur ne savait pas jusqu'où remonter alors que GWS connaît parfaitement cette
-limite. À la génération 4, plus aucun contrôle « + Renseigner ses origines » n'est proposé (arrêt
-visuel strict) ; la limite serveur, elle, reste inchangée et est la seule garantie réelle contre
-une requête manipulée.
+autoritaire restant celui produit par le serveur). Un compteur discret (« Génération N sur X »,
+« Génération X sur X — dernière génération », X = `GWSEQ_PEDIGREE_MAX_DEPTH`, désormais 3) accompagne
+chaque niveau — la recette a aussi montré que l'utilisateur ne savait pas jusqu'où remonter alors
+que GWS connaît parfaitement cette limite. À la dernière génération autorisée, plus aucun contrôle
+« + Renseigner ses origines » n'est proposé (arrêt visuel strict) ; la limite serveur, elle, reste
+inchangée et est la seule garantie réelle contre une requête manipulée.
+
+#### Correctif référentiel — Race / Stud-book / Appellation, ascendant + année de naissance, pedigree sur 3 générations
+
+Refonte livrée à partir du référentiel `GWS_referentiel_races_appellations_IFCE.xlsx` fourni, sans
+toucher à la Commercialisation, aux Médias, à la Présentation, ni au reste de l'import IFCE :
+
+- **Référentiel unique et découplé de l'UI** (`includes/race-referentiel.php`, 154 entrées : 151
+  races/stud-books + 3 appellations OC/ONC/OE) — le code canonique (`SF`, `KWPN`, `OC`...) reste
+  TOUJOURS la donnée structurée stockée, jamais un libellé. Réutilisable à l'identique par l'admin,
+  le parseur IFCE, et un futur import CSV/API : lecture par code, résolution d'alias/libellé vers le
+  code canonique, recherche partielle, sanitation, libellé d'affichage, type race/appellation.
+- **Un seul composant de recherche partout** (`gwseq_render_race_referentiel_field()` +
+  `assets/race-referentiel-autocomplete.js`/`.css`) remplace l'ancien `<select>` d'une vingtaine de
+  races codées en dur, pour l'identité du cheval ET chaque génération d'ascendant externe. Recherche
+  par code IFCE, libellé IFCE, libellé GWS ou alias — utilisable sans connaître les codes IFCE.
+- **Alias historiques reconnus** (ex. « SFA » résout vers « SF », jamais rangé dans « Autre ») —
+  "Autre — préciser" reste le seul filet de sécurité quand rien ne correspond réellement.
+- **Appellations intégrées au même moteur que les races** (OC, ONC, OE) sous un unique libellé
+  « Race / Stud-book / Appellation », la distinction technique `type` restant interne.
+- **Récents par utilisateur** (user meta, jamais une modification de la donnée Cheval) : à
+  l'ouverture d'un champ vide, les valeurs récemment utilisées par CET utilisateur plutôt que les
+  154 entrées — jamais un profil métier rigide CSO/dressage/poney codé en dur.
+- **Année de naissance d'un ascendant externe** : nouveau champ optionnel du modèle (`{name, race,
+  race_autre, annee_naissance, father, mother}`), alimenté automatiquement par l'import IFCE quand
+  disponible, jamais utilisé pour calculer ou stocker un âge.
+- **Pedigree standard réduit de 4 à 3 générations** (14 ascendants, alignée sur la fiche IFCE) —
+  `GWSEQ_PEDIGREE_MAX_DEPTH` référencé symboliquement partout (sanitation, resolver, rendu). Une
+  éventuelle donnée de génération 4 déjà enregistrée avant ce correctif n'est **jamais supprimée** :
+  elle reste conservée en base tant que l'ascendant de génération 3 concerné garde le même nom, mais
+  n'est plus jamais interrogée ni affichée par le resolver/rendu standard, et le formulaire ne peut
+  plus la proposer ni la modifier.
+
+Voir `tests/gws-equestrian-race-referentiel-test.php` pour la couverture dédiée au référentiel, et
+la section « Compatibilité avec les données de génération 4 » de
+`tests/gws-equestrian-pedigree-logic-test.php` pour la non-destructivité de ce changement.
 
 **Convention de présentation des noms de chevaux** (nouveau helper partagé,
 `gwseq_format_horse_name_display()` dans `cheval-fields.php`) : dans les intitulés contextuels du
@@ -1015,14 +1055,15 @@ meta (préfixe `_gwseq_pere_`/`_gwseq_mere_`) :
 |---|---|---|
 | `..._mode` | string enum | `''` (aucune relation) / `'gws'` / `'external'` — seule source de vérité sur la branche active |
 | `..._id` | integer | ID du cheval GWS référencé (branche GWS ; peut rester stocké même inactif) |
-| `..._externe` | string (JSON) | Arbre récursif `{name, race, race_autre, father, mother}` (branche externe ; peut rester stocké même inactif) |
+| `..._externe` | string (JSON) | Arbre récursif `{name, race, race_autre, annee_naissance, father, mother}` (branche externe ; peut rester stocké même inactif) |
 
 L'arbre JSON de la branche externe a la même forme à chaque niveau : `name` (texte, obligatoire
-pour qu'un nœud existe), `race` (code technique du référentiel `gwseq_cheval_race_options()`,
-toujours facultatif), `race_autre` (texte, uniquement si `race === 'autre'`), `father`/`mother`
-(même structure, récursivement, jusqu'à `GWSEQ_PEDIGREE_MAX_DEPTH - 1` = 3 niveaux sous le premier
-ascendant externe — soit 4 générations au total pour cette branche, cohérent avec la profondeur du
-resolver). Choix JSON plutôt que `serialize()` PHP : lisible, indépendant du langage
+pour qu'un nœud existe), `race` (code canonique du référentiel Race/Stud-book/Appellation mutualisé,
+`includes/race-referentiel.php`, toujours facultatif), `race_autre` (texte, uniquement si
+`race === 'autre'`), `annee_naissance` (entier, toujours facultatif, jamais utilisé pour calculer un
+âge), `father`/`mother` (même structure, récursivement, jusqu'à `GWSEQ_PEDIGREE_MAX_DEPTH - 1` = 2
+niveaux sous le premier ascendant externe — soit 3 générations au total pour cette branche, cohérent
+avec la profondeur du resolver). Choix JSON plutôt que `serialize()` PHP : lisible, indépendant du langage
 d'implémentation, donc plus simple à valider, faire évoluer (le mécanisme de migration déjà
 existant de gws-core prendrait le relais si la forme devait un jour changer), importer (un futur
 import CSV/XLSX construit directement ce même tableau avant de l'encoder) et projeter vers une
@@ -1040,26 +1081,29 @@ conservée intégralement via `race = 'autre'` + `race_autre` = texte original �
 devinée arbitrairement. Le format en base n'est réécrit qu'au prochain enregistrement volontaire
 de cette relation par un utilisateur.
 
-**Définition exacte des « 4 générations »** (identique pour une branche GWS ou externe) :
+**Définition exacte des « 3 générations »** (identique pour une branche GWS ou externe — profondeur
+standard réduite de 4 à 3 par le correctif référentiel, voir plus haut) :
 
 ```
 Cheval courant = génération 0 (toujours entièrement résolu)
 Parents = génération 1                          (2 nœuds max)
 Grands-parents = génération 2                   (4 nœuds max)
 Arrière-grands-parents = génération 3           (8 nœuds max)
-Arrière-arrière-grands-parents = génération 4   (16 nœuds max)
 ```
 
-Soit 30 nœuds d'ascendants au maximum. **Correction 0.7.0** : un nœud de la génération 4 (la
-dernière autorisée) est strictement terminal — ses clés `father`/`mother` sont totalement
-ABSENTES du tableau, pas seulement `null`. Avant cette correction, un nœud sentinelle
-`{type: "depth_limit"}` occupait ces clés ; la recette avait révélé que cela laissait croire, dans
-la boîte de vérification, qu'une génération 5 existerait dans le modèle (affichage « Père : Non
-renseigné »/« Mère : Non renseigné ») — alors qu'elle est hors périmètre du pedigree V1, jamais
-saisissable ni stockée. Le type de nœud `depth_limit` n'existe donc plus du tout depuis 0.7.0.
+Soit 14 nœuds d'ascendants au maximum, alignée sur la fiche de synthèse IFCE. **Correction 0.7.0**,
+inchangée par le correctif référentiel : un nœud de la génération 3 (désormais la dernière
+autorisée) est strictement terminal — ses clés `father`/`mother` sont totalement ABSENTES du
+tableau, pas seulement `null`. Avant la correction 0.7.0, un nœud sentinelle `{type:
+"depth_limit"}` occupait ces clés ; la recette avait révélé que cela laissait croire, dans la boîte
+de vérification, qu'une génération supplémentaire existerait dans le modèle (affichage « Père : Non
+renseigné »/« Mère : Non renseigné ») — alors qu'elle est hors périmètre, jamais saisissable ni
+stockée. Le type de nœud `depth_limit` n'existe donc plus du tout depuis 0.7.0. **Compatibilité non
+destructive** : une éventuelle donnée de génération 4 déjà enregistrée AVANT le correctif référentiel
+n'est jamais supprimée par ce changement — voir « Correctif référentiel » plus haut.
 
 **Structure produite par le resolver** (`gwseq_resolve_horse_pedigree($cheval_id)`), à titre
-d'exemple (ici avec seulement 2 générations pour rester lisible ; en génération 4, `father` et
+d'exemple (ici avec seulement 2 générations pour rester lisible ; en génération 3, `father` et
 `mother` seraient simplement absents de `Voltaire` et de `Belle`) :
 
 ```
@@ -1185,9 +1229,9 @@ saisi de Jamerose, un test à la fois :
 5. Développer les origines d'un ascendant externe déjà nommé (bouton « + Renseigner les origines
    de… ») : vérifier que le nom de CET ascendant apparaît bien dans le bouton et dans les
    intitulés du niveau suivant — pas celui du cheval racine.
-6. Vérifier que chaque génération affiche son compteur (« Génération 1 sur 4 »... « Génération 4
-   sur 4 — dernière génération »), et qu'aucun bouton de divulgation supplémentaire n'apparaît à
-   la génération 4.
+6. Vérifier que chaque génération affiche son compteur (« Génération 1 sur 3 »... « Génération 3
+   sur 3 — dernière génération »), et qu'aucun bouton de divulgation supplémentaire n'apparaît à
+   la génération 3.
 7. Modifier une branche existante (ajouter une génération supplémentaire, corriger un nom ou une
    race) : enregistrer, recharger, vérifier la persistance exacte.
 8. Changer le mode d'une relation entre GWS et externe dans les deux sens : vérifier qu'aucune

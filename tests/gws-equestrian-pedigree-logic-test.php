@@ -26,12 +26,18 @@ function gws_test_assert($condition, $label) {
 function wp_unslash($value) { return is_array($value) ? array_map('wp_unslash', $value) : stripslashes((string) $value); }
 function sanitize_text_field($value) { return trim(strip_tags((string) $value)); }
 function sanitize_textarea_field($value) { return trim((string) $value); }
-function sanitize_key($value) { return strtolower(preg_replace('/[^a-z0-9_\-]/', '', (string) $value)); }
+// FIDÈLE au comportement réel de sanitize_key() (WordPress core) : la valeur est mise en
+// minuscules AVANT le filtrage des caractères (jamais l'inverse) — un stub filtrant avant de
+// mettre en minuscules supprimerait à tort toute lettre majuscule (ex. les codes de race du
+// référentiel, tous en MAJUSCULES : "AA", "KWPN"...), un bug resté invisible tant qu'aucune
+// donnée réelle ne contenait de majuscule.
+function sanitize_key($value) { return preg_replace('/[^a-z0-9_\-]/', '', strtolower((string) $value)); }
 function esc_url_raw($value) { $value = trim((string) $value); return $value === '' ? '' : $value; }
 function esc_url($value) { return $value; }
 function absint($value) { return abs((int) $value); }
 function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
+function sanitize_html_class($value) { return preg_replace('/[^A-Za-z0-9_-]/', '', (string) $value); }
 function selected($a, $b) { return $a == $b ? ' selected' : ''; }
 function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
 // FIDÈLE au comportement réel de disabled() (WordPress core) : ÉCHO par défaut ($echo = true),
@@ -164,6 +170,18 @@ function add_meta_box($id, $title, $callback, $post_type = null, $context = 'adv
   $GLOBALS['__gwseq_test_meta_boxes'][] = $id;
 }
 
+// --- Préférences utilisateur (récents du référentiel, correctif référentiel §5-6) et assets ---
+$GLOBALS['__gwseq_test_current_user_id'] = 1;
+function get_current_user_id() { return $GLOBALS['__gwseq_test_current_user_id']; }
+$GLOBALS['__gwseq_test_user_meta'] = array();
+function get_user_meta($user_id, $key, $single = false) { return $GLOBALS['__gwseq_test_user_meta'][$user_id][$key] ?? ''; }
+function update_user_meta($user_id, $key, $value) { $GLOBALS['__gwseq_test_user_meta'][$user_id][$key] = $value; return true; }
+$GLOBALS['__gwseq_enqueued'] = array();
+function wp_enqueue_script($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] = $handle; }
+function wp_enqueue_style($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] = $handle; }
+function wp_script_is($handle, $status = 'enqueued') { return in_array($handle, $GLOBALS['__gwseq_enqueued'], true); }
+function wp_localize_script($handle, $object_name, $data) { $GLOBALS['__gwseq_test_localized'][$handle][$object_name] = $data; }
+
 define('ABSPATH', __DIR__ . '/');
 const GWSEQ_CPT_CHEVAL = 'gwseq_cheval';
 define('GWSEQ_MODULE_URL', 'https://example.test/wp-content/plugins/gws-core/modules/gws-equestrian/');
@@ -172,6 +190,7 @@ $repo_root = dirname(__DIR__);
 $module_dir = $repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/';
 require $repo_root . '/wp-content/plugins/gws-core/includes/fields.php';
 require $module_dir . 'includes/settings.php';
+require $module_dir . 'includes/race-referentiel.php';
 require $module_dir . 'includes/cheval-fields.php';
 require $module_dir . 'includes/pedigree-resolver.php';
 require $module_dir . 'includes/cheval-pedigree.php';
@@ -433,9 +452,12 @@ gws_test_assert(isset($option_962_match[0]) && strpos($option_962_match[0], 'dis
 // Sanitation récursive d'un arbre d'ascendants externes (§2-4, §11, §16 du correctif)
 // =====================================================================================
 
-// --- Ascendant externe simple, sans ascendants propres ---
+// --- Ascendant externe simple, sans ascendants propres — le code de race saisi (n'importe quelle
+// casse) est résolu au CODE CANONIQUE exact du référentiel (ex. "kwpn" -> "KWPN"), jamais stocké
+// tel quel avec une casse divergente (§ correctif référentiel : gwseq_sanitize_race_referentiel_code(),
+// mutualisée avec l'identité du cheval) ---
 $tree = gwseq_sanitize_external_ancestor_tree(array('name' => 'Kannan', 'race' => 'kwpn'), 3);
-gws_test_assert($tree === array('name' => 'Kannan', 'race' => 'kwpn', 'race_autre' => '', 'father' => null, 'mother' => null), 'Ascendant externe simple : nom et race (référentiel mutualisé) conservés, aucun ascendant propre fabriqué');
+gws_test_assert($tree === array('name' => 'Kannan', 'race' => 'KWPN', 'race_autre' => '', 'annee_naissance' => '', 'father' => null, 'mother' => null), 'Ascendant externe simple : nom et race (référentiel mutualisé, code canonique) conservés, aucun ascendant propre fabriqué');
 
 // --- Race facultative ---
 $tree = gwseq_sanitize_external_ancestor_tree(array('name' => 'Voltaire'), 3);
@@ -457,21 +479,24 @@ gws_test_assert($tree['race'] === 'autre' && $tree['race_autre'] === 'Camargue',
 // --- Ascendant externe possédant deux parents externes ---
 $tree = gwseq_sanitize_external_ancestor_tree(array(
   'name' => 'Kannan', 'race' => 'kwpn',
-  'father' => array('name' => 'Voltaire', 'race' => 'hanovrien'),
-  'mother' => array('name' => 'Cemeta', 'race' => 'trakehner'),
+  'father' => array('name' => 'Voltaire', 'race' => 'han'),
+  'mother' => array('name' => 'Cemeta', 'race' => 'trak'),
 ), 3);
-gws_test_assert($tree['father']['name'] === 'Voltaire' && $tree['father']['race'] === 'hanovrien' && $tree['mother']['name'] === 'Cemeta' && $tree['mother']['race'] === 'trakehner', 'Ascendant externe avec deux parents externes : les deux sont conservés, chacun avec sa propre race du référentiel');
+gws_test_assert($tree['father']['name'] === 'Voltaire' && $tree['father']['race'] === 'HAN' && $tree['mother']['name'] === 'Cemeta' && $tree['mother']['race'] === 'TRAK', 'Ascendant externe avec deux parents externes : les deux sont conservés, chacun avec sa propre race (code canonique) du référentiel');
 
-// --- Référentiel réellement mutualisé avec la fiche Cheval (§1 de la demande de correction) :
-// aucune seconde liste de races/stud-books codée en dur dans le fichier Pedigree ---
-foreach (array_keys(gwseq_cheval_race_options()) as $code) {
-  if ($code === 'autre') continue;
+// --- Référentiel réellement mutualisé avec la fiche Cheval (correctif référentiel, §1/§8/§13 de la
+// demande) : le référentiel Race/Stud-book/Appellation (race-referentiel.php, 154 entrées) est
+// l'UNIQUE source de vérité, utilisée à l'identique pour l'identité du cheval et chaque génération
+// d'ascendant externe — aucune seconde liste codée en dur dans cheval-pedigree.php ---
+foreach (gwseq_race_referentiel_entries() as $entry) {
+  $code = $entry['code'];
   $tree = gwseq_sanitize_external_ancestor_tree(array('name' => 'Test', 'race' => $code), 3);
-  gws_test_assert($tree['race'] === $code, "Référentiel mutualisé : le code de race \"$code\" de la fiche Cheval est accepté tel quel pour un ascendant externe");
+  gws_test_assert($tree['race'] === $code, "Référentiel mutualisé : le code de race/appellation \"$code\" du référentiel est accepté tel quel (code canonique) pour un ascendant externe");
 }
+gws_test_assert(count(gwseq_race_referentiel_entries()) === 154, 'Référentiel : le nombre d’entrées correspond exactement au référentiel source fourni (154 races/appellations)');
 gws_test_assert(
-  !preg_match('/[\'"]selle_francais[\'"]\s*=>/', $cheval_pedigree_source),
-  'Aucune seconde liste de races/stud-books codée en dur dans cheval-pedigree.php (le référentiel vient uniquement de gwseq_cheval_race_options(), défini dans cheval-fields.php)'
+  !preg_match('/function\s+gwseq_race_referentiel_raw_entries/', $cheval_pedigree_source),
+  'Aucune seconde liste de races/stud-books/appellations codée en dur dans cheval-pedigree.php (le référentiel vient uniquement de includes/race-referentiel.php)'
 );
 
 // --- Branche externe partiellement renseignée : père rempli, mère absente ---
@@ -481,30 +506,31 @@ $tree = gwseq_sanitize_external_ancestor_tree(array(
 ), 3);
 gws_test_assert($tree['father']['name'] === 'Voltaire' && $tree['mother'] === null, 'Branche externe partiellement renseignée : le père est conservé, la mère reste null (jamais fabriquée)');
 
-// --- Branche externe complète sur plusieurs générations (4 niveaux : L1 à L4) ---
+// --- Branche externe complète sur plusieurs générations (3 niveaux : L1 à L3, correctif
+// référentiel §10 — la profondeur standard GWS est désormais de 3 générations, 14 ascendants,
+// alignée sur la fiche IFCE) ---
 $deep_input = array(
   'name' => 'L1',
   'father' => array(
     'name' => 'L2',
     'father' => array(
       'name' => 'L3',
-      'father' => array(
-        'name' => 'L4',
-        'father' => array('name' => 'L5 (ne doit jamais apparaître)'),
-      ),
+      'father' => array('name' => 'L4 (ne doit jamais apparaître)'),
     ),
   ),
 );
 $tree = gwseq_sanitize_external_ancestor_tree($deep_input, GWSEQ_PEDIGREE_MAX_DEPTH - 1);
 gws_test_assert(
-  $tree['name'] === 'L1' && $tree['father']['name'] === 'L2' && $tree['father']['father']['name'] === 'L3' && $tree['father']['father']['father']['name'] === 'L4',
-  'Branche externe complète : les 4 générations autorisées (L1 à L4) sont bien conservées'
+  $tree['name'] === 'L1' && $tree['father']['name'] === 'L2' && $tree['father']['father']['name'] === 'L3',
+  'Branche externe complète : les 3 générations autorisées (L1 à L3) sont bien conservées'
 );
-
-// --- Refus/ignorance propre d'une génération 5 (§16) : jamais stockée, jamais d'erreur ---
 gws_test_assert(
-  $tree['father']['father']['father']['father'] === null,
-  'Génération 5 : silencieusement ignorée à la sanitation, jamais stockée, jamais de contournement de la limite serveur'
+  $tree['father']['father']['father'] === null && $tree['father']['father']['mother'] === null,
+  'Génération 3 : nœud strictement terminal à la sanitation, father/mother restent à null (la génération 4 n’est jamais fabriquée)'
+);
+gws_test_assert(
+  strpos(json_encode($tree), 'L4') === false,
+  'Génération 4 (correctif référentiel §10-11) : silencieusement ignorée à la sanitation, jamais stockée nulle part dans l’arbre, jamais de contournement de la limite serveur'
 );
 
 // --- Sanitation récursive : caractères spéciaux conservés à un niveau imbriqué (nom, et
@@ -573,9 +599,9 @@ for ($i = 1; $i <= 3; $i++) {
 // demande) : la donnée accentuée reste intacte même après avoir été rendue inactive puis
 // réactivée ---
 gwseq_set_horse_parent(950, 'father', array('mode' => 'gws', 'horse_id' => 10));
-gwseq_set_horse_parent(950, 'father', array('mode' => 'external', 'external' => array('name' => 'Native de Félines', 'race' => 'selle_francais')));
+gwseq_set_horse_parent(950, 'father', array('mode' => 'external', 'external' => array('name' => 'Native de Félines', 'race' => 'sf')));
 $relation = gwseq_get_horse_parent(950, 'father');
-gws_test_assert($relation['external']['name'] === 'Native de Félines' && $relation['external']['race'] === 'selle_francais', 'Correctif Unicode : la source reste intacte après un changement de mode aller-retour (GWS -> externe) et l’ajout d’une race');
+gws_test_assert($relation['external']['name'] === 'Native de Félines' && $relation['external']['race'] === 'SF', 'Correctif Unicode : la source reste intacte après un changement de mode aller-retour (GWS -> externe) et l’ajout d’une race (résolue au code canonique du référentiel)');
 
 // --- Un nom accentué imbriqué à une génération profonde (pas seulement au premier niveau) reste
 // intact lui aussi ---
@@ -641,9 +667,9 @@ gwseq_set_horse_parent(20, 'father', array('mode' => 'gws', 'horse_id' => 10));
 $father = gwseq_get_horse_parent(20, 'father');
 gws_test_assert($father['mode'] === 'gws' && $father['horse_id'] === 10, 'Père GWS valide : relation persistée et relue fidèlement');
 
-gwseq_set_horse_parent(20, 'mother', array('mode' => 'external', 'external' => array('name' => 'Jument Externe', 'race' => 'selle_francais')));
+gwseq_set_horse_parent(20, 'mother', array('mode' => 'external', 'external' => array('name' => 'Jument Externe', 'race' => 'sf')));
 $mother = gwseq_get_horse_parent(20, 'mother');
-gws_test_assert($mother['mode'] === 'external' && $mother['external']['name'] === 'Jument Externe' && $mother['external']['race'] === 'selle_francais', 'Mère externe : arbre persisté et relu fidèlement, race du référentiel incluse');
+gws_test_assert($mother['mode'] === 'external' && $mother['external']['name'] === 'Jument Externe' && $mother['external']['race'] === 'SF', 'Mère externe : arbre persisté et relu fidèlement, race du référentiel (code canonique) incluse');
 
 // --- Aucune duplication (§22) : seules les meta de relation existent, jamais de copie du nom/
 // race/Global Horse ID du père GWS sur l'enfant ---
@@ -669,7 +695,7 @@ gwseq_set_horse_parent(20, 'mother', array('mode' => 'gws', 'horse_id' => 20));
 gws_test_assert(gwseq_get_horse_parent(20, 'mother')['mode'] === '', 'gwseq_set_horse_parent() : auto-référence rejetée, la relation retombe à "aucune"');
 
 // --- Mode externe sans nom via gwseq_set_horse_parent() : mode retombe à vide ---
-gwseq_set_horse_parent(20, 'mother', array('mode' => 'external', 'external' => array('race' => 'selle_francais')));
+gwseq_set_horse_parent(20, 'mother', array('mode' => 'external', 'external' => array('race' => 'sf')));
 gws_test_assert(gwseq_get_horse_parent(20, 'mother')['mode'] === '', 'gwseq_set_horse_parent() : mode externe sans nom -> relation retombe à "aucune"');
 
 // --- Donnée mal formée : jamais d'erreur ---
@@ -687,23 +713,30 @@ $old_format_recognized = array('name' => 'Kannan', 'breed' => 'Selle Français',
 $GLOBALS['__gwseq_test_meta'][900] = array('_gwseq_pere_mode' => 'external', '_gwseq_pere_externe' => wp_json_encode($old_format_recognized));
 $relation = gwseq_get_horse_parent(900, 'father');
 gws_test_assert($relation['external']['name'] === 'Kannan', 'Compatibilité ascendante : le nom d’un ancien ascendant externe est restitué sans aucune perte');
-gws_test_assert($relation['external']['race'] === 'selle_francais' && $relation['external']['race_autre'] === '', 'Compatibilité ascendante : une ancienne valeur "Selle Français" (libellé canonique exact) est reconnue et convertie proprement en code technique');
+gws_test_assert($relation['external']['race'] === 'SF' && $relation['external']['race_autre'] === '', 'Compatibilité ascendante : une ancienne valeur "Selle Français" (libellé canonique exact) est reconnue et convertie proprement au code canonique du référentiel ("SF")');
 
 // --- Ancienne valeur texte correspondant à un CODE technique (insensible à la casse) ---
 $old_format_code = array('name' => 'Voltaire', 'breed' => 'kwpn', 'father' => null, 'mother' => null);
 $GLOBALS['__gwseq_test_meta'][901] = array('_gwseq_pere_mode' => 'external', '_gwseq_pere_externe' => wp_json_encode($old_format_code));
 gws_test_make_post(901, GWSEQ_CPT_CHEVAL, 'Autre Ancien Format');
 $relation = gwseq_get_horse_parent(901, 'father');
-gws_test_assert($relation['external']['race'] === 'kwpn', 'Compatibilité ascendante : une ancienne valeur correspondant au code technique ("kwpn") est également reconnue');
+gws_test_assert($relation['external']['race'] === 'KWPN', 'Compatibilité ascendante : une ancienne valeur correspondant au code technique ("kwpn") est également reconnue et normalisée au code canonique ("KWPN")');
 
-// --- Ancienne valeur texte qui ne correspond à rien du référentiel (ex. abréviation "SF") :
-// jamais perdue, reste récupérable via "Autre" (§2 : "sinon récupérable, probablement via Autre") ---
-$old_format_unmatched = array('name' => 'Jument Ancienne', 'breed' => 'SF', 'father' => null, 'mother' => null);
+// --- Ancienne valeur texte qui ne correspond à rien du référentiel (alias SFA->SF, §2 de la
+// demande référentiel : "important exemple" — reconnu, jamais rangé dans "Autre") ET une valeur
+// qui ne correspond réellement à rien : jamais perdue, reste récupérable via "Autre" ---
+$old_format_alias = array('name' => 'Jument Alias', 'breed' => 'SFA', 'father' => null, 'mother' => null);
+$GLOBALS['__gwseq_test_meta'][905] = array('_gwseq_pere_mode' => 'external', '_gwseq_pere_externe' => wp_json_encode($old_format_alias));
+gws_test_make_post(905, GWSEQ_CPT_CHEVAL, 'Ancien Format Alias SFA');
+$relation = gwseq_get_horse_parent(905, 'father');
+gws_test_assert($relation['external']['race'] === 'SF' && $relation['external']['race_autre'] === '', 'Compatibilité ascendante — exemple important de la demande : l’alias historique "SFA" est reconnu et résolu au code canonique "SF", jamais rangé dans "Autre"');
+
+$old_format_unmatched = array('name' => 'Jument Ancienne', 'breed' => 'Zzzabrégénotarace', 'father' => null, 'mother' => null);
 $GLOBALS['__gwseq_test_meta'][902] = array('_gwseq_mere_mode' => 'external', '_gwseq_mere_externe' => wp_json_encode($old_format_unmatched));
 gws_test_make_post(902, GWSEQ_CPT_CHEVAL, 'Ancien Format Abrégé');
 $relation = gwseq_get_horse_parent(902, 'mother');
 gws_test_assert($relation['external']['name'] === 'Jument Ancienne', 'Compatibilité ascendante : le nom reste intact même quand la race ne correspond à rien de connu');
-gws_test_assert($relation['external']['race'] === 'autre' && $relation['external']['race_autre'] === 'SF', 'Compatibilité ascendante : une abréviation non reconnue ("SF") n’est jamais perdue ni devinée arbitrairement — récupérable via "Autre", texte original conservé intégralement');
+gws_test_assert($relation['external']['race'] === 'autre' && $relation['external']['race_autre'] === 'Zzzabrégénotarace', 'Compatibilité ascendante : une valeur ne correspondant à rien du référentiel n’est jamais perdue ni devinée arbitrairement — récupérable via "Autre", texte original conservé intégralement');
 
 // --- Ancienne valeur texte vide (aucune race jamais renseignée à l'époque) ---
 $old_format_empty = array('name' => 'Sans Race', 'breed' => '', 'father' => null, 'mother' => null);
@@ -723,11 +756,11 @@ $GLOBALS['__gwseq_test_meta'][904] = array('_gwseq_pere_mode' => 'external', '_g
 gws_test_make_post(904, GWSEQ_CPT_CHEVAL, 'A Un Pedigree Complet Ancien Format');
 $relation = gwseq_get_horse_parent(904, 'father');
 gws_test_assert(
-  $relation['external']['name'] === 'Jamerose' && $relation['external']['race'] === 'selle_francais'
-    && $relation['external']['father']['name'] === 'Kannan' && $relation['external']['father']['race'] === 'kwpn'
+  $relation['external']['name'] === 'Jamerose' && $relation['external']['race'] === 'SF'
+    && $relation['external']['father']['name'] === 'Kannan' && $relation['external']['father']['race'] === 'KWPN'
     && $relation['external']['father']['father']['name'] === 'Voltaire' && $relation['external']['father']['father']['race'] === 'autre' && $relation['external']['father']['father']['race_autre'] === 'inconnue-non-reconnue'
     && $relation['external']['mother']['name'] === 'Une Jument' && $relation['external']['mother']['race'] === '',
-  'Compatibilité ascendante : un pedigree ancien format sur plusieurs générations (type Jamerose) est converti sans aucune perte, à chaque niveau'
+  'Compatibilité ascendante : un pedigree ancien format sur plusieurs générations (type Jamerose) est converti sans aucune perte, à chaque niveau, aux codes canoniques du référentiel'
 );
 // --- Le resolver fonctionne aussi directement sur une ancienne fiche jamais resauvegardée ---
 $node = gwseq_resolve_horse_pedigree(904);
@@ -774,7 +807,7 @@ gws_test_assert($node['father'] === null && $node['mother'] === null, 'Resolver 
 
 // --- Ascendant externe simple (sans ascendants propres) ---
 gws_test_make_post(103, GWSEQ_CPT_CHEVAL, 'A Une Mère Externe Simple');
-gwseq_set_horse_parent(103, 'mother', array('mode' => 'external', 'external' => array('name' => 'Mère Externe', 'race' => 'connemara')));
+gwseq_set_horse_parent(103, 'mother', array('mode' => 'external', 'external' => array('name' => 'Mère Externe', 'race' => 'co')));
 $node = gwseq_resolve_horse_pedigree(103);
 gws_test_assert($node['mother']['type'] === 'external' && $node['mother']['name'] === 'Mère Externe' && $node['mother']['breed'] === 'Connemara', 'Resolver : ascendant externe simple -> résolu correctement, libellé de race résolu depuis le référentiel');
 gws_test_assert($node['mother']['father'] === null && $node['mother']['mother'] === null, 'Resolver : ascendant externe simple -> aucun ascendant propre fabriqué');
@@ -784,24 +817,29 @@ gws_test_assert($node['father'] === null, 'Resolver : seulement mère -> père r
 gws_test_make_post(110, GWSEQ_CPT_CHEVAL, 'A Un Père Externe Avec Origines');
 gwseq_set_horse_parent(110, 'father', array('mode' => 'external', 'external' => array(
   'name' => 'Kannan', 'race' => 'kwpn',
-  'father' => array('name' => 'Voltaire', 'race' => 'hanovrien'),
-  'mother' => array('name' => 'Cemeta', 'race' => 'trakehner'),
+  'father' => array('name' => 'Voltaire', 'race' => 'han'),
+  'mother' => array('name' => 'Cemeta', 'race' => 'trak'),
 )));
 $node = gwseq_resolve_horse_pedigree(110);
 gws_test_assert($node['father']['name'] === 'Kannan' && $node['father']['breed'] === 'KWPN' && $node['father']['father']['name'] === 'Voltaire' && $node['father']['mother']['name'] === 'Cemeta', 'Resolver : ascendant externe avec deux parents externes -> tous résolus, libellés de race résolus');
 gws_test_assert($node['father']['father']['type'] === 'external' && $node['father']['mother']['type'] === 'external', 'Resolver : les ascendants d’un ascendant externe sont eux-mêmes de type "external"');
 
-// --- Branche externe complète sur plusieurs générations (jusqu'à la profondeur maximale) ---
+// --- Branche externe complète sur plusieurs générations (jusqu'à la profondeur maximale, désormais
+// 3 générations — correctif référentiel §10) ---
 gws_test_make_post(120, GWSEQ_CPT_CHEVAL, 'Pedigree Entièrement Externe En Père');
 gwseq_set_horse_parent(120, 'father', array('mode' => 'external', 'external' => array(
   'name' => 'G1',
-  'father' => array('name' => 'G2-P', 'father' => array('name' => 'G3-PP', 'father' => array('name' => 'G4-PPP'))),
+  'father' => array('name' => 'G2-P', 'father' => array('name' => 'G3-PP', 'father' => array('name' => 'G4-PPP (jamais stocké)'))),
   'mother' => array('name' => 'G2-M'),
 )));
 $node = gwseq_resolve_horse_pedigree(120);
 gws_test_assert(
-  $node['father']['name'] === 'G1' && $node['father']['father']['name'] === 'G2-P' && $node['father']['father']['father']['name'] === 'G3-PP' && $node['father']['father']['father']['father']['name'] === 'G4-PPP',
-  'Resolver : branche externe complète -> résolution récursive correcte sur 4 générations'
+  $node['father']['name'] === 'G1' && $node['father']['father']['name'] === 'G2-P' && $node['father']['father']['father']['name'] === 'G3-PP',
+  'Resolver : branche externe complète -> résolution récursive correcte sur 3 générations'
+);
+gws_test_assert(
+  !array_key_exists('father', $node['father']['father']['father']),
+  'Resolver : la 3e génération d’une branche externe est strictement terminale (aucune clé father, la 4e génération soumise n’est de toute façon jamais stockée)'
 );
 gws_test_assert($node['father']['mother']['name'] === 'G2-M' && $node['father']['mother']['father'] === null, 'Resolver : branche externe partiellement renseignée -> la partie non renseignée reste null');
 
@@ -816,15 +854,16 @@ gws_test_assert(
 );
 gws_test_assert(count($GLOBALS['__gwseq_test_posts']) === count(array_unique(array_keys($GLOBALS['__gwseq_test_posts']))), 'Resolver : aucune fiche cheval artificielle créée pour les ascendants externes (aucun nouvel enregistrement dans la base de test)');
 
-// --- Profondeur maximale (génération 4) pour une branche externe ---
+// --- Profondeur maximale (génération 3, correctif référentiel §10) pour une branche externe : la
+// nouvelle profondeur STANDARD GWS (14 ascendants, alignée sur la fiche IFCE) ---
 gws_test_make_post(140, GWSEQ_CPT_CHEVAL, 'Racine Profondeur Externe');
 gwseq_set_horse_parent(140, 'father', array('mode' => 'external', 'external' => array(
-  'name' => 'Gen1', 'father' => array('name' => 'Gen2', 'father' => array('name' => 'Gen3', 'father' => array('name' => 'Gen4', 'father' => array('name' => 'Gen5 (jamais stocké)')))),
+  'name' => 'Gen1', 'father' => array('name' => 'Gen2', 'father' => array('name' => 'Gen3', 'father' => array('name' => 'Gen4 (jamais stocké)'))),
 )));
-$node = gwseq_resolve_horse_pedigree(140, 4);
-$gen4 = $node['father']['father']['father']['father'];
-gws_test_assert($gen4['type'] === 'external' && $gen4['name'] === 'Gen4', 'Resolver : profondeur maximale (4) -> la 4e génération d’une branche externe est bien résolue en entier');
-gws_test_assert(!array_key_exists('father', $gen4) && !array_key_exists('mother', $gen4), 'Génération terminale (correctif complémentaire) : un nœud de génération 4 n’a AUCUNE clé father/mother, ni même null — jamais une 5e génération représentée, même sous forme d’absence de donnée');
+$node = gwseq_resolve_horse_pedigree(140);
+$gen3 = $node['father']['father']['father'];
+gws_test_assert($gen3['type'] === 'external' && $gen3['name'] === 'Gen3', 'Resolver : profondeur maximale (3) -> la 3e génération d’une branche externe est bien résolue en entier');
+gws_test_assert(!array_key_exists('father', $gen3) && !array_key_exists('mother', $gen3), 'Génération terminale (correctif référentiel §10) : un nœud de génération 3 n’a AUCUNE clé father/mother, ni même null — jamais une 4e génération représentée, même sous forme d’absence de donnée');
 
 // --- Mélange branche GWS + branche externe À L'INTÉRIEUR d'une chaîne GWS (§12 du correctif) ---
 gws_test_make_post(150, GWSEQ_CPT_CHEVAL, 'Poulain Mixte');
@@ -853,9 +892,13 @@ gwseq_set_horse_parent(161, 'father', array('mode' => 'gws', 'horse_id' => 160))
 $node = gwseq_resolve_horse_pedigree(161);
 gws_test_assert($node['father']['type'] === 'gws_horse' && $node['father']['name'] === 'Ancien GWS Devenu Externe', 'Passage externe -> GWS (retour) : le resolver suit de nouveau la source GWS, sans mélange avec la branche externe restée stockée');
 
-// --- Structure malformée/excessivement profonde ne peut pas contourner la limite serveur, même
-// si elle a été injectée directement en base (défense en profondeur du resolver lui-même,
-// indépendante de la sanitation à la sauvegarde) ---
+// --- Structure malformée/excessivement profonde — OU une DONNÉE HISTORIQUE réellement enregistrée
+// en génération 4+ avant le correctif référentiel (§11 : "compatibilité avec les anciennes données
+// de génération 4") — ne peut pas contourner la limite serveur STANDARD (désormais 3 générations),
+// même injectée directement en base : défense en profondeur du resolver lui-même, indépendante de
+// la sanitation à la sauvegarde. Utilise ici la profondeur PAR DÉFAUT (aucun override), exactement
+// le rendu standard d'une fiche — la donnée au-delà de 3 générations reste en base (documentée
+// §11), simplement jamais résolue/rendue ---
 gws_test_make_post(170, GWSEQ_CPT_CHEVAL, 'Donnée Corrompue En Base');
 $corrupted = array('name' => 'Niveau 1');
 $cursor = &$corrupted;
@@ -865,30 +908,33 @@ for ($i = 2; $i <= 10; $i++) {
 }
 unset($cursor);
 $GLOBALS['__gwseq_test_meta'][170] = array('_gwseq_pere_mode' => 'external', '_gwseq_pere_externe' => wp_json_encode($corrupted));
-$node = gwseq_resolve_horse_pedigree(170, 4);
+$node = gwseq_resolve_horse_pedigree(170);
 $depth_reached = 0;
 $cursor = $node['father'];
 while (is_array($cursor) && ($cursor['type'] ?? '') === 'external') {
   $depth_reached++;
   $cursor = $cursor['father'] ?? null;
 }
-gws_test_assert($depth_reached === 4, 'Resolver : une structure corrompue en base sur 10 niveaux est strictement bornée à 4 générations, quelle que soit la profondeur réelle des données stockées');
+gws_test_assert($depth_reached === GWSEQ_PEDIGREE_MAX_DEPTH, 'Resolver (§11, compatibilité génération 4) : une structure sur 10 niveaux (données historiques d’avant le correctif incluses) est strictement bornée à la profondeur STANDARD (désormais 3 générations) au rendu, quelle que soit la profondeur réelle stockée en base');
 gws_test_assert($cursor === null, 'Resolver : au-delà de la limite, plus aucune génération "external" supplémentaire n’apparaît (jamais de contournement de la borne serveur)');
 
-// --- Complément de recette : un arbre demandé à profondeur 4 ne contient AUCUN enfant de
-// profondeur 5, ni sous forme de nœud, ni même sous forme de clé father/mother valant null ---
-$gen4_from_corrupted = $node['father']['father']['father']['father'];
+// --- Complément de recette : un arbre résolu à la profondeur standard ne contient AUCUN enfant de
+// génération 4, ni sous forme de nœud, ni même sous forme de clé father/mother valant null — la
+// donnée de génération 4+ reste en base (jamais supprimée), simplement jamais rendue ---
+$gen3_from_corrupted = $node['father']['father']['father'];
 gws_test_assert(
-  $gen4_from_corrupted['type'] === 'external' && !array_key_exists('father', $gen4_from_corrupted) && !array_key_exists('mother', $gen4_from_corrupted),
-  'Complément : même à partir d’une donnée corrompue sur 10 niveaux, le nœud de génération 4 reste strictement terminal (aucune clé father/mother, aucune 5e génération représentée)'
+  $gen3_from_corrupted['type'] === 'external' && !array_key_exists('father', $gen3_from_corrupted) && !array_key_exists('mother', $gen3_from_corrupted),
+  'Complément (§11) : même à partir d’une donnée historique/corrompue sur 10 niveaux, le nœud de génération 3 reste strictement terminal au rendu standard (aucune clé father/mother, aucune 4e génération représentée)'
 );
 
 // --- Même règle pour une chaîne GWS (pas seulement une branche externe) : un cheval GWS résolu
-// à la génération 4 est lui aussi strictement terminal, même si son PROPRE pedigree continue
-// réellement en base au-delà (génération 5, hors périmètre, jamais interrogée ni représentée).
+// à la génération 3 (nouvelle profondeur standard, correctif référentiel §10) est lui aussi
+// strictement terminal, même si son PROPRE pedigree continue réellement en base au-delà
+// (génération 4, hors périmètre, jamais interrogée ni représentée — §11, compatibilité avec
+// d'éventuelles données de génération 4 déjà enregistrées).
 // Numérotation ci-dessous relative à la racine résolue (185, génération 0). ---
 gws_test_make_post(180, GWSEQ_CPT_CHEVAL, 'GWS Génération 5 (hors périmètre)');
-gws_test_make_post(181, GWSEQ_CPT_CHEVAL, 'GWS Génération 4');
+gws_test_make_post(181, GWSEQ_CPT_CHEVAL, 'GWS Génération 4 (hors périmètre)');
 gws_test_make_post(182, GWSEQ_CPT_CHEVAL, 'GWS Génération 3');
 gws_test_make_post(183, GWSEQ_CPT_CHEVAL, 'GWS Génération 2');
 gws_test_make_post(184, GWSEQ_CPT_CHEVAL, 'GWS Génération 1');
@@ -899,18 +945,18 @@ gwseq_set_horse_parent(183, 'father', array('mode' => 'gws', 'horse_id' => 182))
 gwseq_set_horse_parent(184, 'father', array('mode' => 'gws', 'horse_id' => 183)); // gen1 -> gen2
 gwseq_set_horse_parent(185, 'father', array('mode' => 'gws', 'horse_id' => 184)); // gen0 -> gen1
 $node = gwseq_resolve_horse_pedigree(185);
-$gws_gen4 = $node['father']['father']['father']['father'];
-gws_test_assert($gws_gen4['type'] === 'gws_horse' && $gws_gen4['name'] === 'GWS Génération 4', 'Chaîne GWS : la génération 4 est bien résolue en entier (nom, identité)');
+$gws_gen3 = $node['father']['father']['father'];
+gws_test_assert($gws_gen3['type'] === 'gws_horse' && $gws_gen3['name'] === 'GWS Génération 3', 'Chaîne GWS : la génération 3 est bien résolue en entier (nom, identité)');
 gws_test_assert(
-  !array_key_exists('father', $gws_gen4) && !array_key_exists('mother', $gws_gen4),
-  'Chaîne GWS : un nœud GWS de génération 4 est également strictement terminal (aucune clé father/mother), alors même que "GWS Génération 4" a réellement un père enregistré en base ("GWS Génération 5") — cette 5e génération n’est jamais interrogée ni représentée'
+  !array_key_exists('father', $gws_gen3) && !array_key_exists('mother', $gws_gen3),
+  'Chaîne GWS : un nœud GWS de génération 3 est également strictement terminal (aucune clé father/mother), alors même que "GWS Génération 3" a réellement un père enregistré en base ("GWS Génération 4") — cette 4e génération n’est jamais interrogée ni représentée (§11)'
 );
 
 // --- Le rendu de vérification admin/développement ne produit plus "Père : Non renseigné"/
 // "Mère : Non renseigné" sous un nœud terminal (bug constaté en recette : laissait croire à tort
-// qu'une 5e génération existerait dans le modèle) ---
-$terminal_preview_html = gwseq_render_pedigree_node_preview($gws_gen4);
-gws_test_assert(strpos($terminal_preview_html, 'Non renseigné') === false, 'Aperçu resolver : aucun "Non renseigné" sous un nœud de génération 4 (terminal), qui n’a structurellement aucune ligne Père/Mère');
+// qu'une génération supplémentaire existerait dans le modèle) ---
+$terminal_preview_html = gwseq_render_pedigree_node_preview($gws_gen3);
+gws_test_assert(strpos($terminal_preview_html, 'Non renseigné') === false, 'Aperçu resolver : aucun "Non renseigné" sous un nœud de génération 3 (terminal), qui n’a structurellement aucune ligne Père/Mère');
 gws_test_assert(strpos($terminal_preview_html, '<ul') === false, 'Aperçu resolver : aucune liste Père/Mère n’est même rendue pour un nœud terminal');
 
 // --- Cycle direct (données incohérentes forcées, en défense en profondeur du contrôle déjà fait
@@ -1081,7 +1127,7 @@ while (is_array($cursor) && ($cursor['name'] ?? '') !== '') {
   $depth_reached++;
   $cursor = $cursor['father'] ?? null;
 }
-gws_test_assert($depth_reached === GWSEQ_PEDIGREE_MAX_DEPTH, 'Sanitation serveur (chemin $_POST réel) : une structure externe soumise sur 8 niveaux est strictement bornée à 4 générations avant même d’être enregistrée');
+gws_test_assert($depth_reached === GWSEQ_PEDIGREE_MAX_DEPTH, 'Sanitation serveur (chemin $_POST réel) : une structure externe soumise sur 8 niveaux est strictement bornée à la profondeur standard (désormais 3 générations) avant même d’être enregistrée');
 
 // --- Autosave : testé en dernier (DOING_AUTOSAVE ne peut être défini qu'une fois par processus) ---
 gws_test_reset_security();
@@ -1139,7 +1185,7 @@ gws_test_assert(strpos($pedigree_box_html, 'data-gwseq-parent-role="father"') !=
 
 $cheval_admin_js_source_early = file_get_contents($module_dir . 'assets/cheval-admin.js');
 $disabled_js_start = strpos($cheval_admin_js_source_early, 'gwseq-parent-gws-select');
-$disabled_js_end = strpos($cheval_admin_js_source_early, "Race/Stud-book d'un ascendant externe");
+$disabled_js_end = strpos($cheval_admin_js_source_early, 'Race/Stud-book/Appellation (cheval GWS et ascendant externe)');
 $disabled_js_block = substr($cheval_admin_js_source_early, $disabled_js_start, $disabled_js_end - $disabled_js_start);
 gws_test_assert($disabled_js_start !== false && $disabled_js_end !== false && $disabled_js_end > $disabled_js_start, 'Intégrité UX : le bloc de synchronisation des sélecteurs GWS est bien un bloc distinct et localisable dans le script');
 gws_test_assert(strpos($disabled_js_block, 'option.disabled') !== false, 'Intégrité UX : le script désactive bien une option plutôt que de la supprimer ou de changer la sélection en cours');
@@ -1223,14 +1269,14 @@ gws_test_assert($relation_partial['mode'] === 'external' && $relation_partial['e
 // --- Nœud avec un descendant renseigné à un niveau plus profond : conservé sur toute sa branche ---
 gwseq_set_horse_parent(900, 'father', array('mode' => 'external', 'external' => array(
   'name' => 'Kannan', 'race' => 'kwpn',
-  'father' => array('name' => 'Voltaire', 'race' => 'hanovrien'),
+  'father' => array('name' => 'Voltaire', 'race' => 'han'),
 )));
 $relation_with_child = gwseq_get_horse_parent(900, 'father');
 gws_test_assert($relation_with_child['external']['name'] === 'Kannan' && $relation_with_child['external']['father']['name'] === 'Voltaire', 'Nettoyage : un nœud avec un descendant renseigné (père de Kannan = Voltaire) est bien conservé sur toute sa branche');
 
 // --- Vider ce même père (Kannan + Voltaire) : toute la branche disparaît proprement, la mère
 // (une autre relation, gérée indépendamment) reste totalement intacte ---
-gwseq_set_horse_parent(900, 'mother', array('mode' => 'external', 'external' => array('name' => 'Une Jument Intacte', 'race' => 'trakehner')));
+gwseq_set_horse_parent(900, 'mother', array('mode' => 'external', 'external' => array('name' => 'Une Jument Intacte', 'race' => 'trak')));
 gwseq_set_horse_parent(900, 'father', array('mode' => 'external', 'external' => array('name' => '', 'father' => array('name' => ''))));
 $relation_after_full_clear = gwseq_get_horse_parent(900, 'father');
 $relation_mother_untouched = gwseq_get_horse_parent(900, 'mother');
@@ -1304,36 +1350,37 @@ $fallback_html = ob_get_clean();
 gws_test_assert(strpos($fallback_html, 'de cet ascendant') !== false, 'Contexte : repli explicite (« cet ascendant ») tant que le nom d’un ascendant n’est pas encore renseigné');
 gws_test_assert(!preg_match('/Origines de\s*<\/strong>/', $fallback_html), 'Contexte : jamais « Origines de » affiché avec un nom vide accolé juste derrière');
 
-// --- Compteur de génération (§9) : présence des quatre indications, y compris dès le premier
-// niveau (l'ascendant externe immédiat EST déjà la génération 1) ---
+// --- Compteur de génération (§9, correctif référentiel §10 : profondeur standard désormais 3) :
+// présence des trois indications, y compris dès le premier niveau (l'ascendant externe immédiat
+// EST déjà la génération 1) ---
 gws_test_make_post(860, GWSEQ_CPT_CHEVAL, 'Racine Generations');
 gwseq_set_horse_parent(860, 'father', array('mode' => 'external', 'external' => array(
-  'name' => 'G1', 'father' => array('name' => 'G2', 'father' => array('name' => 'G3', 'father' => array('name' => 'G4'))),
+  'name' => 'G1', 'father' => array('name' => 'G2', 'father' => array('name' => 'G3')),
 )));
 ob_start();
 gwseq_render_cheval_pedigree_box(gws_test_make_post_object(860));
 $generations_html = ob_get_clean();
-gws_test_assert(strpos($generations_html, 'Génération 1 sur 4') !== false, 'Compteur de génération : « Génération 1 sur 4 » affiché dès le premier niveau d’ascendant externe');
-gws_test_assert(strpos($generations_html, 'Génération 2 sur 4') !== false, 'Compteur de génération : « Génération 2 sur 4 » affiché au deuxième niveau');
-gws_test_assert(strpos($generations_html, 'Génération 3 sur 4') !== false, 'Compteur de génération : « Génération 3 sur 4 » affiché au troisième niveau');
-gws_test_assert(strpos($generations_html, 'Génération 4 sur 4 — dernière génération') !== false, 'Compteur de génération : la génération 4 est explicitement identifiée comme la dernière (§10-11)');
+gws_test_assert(strpos($generations_html, 'Génération 1 sur 3') !== false, 'Compteur de génération : « Génération 1 sur 3 » affiché dès le premier niveau d’ascendant externe');
+gws_test_assert(strpos($generations_html, 'Génération 2 sur 3') !== false, 'Compteur de génération : « Génération 2 sur 3 » affiché au deuxième niveau');
+gws_test_assert(strpos($generations_html, 'Génération 3 sur 3 — dernière génération') !== false, 'Compteur de génération : la génération 3 est explicitement identifiée comme la dernière (correctif référentiel §10-11)');
 
-// --- Arrêt visuel strict à la génération 4 (§11) : appel isolé au rendu récursif avec
-// $depth_remaining = 0 (exactement la situation d'un nœud de génération 4) — aucun contrôle de
-// divulgation progressive ne doit y apparaître, quelle que soit la donnée présente ou non ---
+// --- Arrêt visuel strict à la génération 3 (correctif référentiel §10-11) : appel isolé au rendu
+// récursif avec $depth_remaining = 0 (exactement la situation d'un nœud de génération 3) — aucun
+// contrôle de divulgation progressive ne doit y apparaître, quelle que soit la donnée présente ou
+// non ---
 ob_start();
-gwseq_render_external_ancestor_fields('_gwseq_pere_externe', array('name' => 'G4', 'race' => '', 'race_autre' => '', 'father' => array('name' => 'G5 (ne doit jamais être proposé)'), 'mother' => null), 0, __('Père de G3', 'gws-core'));
+gwseq_render_external_ancestor_fields('_gwseq_pere_externe', array('name' => 'G3', 'race' => '', 'race_autre' => '', 'father' => array('name' => 'G4 (ne doit jamais être proposé)'), 'mother' => null), 0, __('Père de G2', 'gws-core'));
 $last_generation_html = ob_get_clean();
-gws_test_assert(strpos($last_generation_html, 'Génération 4 sur 4 — dernière génération') !== false, 'Génération 4 : le compteur identifie explicitement la dernière génération');
-gws_test_assert(strpos($last_generation_html, '<details') === false, 'Arrêt visuel strict : un nœud de génération 4 ne rend JAMAIS de contrôle « + Renseigner ses origines », même si une donnée de génération 5 existe déjà en base — impossible de la proposer depuis l’interface');
-gws_test_assert(strpos($last_generation_html, 'G5') === false, 'Arrêt visuel strict : une éventuelle donnée de génération 5 présente en base n’est jamais affichée ni éditable depuis l’interface de génération 4');
+gws_test_assert(strpos($last_generation_html, 'Génération 3 sur 3 — dernière génération') !== false, 'Génération 3 : le compteur identifie explicitement la dernière génération');
+gws_test_assert(strpos($last_generation_html, '<details') === false, 'Arrêt visuel strict : un nœud de génération 3 ne rend JAMAIS de contrôle « + Renseigner ses origines », même si une donnée de génération 4 existe déjà en base (§11) — impossible de la proposer depuis l’interface');
+gws_test_assert(strpos($last_generation_html, 'G4') === false, 'Arrêt visuel strict : une éventuelle donnée de génération 4 présente en base n’est jamais affichée ni éditable depuis l’interface de génération 3');
 
 // --- La limite serveur reste la garantie réelle, indépendamment de l'interface (déjà vérifié
 // plus haut via gwseq_sanitize_external_ancestor_tree() et un vrai $_POST profond — rappel ici
 // que retirer visuellement le contrôle ne remplace jamais ce contrôle serveur) ---
-$raw_beyond_limit = array('name' => 'G1', 'father' => array('name' => 'G2', 'father' => array('name' => 'G3', 'father' => array('name' => 'G4', 'father' => array('name' => 'G5 (doit être ignoré même si soumis manuellement)')))));
+$raw_beyond_limit = array('name' => 'G1', 'father' => array('name' => 'G2', 'father' => array('name' => 'G3', 'father' => array('name' => 'G4 (doit être ignoré même si soumis manuellement)'))));
 $tree_beyond_limit = gwseq_sanitize_external_ancestor_tree($raw_beyond_limit, GWSEQ_PEDIGREE_MAX_DEPTH - 1);
-gws_test_assert($tree_beyond_limit['father']['father']['father']['father'] === null, 'Arrêt strict également côté serveur : une génération 5 soumise malgré l’absence de contrôle visuel n’est de toute façon jamais stockée');
+gws_test_assert($tree_beyond_limit['father']['father']['father'] === null, 'Arrêt strict également côté serveur : une génération 4 soumise malgré l’absence de contrôle visuel n’est de toute façon jamais stockée');
 
 // --- Escaping admin : un nom externe contenant du HTML n'est jamais rendu tel quel ---
 gwseq_set_horse_parent(800, 'father', array('mode' => 'external', 'external' => array('name' => '<script>alert(1)</script>Voltaire')));
@@ -1367,6 +1414,80 @@ gws_test_assert(strpos($offspring_html, '<a href=') !== false, 'Production : un 
 ob_start();
 gwseq_render_cheval_offspring_box(gws_test_make_post_object(620));
 gws_test_assert(ob_get_clean() === '', 'Production : aucun rendu si le cheval n’a aucun produit (§27 : absence de donnée = absence d’affichage)');
+
+// =====================================================================================
+// Compatibilité avec les données de génération 4 déjà enregistrées (correctif référentiel, §11 de
+// la demande) : la profondeur standard passe de 4 à 3 générations, mais une sous-branche de
+// génération 4 DÉJÀ enregistrée (recettes précédentes) ne doit JAMAIS être supprimée
+// silencieusement au prochain enregistrement — le formulaire actuel ne peut plus la soumettre (il
+// ne la rend plus), le mécanisme de préservation (paramètre $previous_node de
+// gwseq_sanitize_external_ancestor_tree(), relecture préalable dans gwseq_set_horse_parent()) doit
+// donc la conserver telle quelle tant que l'ascendant de génération 3 n'a pas changé de nom.
+// =====================================================================================
+
+gws_test_make_post(990, GWSEQ_CPT_CHEVAL, 'Cheval Génération 4 Historique');
+
+// --- Étape 1 : une branche de génération 4 est enregistrée directement en base (simulant une
+// saisie antérieure au correctif référentiel, alors que la profondeur standard était encore 4) ---
+$GLOBALS['__gwseq_test_meta'][990] = array(
+  '_gwseq_pere_mode' => 'external',
+  '_gwseq_pere_externe' => wp_json_encode(array(
+    'name' => 'G1', 'race' => '', 'race_autre' => '', 'annee_naissance' => '',
+    'father' => array(
+      'name' => 'G2', 'race' => '', 'race_autre' => '', 'annee_naissance' => '',
+      'father' => array(
+        'name' => 'G3', 'race' => '', 'race_autre' => '', 'annee_naissance' => '',
+        'father' => array('name' => 'G4 Historique', 'race' => 'KWPN', 'race_autre' => '', 'annee_naissance' => 1990, 'father' => null, 'mother' => null),
+        'mother' => null,
+      ),
+      'mother' => null,
+    ),
+    'mother' => null,
+  )),
+);
+$relation_before_resave = gwseq_get_horse_parent(990, 'father');
+gws_test_assert($relation_before_resave['external']['father']['father']['father']['name'] === 'G4 Historique', 'Compatibilité génération 4 (§11) : avant tout nouvel enregistrement, la donnée historique de génération 4 est bien lisible telle quelle');
+
+// --- Étape 2 : l'utilisateur enregistre à nouveau la fiche via le formulaire actuel — qui ne rend
+// et ne soumet plus QUE 3 générations (G1, G2, G3), sans jamais reproposer G4. Le nom de G3 N'A PAS
+// changé : sa sous-branche (G4 Historique) doit être PRÉSERVÉE, jamais supprimée silencieusement ---
+$resave_result = gwseq_set_horse_parent(990, 'father', array('mode' => 'external', 'external' => array(
+  'name' => 'G1',
+  'father' => array('name' => 'G2', 'father' => array('name' => 'G3')),
+)));
+gws_test_assert($resave_result === true, 'Compatibilité génération 4 (§11) : le nouvel enregistrement (limité à 3 générations soumises) réussit normalement');
+$relation_after_resave = gwseq_get_horse_parent(990, 'father');
+gws_test_assert(
+  $relation_after_resave['external']['father']['father']['name'] === 'G3',
+  'Compatibilité génération 4 (§11) : G3 (génération 3, nom inchangé) reste bien le nœud actif après le nouvel enregistrement'
+);
+gws_test_assert(
+  $relation_after_resave['external']['father']['father']['father']['name'] === 'G4 Historique'
+    && $relation_after_resave['external']['father']['father']['father']['race'] === 'KWPN'
+    && $relation_after_resave['external']['father']['father']['father']['annee_naissance'] === 1990,
+  'Compatibilité génération 4 (§11) : la sous-branche de génération 4 déjà enregistrée ("G4 Historique") est bien PRÉSERVÉE intacte (nom, race, année) — le formulaire ne peut plus la soumettre, mais l’enregistrement ne la supprime jamais silencieusement'
+);
+
+// --- Le RESOLVER/rendu standard, lui, s'arrête bien à la génération 3 : la donnée de génération 4
+// reste en base (jamais supprimée) mais n'est simplement plus jamais rendue à la profondeur
+// standard — exactement le comportement documenté §11 ---
+$resolved_990 = gwseq_resolve_horse_pedigree(990);
+$g3_resolved = $resolved_990['father']['father']['father'];
+gws_test_assert($g3_resolved['name'] === 'G3' && !array_key_exists('father', $g3_resolved), 'Compatibilité génération 4 (§11) : au rendu standard (resolver), G3 reste strictement terminal — la génération 4 conservée en base n’est jamais interrogée ni affichée');
+
+// --- Si en revanche le nom de G3 CHANGE lors du nouvel enregistrement, l'ancienne sous-branche
+// (qui appartenait à un ascendant différent) est légitimement abandonnée — ce n'est alors PAS une
+// perte de donnée de l'ascendant actuel, mais la conséquence normale du remplacement de G3 par un
+// autre ascendant ---
+gwseq_set_horse_parent(990, 'father', array('mode' => 'external', 'external' => array(
+  'name' => 'G1',
+  'father' => array('name' => 'G2', 'father' => array('name' => 'G3 Remplacé')),
+)));
+$relation_after_name_change = gwseq_get_horse_parent(990, 'father');
+gws_test_assert(
+  $relation_after_name_change['external']['father']['father']['name'] === 'G3 Remplacé' && $relation_after_name_change['external']['father']['father']['father'] === null,
+  'Compatibilité génération 4 (§11) : si le nom de l’ascendant de génération 3 change, l’ancienne sous-branche de génération 4 (qui appartenait à un AUTRE ascendant) n’est légitimement plus reprise — la préservation ne s’applique qu’au même ascendant identifié par son nom'
+);
 
 // =====================================================================================
 // Internationalisation : text domain cohérent, contenu utilisateur jamais traduit

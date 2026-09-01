@@ -14,15 +14,27 @@
  * types de branches sont comptés de façon strictement identique, un mélange des deux dans un même
  * pedigree ne crée donc aucune ambiguïté de profondeur.
  *
- * DÉFINITION EXACTE DES "4 GÉNÉRATIONS" : la fiche dont on résout le pedigree est la génération 0
- * (toujours entièrement résolue, ce n'est pas un ascendant). Le paramètre $max_depth (par défaut
- * GWSEQ_PEDIGREE_MAX_DEPTH = 4) est le nombre de générations d'ASCENDANTS résolues au-delà de la
- * fiche elle-même, qu'elles soient GWS ou externes :
+ * DÉFINITION EXACTE DES "3 GÉNÉRATIONS" (réduites de 4 à 3, correctif §10 post-recette IFCE — la
+ * fiche de synthèse IFCE standard fournit un pedigree exploitable sur exactement 3 générations/14
+ * ascendants, devenue la profondeur STANDARD GWS) : la fiche dont on résout le pedigree est la
+ * génération 0 (toujours entièrement résolue, ce n'est pas un ascendant). Le paramètre $max_depth
+ * (par défaut GWSEQ_PEDIGREE_MAX_DEPTH = 3) est le nombre de générations d'ASCENDANTS résolues
+ * au-delà de la fiche elle-même, qu'elles soient GWS ou externes :
  *   génération 1 = parents (2 nœuds max)         | résolus si $max_depth >= 1
  *   génération 2 = grands-parents (4 nœuds max)  | résolus si $max_depth >= 2
  *   génération 3 = arrière-grands-parents (8)    | résolus si $max_depth >= 3
- *   génération 4 = arrière-arrière-grands-parents (16) | résolus si $max_depth >= 4
- * Soit 30 nœuds d'ascendants au maximum (2+4+8+16) en plus de la racine, avec $max_depth = 4.
+ * Soit 14 nœuds d'ascendants au maximum (2+4+8) en plus de la racine, avec $max_depth = 3 —
+ * exactement le nombre annoncé par une fiche de synthèse IFCE complète (Père/Mère puis leurs
+ * propres ascendants sur deux générations chacun).
+ *
+ * COMPATIBILITÉ DONNÉES DE GÉNÉRATION 4 (§11 du correctif) : des branches externes saisies avant ce
+ * correctif ont pu atteindre une 4e génération (alors autorisée). Cette donnée N'EST JAMAIS
+ * SUPPRIMÉE — elle reste intacte dans le JSON stocké (`_gwseq_pere_externe`/`_gwseq_mere_externe`,
+ * voir cheval-pedigree.php) — mais n'est plus RÉSOLUE ni rendue par ce fichier : avec
+ * GWSEQ_PEDIGREE_MAX_DEPTH = 3, `gwseq_resolve_external_ancestor_node()` s'arrête structurellement à
+ * la génération 3, exactement comme n'importe quelle autre donnée au-delà de $max_depth (voir
+ * "GÉNÉRATION TERMINALE" ci-dessous). Un appel explicite du resolver avec un $max_depth plus élevé
+ * la rendrait de nouveau visible — aucune donnée n'a été perdue, seul le rendu STANDARD change.
  *
  * GÉNÉRATION TERMINALE (correctif post-recette — revient sur la première version, qui produisait
  * un nœud sentinelle {type: "depth_limit"} au-delà de la limite) : un nœud de la dernière
@@ -74,17 +86,18 @@
 
 if (!defined('ABSPATH')) exit;
 
-const GWSEQ_PEDIGREE_MAX_DEPTH = 4;
+const GWSEQ_PEDIGREE_MAX_DEPTH = 3;
 
 /**
  * Point d'entrée. Structure de nœud "gws_horse" (cheval résolu, présent dans GWS) ou "external"
  * (ascendant hors GWS, structuré) — les deux partagent la même forme :
- *   {type, id?, global_id?, name, breed, father?, mother?}
+ *   {type, id?, global_id?, name, breed, birth_year?, father?, mother?}
  * ("id"/"global_id" uniquement pour "gws_horse" — un ascendant externe n'a ni identifiant de post
  * ni Global Horse ID : ce serait confondre l'identité d'une fiche GWS avec l'identité biologique
- * d'un cheval, que ce module ne prétend jamais garantir. "father"/"mother" ABSENTS — pas même
- * `null` — sur un nœud de la dernière génération autorisée : voir "GÉNÉRATION TERMINALE"
- * ci-dessus.)
+ * d'un cheval, que ce module ne prétend jamais garantir. "birth_year" uniquement pour "external"
+ * (§9 du correctif référentiel) — une fiche GWS expose déjà la sienne via sa propre identité,
+ * jamais dupliquée ici ; null si non renseignée. "father"/"mother" ABSENTS — pas même `null` — sur
+ * un nœud de la dernière génération autorisée : voir "GÉNÉRATION TERMINALE" ci-dessus.)
  * "unavailable" (l'ID référencé ne pointe plus vers une fiche Cheval existante — supprimée
  * définitivement ; un cheval simplement mis à la corbeille reste résolu normalement, ses données
  * n'étant pas perdues) :
@@ -188,6 +201,10 @@ function gwseq_resolve_external_ancestor_node($tree_node, $depth_remaining) {
     'type' => 'external',
     'name' => $tree_node['name'],
     'breed' => $breed_label !== '' ? $breed_label : null,
+    // Année de naissance (§9 du correctif référentiel) : propre à l'ascendant EXTERNE (une fiche
+    // GWS a déjà la sienne via sa propre identité, jamais dupliquée ici) — null si non renseignée,
+    // jamais "0" ni une chaîne vide qui laisserait croire à une valeur réelle.
+    'birth_year' => ($tree_node['annee_naissance'] ?? '') !== '' ? (int) $tree_node['annee_naissance'] : null,
   );
 
   if ($depth_remaining <= 0) {
@@ -220,8 +237,9 @@ function gwseq_render_pedigree_node_preview($node) {
 
   // "gws_horse" ou "external" : même rendu récursif.
   $breed = !empty($node['breed']) ? ' (' . esc_html($node['breed']) . ')' : '';
+  $birth_year = !empty($node['birth_year']) ? ' — ' . (int) $node['birth_year'] : '';
   $type_marker = $node['type'] === 'external' ? ' <em>(' . esc_html__('externe', 'gws-core') . ')</em>' : '';
-  $html = '<strong>' . esc_html($node['name']) . '</strong>' . $breed . $type_marker;
+  $html = '<strong>' . esc_html($node['name']) . '</strong>' . $breed . $birth_year . $type_marker;
 
   if (array_key_exists('father', $node) || array_key_exists('mother', $node)) {
     $html .= '<ul style="margin-left:1em;">';

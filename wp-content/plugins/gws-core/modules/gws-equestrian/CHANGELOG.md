@@ -5,6 +5,77 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.14.0 — Référentiel Race / Stud-book / Appellation, ascendant + année de naissance, pedigree sur 3 générations
+
+Refonte complète de la gestion de la race/du stud-book/de l'appellation du cheval, à partir du
+référentiel `GWS_referentiel_races_appellations_IFCE.xlsx` fourni : dissociation de la richesse
+technique du référentiel (154 entrées) et de la simplicité de l'interface (un champ de recherche,
+jamais un `<select>` de plus de 100 valeurs).
+
+**Nouveau fichier `includes/race-referentiel.php`** — source de vérité UNIQUE, découplée de toute
+UI, réutilisable à l'identique par l'admin, le parseur IFCE, et un futur import CSV/API :
+- 154 entrées (151 races/stud-books + 3 appellations OC/ONC/OE), chacune `{code, ifce, gws, type,
+  alias, usage}` — le `code` canonique (ex. `SF`, `KWPN`, `OC`) est TOUJOURS la donnée structurée
+  stockée en base, jamais un libellé.
+- Helpers conceptuels dédiés, jamais de logique dupliquée ailleurs : lecture par code
+  (`gwseq_race_referentiel_get()`), résolution exacte d'un alias/libellé vers le code canonique
+  (`gwseq_race_referentiel_resolve_alias()` — ex. l'alias historique/import "SFA" résout vers "SF",
+  jamais rangé dans "Autre"), recherche partielle pour l'autocomplétion
+  (`gwseq_race_referentiel_search()` — code, libellé IFCE/GWS, alias, accents/casse ignorés,
+  préfixe classé en tête), sanitation d'un code brut vers le code canonique
+  (`gwseq_sanitize_race_referentiel_code()`), libellé d'affichage et type race/appellation.
+- Distinction technique `type = race`/`appellation` conservée mais jamais exposée comme deux champs
+  séparés côté utilisateur — races et appellations (OC, ONC, OE) partagent le MÊME moteur de
+  recherche, sous un unique libellé « Race / Stud-book / Appellation ».
+- Récents/suggestions par utilisateur (`_gwseq_race_recent_codes`, user meta) : à l'ouverture d'un
+  champ vide, un éleveur voit ses 5 à 10 valeurs récemment utilisées plutôt que les 154 entrées —
+  jamais un profil métier rigide CSO/dressage/poney codé en dur, les récents s'adaptent naturellement
+  à l'usage réel. Repli neutre (champ "usage" du référentiel source) tant qu'aucun historique
+  n'existe. Enregistrés UNIQUEMENT depuis la glue de sauvegarde des formulaires (identité, pedigree),
+  jamais depuis les fonctions métier pures — un import ne doit jamais compter comme un choix manuel.
+  Préférence propre à l'utilisateur, ne modifie jamais la donnée Cheval.
+- "Autre — préciser" reste le seul filet de sécurité quand rien ne correspond — un code déjà connu
+  du référentiel n'est plus jamais rangé dedans.
+
+**Nouveau composant partagé** (`assets/race-referentiel-autocomplete.js` +
+`.css`, rendu via `gwseq_render_race_referentiel_field()`) : remplace l'ancien `<select>` d'une
+vingtaine de races codées en dur, à la fois pour l'identité du cheval (`cheval-fields.php`) ET
+chaque génération d'ascendant externe (`cheval-pedigree.php`) — un seul composant, un seul
+référentiel, aucune liste divergente dans le module. Recherche par code IFCE, libellé IFCE, libellé
+GWS ou alias (ex. "sel"/"sf" -> Selle Français, "kwp" -> KWPN, "old" -> Oldenburg, "conn" ->
+Connemara/Connemara Part-Bred, "oc" -> Origines Constatées) ; utilisable sans connaître les codes
+IFCE (taper "Oldenburg" fonctionne aussi bien que taper "OLD"). Import IFCE mis à jour pour utiliser
+ce même référentiel (voir 0.13.x, mapping race).
+
+**Ascendant externe — année de naissance** : le modèle `{name, race, race_autre, father, mother}`
+devient `{name, race, race_autre, annee_naissance, father, mother}` — champ numérique optionnel,
+jamais requis, jamais utilisé pour calculer ou stocker un âge. L'import IFCE l'alimente
+automatiquement quand la fiche porte l'information (même token `\d{4}` déjà utilisé pour délimiter
+la fin du nom d'un ascendant).
+
+**Pedigree : profondeur standard 4 -> 3 générations** (14 ascendants, alignée sur la fiche de
+synthèse IFCE) : `GWSEQ_PEDIGREE_MAX_DEPTH` passe de 4 à 3 — sanitation, resolver, aperçu
+développeur et compteur « Génération N sur X » suivent tous ce changement symboliquement, sans
+valeur codée en dur ailleurs. Aucune génération 4 supplémentaire ne peut plus être proposée depuis
+l'interface. **Compatibilité non destructive** : une donnée de génération 4 déjà enregistrée lors de
+recettes précédentes n'est jamais supprimée — `gwseq_sanitize_external_ancestor_tree()` relit et
+préserve intacte la sous-branche existante tant que l'ascendant de génération 3 concerné n'a pas
+changé de nom ; le resolver et le rendu standard s'arrêtent simplement à la génération 3 sans jamais
+l'interroger ni l'afficher.
+
+**IFCE import — reconnaissance améliorée** : le mapping de race d'un ascendant utilise désormais le
+référentiel complet (154 entrées + alias) au lieu de l'ancienne liste d'une vingtaine de races —
+vérifié sur le vrai pedigree Jamerose de Félines, où l'alias "SFA" (Hors La Loi II) et l'alias "OES"
+(Chablis) sont désormais reconnus et résolus à leur code canonique, jamais rangés dans "Autre".
+
+**Tests** : nouveau fichier `tests/gws-equestrian-race-referentiel-test.php` (référentiel : entrées,
+résolution d'alias dont SFA->SF, recherche partielle, accents/casse, "Autre" toujours disponible,
+récents/suggestions) ; `tests/gws-equestrian-cheval-logic-test.php`,
+`tests/gws-equestrian-pedigree-logic-test.php` et `tests/gws-equestrian-ifce-import-test.php` mis à
+jour pour la profondeur 3 générations, les codes canoniques et l'année de naissance, avec un nouveau
+bloc dédié à la compatibilité non destructive de la génération 4 déjà enregistrée. Aucune régression
+sur la suite existante.
+
 ## 0.13.2 — Correctif bloquant : « headers already sent » à l'analyse du PDF IFCE
 
 Le lancement réel de l'analyse du PDF IFCE (0.13.1) échouait avec `Warning: Cannot modify header

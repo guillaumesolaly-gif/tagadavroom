@@ -1,8 +1,10 @@
 /**
  * Écran d'édition d'une fiche cheval — affichage conditionnel de plusieurs groupes de champs
- * indépendants : précision "Robe : Autre", précision "Race/Stud-book : Autre", le bloc de prix
- * correspondant au mode de prix choisi (Prix fixe / Fourchette / Sur demande), et — depuis
- * l'Étape 5 — la source de chaque parent (Père/Mère : cheval GWS ou ascendant externe). Même
+ * indépendants : précision "Robe : Autre", le bloc de prix correspondant au mode de prix choisi
+ * (Prix fixe / Fourchette / Sur demande), et — depuis l'Étape 5 — la source de chaque parent
+ * (Père/Mère : cheval GWS ou ascendant externe). La précision "Race/Stud-book/Appellation : Autre"
+ * est désormais gérée par le composant partagé assets/race-referentiel-autocomplete.js (référentiel
+ * Race/Stud-book/Appellation — voir includes/race-referentiel.php), pas par ce fichier. Même
  * technique que assets/prestation-admin.js (JavaScript natif, aucune dépendance, la sauvegarde
  * réelle reste entièrement gérée côté serveur — voir includes/cheval-fields.php et
  * includes/cheval-pedigree.php) : ce script ne fait qu'afficher/masquer des blocs déjà présents
@@ -19,7 +21,6 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     var robeSelect = document.getElementById('gwseq-cheval-robe');
-    var raceSelect = document.getElementById('gwseq-cheval-race');
     var prixModeSelect = document.getElementById('gwseq-cheval-prix-mode');
 
     function setVisible(selector, visible) {
@@ -30,11 +31,6 @@
     function applyRobe() {
       if (!robeSelect) return;
       setVisible('[data-gwseq-cheval-fields="robe-autre"]', robeSelect.value === 'autre');
-    }
-
-    function applyRace() {
-      if (!raceSelect) return;
-      setVisible('[data-gwseq-cheval-fields="race-autre"]', raceSelect.value === 'autre');
     }
 
     function applyPrixMode() {
@@ -48,10 +44,6 @@
     if (robeSelect) {
       robeSelect.addEventListener('change', applyRobe);
       applyRobe();
-    }
-    if (raceSelect) {
-      raceSelect.addEventListener('change', applyRace);
-      applyRace();
     }
     if (prixModeSelect) {
       prixModeSelect.addEventListener('change', applyPrixMode);
@@ -127,19 +119,10 @@
       syncGwsParentSelects();
     }
 
-    // Race/Stud-book d'un ascendant externe (correction post-recette) : jusqu'à 15 nœuds par
-    // branche (4 générations), chacun avec son propre sélecteur — une écoute déléguée unique sur
-    // le conteneur du pedigree évite d'attacher un gestionnaire par nœud. Le champ "Préciser la
-    // race" est toujours l'élément suivant immédiat dans le balisage (voir
-    // includes/cheval-pedigree.php), jamais recherché par identifiant.
-    document.addEventListener('change', function (e) {
-      if (!e.target.classList || !e.target.classList.contains('gwseq-external-race-select')) return;
-      var fieldWrap = e.target.closest('p');
-      var autreWrap = fieldWrap ? fieldWrap.nextElementSibling : null;
-      if (autreWrap && autreWrap.classList.contains('gwseq-external-race-autre-wrap')) {
-        autreWrap.style.display = e.target.value === 'autre' ? '' : 'none';
-      }
-    });
+    // Race/Stud-book/Appellation (cheval GWS et ascendant externe) : composant de recherche partagé,
+    // entièrement autonome — voir assets/race-referentiel-autocomplete.js et
+    // includes/race-referentiel.php. Ce fichier n'a plus rien à faire pour son affichage (plus de
+    // <select> ni de bascule "Autre" à gérer ici).
 
     // Mise à jour EN DIRECT des intitulés contextuels du pedigree (correctif post-recette : un
     // premier essai sans JavaScript s'est révélé insuffisant — "Père de cet ascendant" restait
@@ -222,12 +205,16 @@
         if (confirmText && !window.confirm(confirmText)) return;
       }
 
-      nodeWrap.querySelectorAll('input[type="text"]').forEach(function (input) {
+      nodeWrap.querySelectorAll('input[type="text"], input[type="number"]').forEach(function (input) {
         input.value = '';
       });
-      nodeWrap.querySelectorAll('.gwseq-external-race-select').forEach(function (select) {
-        select.value = '';
-        select.dispatchEvent(new Event('change', { bubbles: true }));
+      nodeWrap.querySelectorAll('.gwseq-race-field').forEach(function (field) {
+        var codeInput = field.querySelector('.gwseq-race-field__code');
+        if (codeInput) codeInput.value = '';
+        var searchInput = field.querySelector('.gwseq-race-field__search');
+        if (searchInput) searchInput.value = '';
+        var autreWrap = field.querySelector('.gwseq-race-field__autre-wrap');
+        if (autreWrap) autreWrap.style.display = 'none';
       });
       nodeWrap.querySelectorAll('.gwseq-external-name-input').forEach(function (input) {
         input.dispatchEvent(new Event('input', { bubbles: true }));
