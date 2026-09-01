@@ -70,21 +70,26 @@
     if (window.console && window.console.warn) window.console.warn.apply(window.console, ['[gwseq-race]'].concat(Array.prototype.slice.call(arguments)));
   }
 
-  log('script chargé');
+  // Messages ASCII uniquement, y compris dans les chaines de caracteres (pas seulement dans le
+  // code executable lui-meme) : cette instrumentation vise justement a etre fiable dans un
+  // environnement de production potentiellement fragile a l'encodage (voir normalize() plus bas) ;
+  // un accent dans une simple chaine de log ne casserait pas le script, mais autant ne prendre
+  // aucun risque, meme cosmetique, dans ce fichier precis.
+  log('script loaded');
 
   document.addEventListener('DOMContentLoaded', function () {
-    log('DOMContentLoaded déclenché');
+    log('DOMContentLoaded fired');
     var config = window.gwseqRaceReferentiel;
     if (!config || !Array.isArray(config.entries)) {
-      warn('window.gwseqRaceReferentiel absent ou invalide — le référentiel n’a pas été correctement transmis par wp_localize_script() (vérifier que gwseq_enqueue_race_referentiel_assets() s’exécute bien sur cet écran) :', config);
+      warn('window.gwseqRaceReferentiel missing or invalid - the referential was not correctly passed by wp_localize_script() (check that gwseq_enqueue_race_referentiel_assets() actually runs on this screen):', config);
       return;
     }
-    log('référentiel chargé, entrées :', config.entries.length, 'suggestions :', (config.suggestions || []).length);
+    log('referential loaded, entries:', config.entries.length, 'suggestions:', (config.suggestions || []).length);
 
     var fields = document.querySelectorAll('[data-gwseq-race-field]');
-    log('champs [data-gwseq-race-field] trouvés dans le DOM :', fields.length);
+    log('[data-gwseq-race-field] fields found in the DOM:', fields.length);
     if (fields.length === 0) {
-      warn('aucun champ [data-gwseq-race-field] trouvé — vérifier que gwseq_render_race_referentiel_field() a bien été rendu sur cet écran (identité et/ou pedigree)');
+      warn('no [data-gwseq-race-field] field found - check that gwseq_render_race_referentiel_field() was actually rendered on this screen (identity and/or pedigree)');
     }
     fields.forEach(function (field, index) {
       // Un champ malformé (structure inattendue) ne doit jamais empêcher l'initialisation des
@@ -92,9 +97,9 @@
       // exception non rattrapée dans son callback) — chaque champ reste isolé des autres.
       try {
         initField(field, config);
-        log('champ #' + index + ' (id=' + (field.querySelector('.gwseq-race-field__search') || {}).id + ') initialisé avec succès');
+        log('field #' + index + ' (id=' + (field.querySelector('.gwseq-race-field__search') || {}).id + ') initialized successfully');
       } catch (e) {
-        warn('champ #' + index + ' — échec de l’initialisation :', e);
+        warn('field #' + index + ' - initialization failed:', e);
       }
     });
   });
