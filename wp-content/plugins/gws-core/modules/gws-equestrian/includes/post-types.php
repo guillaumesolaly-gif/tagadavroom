@@ -22,6 +22,15 @@
  * une source de vérité fantôme sans jamais être exploitée. Les libellés de l'image à la une sont
  * également adaptés en "Photo principale" (§3/§5) : Featured Image reste l'unique source de vérité
  * pour la photo principale, aucune meta parallèle n'est créée.
+ *
+ * Module Équipe (nouvel objet métier, distinct de Cheval) : un Membre reprend exactement la même
+ * philosophie — 'page-attributes' pour l'ordre (menu_order natif, voir includes/admin-ui.php),
+ * 'thumbnail' relabellé "Photo" comme unique source de vérité pour la photo (aucune galerie ici,
+ * contrairement à Cheval), et pas de support 'editor' (fiche 100% structurée, voir
+ * includes/membre-fields.php et includes/membre-editor.php). Le titre technique WordPress
+ * (post_title) n'est PAS saisi manuellement pour ce post type : il est automatiquement dérivé de
+ * Prénom + Nom (voir gwseq_auto_title_membre() dans includes/membre-fields.php), 'title' reste
+ * néanmoins un support déclaré (stockage/tri/recherche natifs par titre inchangés).
  */
 
 if (!defined('ABSPATH')) exit;
@@ -85,6 +94,27 @@ function gwseq_register_post_types() {
     'menu_icon' => 'dashicons-pets',
     'supports' => array('title', 'thumbnail', 'page-attributes'),
     'rewrite' => array('slug' => 'chevaux'),
+  ));
+
+  register_post_type(GWSEQ_CPT_MEMBRE, array(
+    'labels' => array(
+      'name' => __('Équipe', 'gws-core'),
+      'singular_name' => __('Membre', 'gws-core'),
+      'add_new_item' => __('Ajouter un membre', 'gws-core'),
+      'edit_item' => __('Modifier le membre', 'gws-core'),
+      'all_items' => __('Tous les membres', 'gws-core'),
+      'not_found' => __('Aucun membre trouvé', 'gws-core'),
+      'featured_image' => __('Photo', 'gws-core'),
+      'set_featured_image' => __('Définir la photo', 'gws-core'),
+      'remove_featured_image' => __('Supprimer la photo', 'gws-core'),
+      'use_featured_image' => __('Utiliser comme photo', 'gws-core'),
+    ),
+    'public' => true,
+    'has_archive' => true,
+    'show_in_rest' => true,
+    'menu_icon' => 'dashicons-groups',
+    'supports' => array('title', 'thumbnail', 'page-attributes'),
+    'rewrite' => array('slug' => 'equipe'),
   ));
 }
 add_action('init', 'gwseq_register_post_types');

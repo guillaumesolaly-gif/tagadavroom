@@ -5,6 +5,84 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.17.0 — Module Équipe (nouvel objet métier Membre)
+
+Nouvel objet métier, indépendant de Cheval : **Équipe**, pour gérer les personnes qu'une structure
+équestre souhaite présenter (dirigeants, cavaliers, moniteurs, soigneurs, grooms, responsables
+d'élevage, vétérinaires intégrés, personnel administratif...). Volontairement simple — ni annuaire
+RH, ni système de comptes utilisateurs, ni CRM : un Membre est une fiche métier structurée, chaque
+information restant individuellement accessible (jamais un blob HTML), pour une réutilisation
+future sur le site et d'autres supports GWS (page Équipe, blocs individuels, catalogues, Social
+Kit, API/exports).
+
+**Architecture** (`includes/membre-fields.php`, `includes/membre-editor.php`) : nouveau post type
+`gwseq_membre`, menu d'administration "Équipe" (`Équipe → Tous les membres` /
+`Équipe → Ajouter un membre`), fiche appelée "Membre". Tous les champs sont facultatifs. Aucun
+référentiel ni taxonomie créés, à l'exception des Langues (seul champ réellement structuré) : le
+reste (Fonction/rôle, Localisation, Spécialités, Diplômes/qualifications) reste volontairement du
+texte libre — GWS doit fonctionner avec des structures et qualifications différentes selon les
+pays.
+
+**Trois sections simples** (Identité, Profil, Contact — trois meta boxes empilées, pas un système
+d'onglets) : le système d'onglets de Cheval (`includes/cheval-admin-tabs.php`) est structurellement
+couplé à ce seul post type (écran ciblé en dur, script dédié, déplacement DOM spécifique à sa boîte
+Médias) ; le généraliser pour un module aussi réduit aurait créé exactement le couplage étrange
+mis en garde en amont — trois meta boxes empilées restent immédiatement lisibles sans abstraction
+supplémentaire.
+
+- **Identité** : Prénom, Nom, Fonction/rôle (texte libre, aucune liste imposée), Photo (image à la
+  une native relabellée "Photo", aucune meta parallèle, aucun système d'upload parallèle),
+  Localisation (texte libre, utile aux structures multi-sites).
+- **Profil** : Présentation/parcours (texte long libre), Spécialités (texte libre), Diplômes/
+  qualifications (texte libre, aucun référentiel français imposé), Langues (sélection multiple,
+  valeurs canoniques stables `fr/en/de/es/it/pt/nl/sv/zh/ja/ar/autre` indépendantes des libellés
+  affichés — les noms complets sont affichés, jamais seulement FR/EN/DE ; "Autre" révèle un champ
+  libre "Préciser" dont le serveur reste l'autorité : si "Autre" n'est plus sélectionné, la
+  précision est systématiquement nettoyée, même si l'ancienne valeur est encore soumise).
+- **Contact** (tous facultatifs) : Téléphone (texte libre, aucun format imposé, un numéro
+  international n'est jamais dénaturé), E-mail (sanitation WordPress appropriée), WhatsApp
+  (donnée indépendante du téléphone principal, adaptée à une future construction de lien wa.me —
+  cette construction elle-même n'est pas développée dans ce lot), Instagram/Facebook/LinkedIn/
+  TikTok/Site (URLs sanitisées, aucune connexion aux API des réseaux sociaux).
+
+**Titre technique automatique** (post_title = Prénom + Nom, jamais saisi séparément) : un filtre
+`wp_insert_post_data` (jamais un second `wp_update_post()` dans un hook `save_post`, qui obligerait
+à se dés-accrocher soi-même pour éviter une boucle) recalcule le titre à chaque enregistrement réel
+à partir du prénom/nom de LA MÊME soumission, protégé par le même nonce que la sauvegarde des
+meta — une révision, un autosave, ou tout appel de `wp_insert_post()` ne portant pas ce nonce (ex.
+Quick Edit) laisse le titre déjà enregistré intact. Fonctionne en brouillon, avec prénom seul, nom
+seul, ou les deux vides (titre vide, WordPress affiche alors nativement "(sans titre)"). Le champ
+Titre natif est masqué sur l'écran d'édition (même technique CSS ciblée que
+`includes/cheval-categories.php`) pour éviter une saisie redondante silencieusement écrasée.
+
+**Liste "Tous les membres"** : colonnes Photo (miniature WordPress 40×40, jamais l'image
+originale) | Nom | Fonction/rôle | Localisation | Langues (représentation compacte, ex. "Français,
+Anglais") | Ordre (menu_order natif, aucun glisser-déposer dans ce lot) — colonne native "Date"
+retirée (même choix que Cheval). Recherche WordPress native pleinement fonctionnelle sans code
+supplémentaire (le titre EST le nom).
+
+**Permissions** : post type enregistré sans `capability_type` personnalisé (type par défaut
+`'post'`, même logique que Prestation/Groupe/Cheval) — un Éditeur peut consulter/ajouter/modifier/
+publier/gérer la photo/mettre à la corbeille un membre sans qu'aucune capacité technique
+supplémentaire ne soit créée pour ce seul module.
+
+**Tests** (`tests/gws-equestrian-membre-logic-test.php`, 140 assertions, et mise à jour de
+`tests/gws-equestrian-foundations-test.php` pour le 4ᵉ post type) : membre vide/minimal, prénom +
+nom, titre automatique (prénom seul, nom seul, les deux vides, jamais recalculé sans le bon nonce
+ni pendant un autosave), sauvegarde/rechargement de tous les champs des trois sections, langues
+multiples, "Autre" + Préciser, suppression de "Autre" nettoyant la précision EN BASE au
+réenregistrement, sanitation e-mail/URLs, téléphone international non détruit, WhatsApp
+indépendant du téléphone, colonnes de la liste (contenu réel et cas de données manquantes),
+absence de la colonne Date, sécurité de la sauvegarde (nonce/permissions/révision/autosave), et
+absence d'effet de bord sur Cheval/Prestation/Groupe. Intégralité des suites existantes GWS Core
+et GWS Equestrian revérifiée (18 fichiers PHP + 2 suites JS runtime), aucune régression.
+
+**Non développé dans ce lot** (conformément à la demande) : comptes utilisateurs, login, planning,
+horaires, contrats, salaires, RH, disponibilité, réservations, relations avec les chevaux,
+affectation à des prestations, catégories/départements/organigramme d'équipe, taxonomie des
+fonctions/spécialités/diplômes, CV PDF, import Excel/CSV, génération PDF, rendu front, schema.org
+spécifique, connexion aux API des réseaux sociaux.
+
 ## 0.16.0 — Corrections de clôture du back-office Cheval V1
 
 Suite à un audit fonctionnel du back-office Cheval en conditions réelles (module jugé

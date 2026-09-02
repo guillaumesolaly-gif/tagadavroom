@@ -789,3 +789,86 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
     relevée (`Warning: Array to string conversion` dans `gws-equestrian-cheval-labels-test.php`,
     ligne 35, déjà présente avant ce lot, hors périmètre — non modifiée, conformément à la consigne
     de ne toucher à aucun autre comportement).
+- **Module Équipe, nouvel objet métier Membre (0.17.0, `gws-equestrian-membre-logic-test.php`, 140
+  assertions)** : fichier de test entièrement nouveau (nouveau post type `gwseq_membre`,
+  indépendant de Cheval), avec sa propre infrastructure de stubs minimale — plus légère que celle
+  de `gws-equestrian-cheval-logic-test.php` (pas de `$wpdb`/`WP_Query` factices, ce module
+  n'exécute aucune requête directe), mais réutilisant les mêmes conventions déjà établies
+  (`checked()`/`selected()` échoient par défaut, registre `current_user_can`/`wp_verify_nonce`/
+  `wp_is_post_revision` piloté par le test, capture des arguments de `register_post_meta()`).
+  - **Identité/Profil/Contact** : sanitation pure de chaque section avec un payload vide (tous les
+    champs sont facultatifs — aucune erreur, tout vide) et un payload complet ; Fonction/rôle,
+    Localisation, Spécialités et Diplômes vérifiés comme du texte libre pur, sans aucune
+    revalidation contre une liste fermée (contrairement à Sexe/Robe côté Cheval).
+  - **Titre technique automatique** (§8 de la demande) : la fonction pure
+    `gwseq_derive_membre_title()` testée pour les quatre cas explicitement demandés (prénom + nom,
+    prénom seul, nom seul, les deux vides) ; le MÉCANISME réel (`gwseq_auto_title_membre()`,
+    accroché au filtre `wp_insert_post_data`) testé séparément avec un `$_POST` à la forme réelle
+    d'une soumission — recalcul effectif pour une soumission Membre valide, absence totale d'effet
+    sur un autre post type (ex. Cheval, non-régression croisée), non-réécriture silencieuse du
+    titre déjà enregistré quand le nonce Membre est absent ou invalide (ex. Quick Edit), et
+    câblage réel du hook (`wp_insert_post_data`, jamais un second `wp_update_post()` dans un hook
+    `save_post` qui aurait exigé de se dés-accrocher soi-même pour éviter une boucle).
+  - **Langues** : sélection multiple, revalidation stricte contre le référentiel (une valeur hors
+    enum comme `klingon` est ignorée, jamais propagée), déduplication, payload malformé (une chaîne
+    au lieu d'un tableau) sans erreur, "Autre" + Préciser conservés ensemble, et surtout la RÈGLE
+    CENTRALE demandée : quand "Autre" est retiré de la sélection, la précision est nettoyée MÊME
+    si l'ancienne valeur "Préciser" est encore présente dans le payload soumis — vérifié à la fois
+    dans la fonction de sanitation pure et dans un cycle complet de sauvegarde/réenregistrement en
+    base (sur un post dédié, distinct de la fixture principale, pour ne pas perturber les tests de
+    rendu/colonnes qui la réutilisent plus loin dans le fichier).
+  - **Contact** : e-mail invalide jamais enregistré tel quel, téléphone international (espaces,
+    `+`, parenthèses, tirets) et WhatsApp jamais dénaturés et vérifiés INDÉPENDANTS l'un de
+    l'autre (peuvent légitimement différer), les cinq champs URL sanitisés.
+  - **Sauvegarde/rechargement complet** : un membre minimal (aucun champ soumis, y compris sans
+    nonce d'identité renseigné) s'enregistre sans aucune erreur ; un membre complet avec les trois
+    sections intégralement remplies est rechargé à l'identique champ par champ.
+  - **Sécurité de la sauvegarde** : nonce absent/invalide, permissions insuffisantes
+    (`current_user_can`), révision, et DOING_AUTOSAVE (cette dernière testée en tout dernier dans
+    le fichier — même contrainte que `gws-equestrian-cheval-logic-test.php` : `DOING_AUTOSAVE` est
+    une vraie constante PHP, définissable une seule fois par processus ; le test couvre en un seul
+    bloc final à la fois le titre auto-dérivé ET la sauvegarde des meta sous cette même contrainte).
+  - **Colonnes de la liste admin** : ordre exact Photo | Nom | Fonction / rôle | Localisation |
+    Langues | Ordre (`cb` natif en plus, toujours en premier), absence de la colonne native
+    "Date", contenu réel de chaque colonne avec valeur renseignée et cas "—" pour une donnée
+    manquante (y compris la miniature 40×40 de la Photo, jamais l'image originale). Rappel
+    méthodologique retrouvé ici aussi : le contenu texte affiché par les colonnes passe par
+    `esc_html()`, donc une apostrophe dans une donnée métier ("Responsable d'élevage") ressort
+    HTML-échappée (`&#039;`) — l'assertion compare au résultat de `esc_html()`, pas à la chaîne
+    brute, pour ne pas re-produire l'erreur de stub déjà documentée ailleurs dans ce dossier
+    (`checked()`/`selected()` n'échoyant pas par défaut) sous une forme différente.
+  - **Rendu réel des trois meta boxes** (Identité/Profil/Contact) : tous les champs de chaque
+    section réellement présents dans le HTML produit, valeurs existantes bien préremplies, les 12
+    cases à cocher Langues (11 langues + Autre) réellement rendues avec la persistance de la
+    sélection déjà enregistrée, le bloc "Préciser" RESTE PRÉSENT DANS LE DOM même quand "Autre"
+    n'est pas sélectionné (juste masqué par un style inline) — condition nécessaire pour que la
+    fiche reste utilisable sans JavaScript, exactement la même exigence que pour les champs
+    conditionnels de Cheval (`assets/cheval-admin.js`).
+  - **Absence de couplage avec Cheval** : le système d'onglets de Cheval
+    (`includes/cheval-admin-tabs.php`) n'est pas réutilisé — vérifié par l'absence de toute trace
+    de `gwseqChevalTabs`/`cheval-tabs` dans `includes/membre-editor.php`, et par l'absence de tout
+    hook (`add_action`/`add_filter`) accroché sur `GWSEQ_CPT_CHEVAL`/`GWSEQ_CPT_PRESTATION`/
+    `GWSEQ_CPT_GROUPE` depuis `includes/membre-fields.php` (une simple recherche de texte brut
+    aurait produit un faux positif : le docblock du fichier explique délibérément, en prose,
+    pourquoi le système d'onglets de Cheval n'a pas été réutilisé, et mentionne donc légitimement
+    la constante `GWSEQ_CPT_CHEVAL` en commentaire).
+  - **Permissions Éditeur** (§10) : vérifié par inspection déclarative de l'enregistrement du post
+    type (`includes/post-types.php`) — absence de toute clé `capability_type` pour
+    `GWSEQ_CPT_MEMBRE`, donc héritage direct du type de capacité standard `'post'`, déjà accordé
+    en écriture au rôle Éditeur nativement, sans qu'aucune capacité technique supplémentaire ne
+    soit créée pour ce seul module.
+  - Toutes les régressions attendues ont été confirmées par la méthodologie « retrait puis test »
+    (titre auto-dérivé, nettoyage de "Autre", retrait de la colonne "Date" — chacune fait échouer
+    les assertions correspondantes une fois neutralisée, puis les fait repasser une fois
+    restaurée) ; un vrai bug de test (jamais de production) a été détecté et corrigé au passage :
+    `gwseq_register_membre_meta()` est accrochée à `add_action('init', ...)`, mais le stub
+    `add_action()` de ce fichier ne fait qu'ENREGISTRER les callbacks sans les exécuter (à la
+    différence du stub utilisé par `gws-equestrian-foundations-test.php`, qui simule réellement le
+    hook `init`) — la fonction est donc appelée directement après le chargement du fichier, même
+    convention que `gwseq_register_cheval_meta()` dans `gws-equestrian-cheval-logic-test.php`.
+  - `tests/gws-equestrian-foundations-test.php` mis à jour en conséquence (4ᵉ post type
+    enregistré, `gwseq_membre`, ajouté à la liste des fichiers scannés pour le préfixe `gwseq_` et
+    aux nouvelles assertions de labels/supports dédiées à Membre) — aucune assertion existante sur
+    Prestation/Groupe/Cheval modifiée.
+  - Intégralité des suites de tests PHP (18 fichiers) et des deux suites JS runtime de ce dossier
+    ré-exécutée : aucune régression.

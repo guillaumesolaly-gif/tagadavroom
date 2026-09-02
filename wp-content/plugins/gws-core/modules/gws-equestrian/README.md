@@ -1,13 +1,13 @@
 # GWS Equestrian (gws-core)
 
 Module métier pour les professionnels du monde équestre (pension, enseignement, élevage,
-reproduction, vente) : gestion des prestations/tarifs et des fiches chevaux. Voir le pendant
-présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
+reproduction, vente) : gestion des prestations/tarifs, des fiches chevaux, et de l'équipe. Voir le
+pendant présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Corrections de clôture du back-office Cheval V1, GWS Equestrian 0.16.0 — Labels ANSF (0.15.0)/Import IFCE (0.13.x)/référentiel Race/pedigree/liaison parents GWS également validés en recette runtime (voir `CHANGELOG.md` de ce dossier). Duplication d'un cheval retirée de la roadmap V1 (intérêt devenu faible avec l'import IFCE). Back-office Cheval en attente de validation runtime manuelle avant gel V1. Prochaine étape : rendu web des chevaux.
+## État actuel : Module Équipe (nouvel objet métier Membre), GWS Equestrian 0.17.0 — back-office Cheval V1 validé en recette runtime (corrections de clôture 0.16.0, Labels ANSF 0.15.0, Import IFCE 0.13.x, référentiel Race/pedigree/liaison parents GWS, voir `CHANGELOG.md` de ce dossier). Duplication d'un cheval retirée de la roadmap V1 (intérêt devenu faible avec l'import IFCE). Module Équipe en attente de validation runtime manuelle. Prochaine étape : rendu web (chevaux et équipe).
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -612,6 +612,89 @@ onglets) :
 28. Repasser en revue les points 1 à 20 ci-dessus dans la nouvelle interface à onglets : confirmer
     l'absence de toute régression sur pedigree, Production, filtres parents, indices, galerie,
     vidéos, contenus éditoriaux, Global Horse ID et données commerciales.
+
+## Module Équipe (0.17.0)
+
+Nouvel objet métier, indépendant de Cheval : gérer les personnes qu'une structure équestre
+souhaite présenter (dirigeants, cavaliers, moniteurs, soigneurs, grooms, responsables d'élevage,
+vétérinaires intégrés, personnel administratif...). Volontairement simple — ni annuaire RH, ni
+système de comptes utilisateurs, ni CRM : un Membre est une fiche métier structurée, chaque
+information restant individuellement accessible (jamais un blob HTML ni un champ opaque), pour une
+réutilisation future (page Équipe du site, blocs individuels, catalogues, Social Kit, API/exports).
+
+**Post type `gwseq_membre`** (`includes/post-types.php`) : menu d'administration "Équipe"
+(`Équipe → Tous les membres` / `Équipe → Ajouter un membre`), fiche appelée "Membre". Enregistré
+sans `capability_type` personnalisé — même logique que Prestation/Groupe/Cheval, un utilisateur
+Éditeur peut consulter/ajouter/modifier/publier/gérer la photo/mettre à la corbeille un membre sans
+qu'aucune capacité technique supplémentaire ne soit créée pour ce seul module.
+
+**Tous les champs sont facultatifs** (`includes/membre-fields.php`). Aucun référentiel ni taxonomie
+créés, à l'exception des Langues : Fonction/rôle, Localisation, Spécialités et Diplômes/
+qualifications restent volontairement du texte libre — GWS doit fonctionner avec des structures et
+des qualifications différentes selon les pays, jamais une nomenclature française imposée.
+
+**Trois sections simples plutôt qu'un système d'onglets** : le système d'onglets de Cheval
+(`includes/cheval-admin-tabs.php`) est structurellement couplé à ce seul post type (écran ciblé en
+dur, script `gwseqChevalTabs` dédié, déplacement DOM spécifique à sa boîte Médias) — le généraliser
+pour un module aussi réduit (trois sections, une dizaine de champs) aurait créé un couplage
+étranger à sa conception. Trois meta boxes empilées (Identité, Profil, Contact) restent
+immédiatement lisibles sans abstraction supplémentaire :
+
+- **Identité** — Prénom, Nom, Fonction/rôle (texte libre), Photo (image à la une native relabellée
+  "Photo", aucune galerie contrairement à Cheval, aucune meta parallèle), Localisation (texte
+  libre, utile aux structures multi-sites).
+- **Profil** — Présentation/parcours (texte long libre), Spécialités (texte libre), Diplômes/
+  qualifications (texte libre), et **Langues**, seul champ réellement structuré : sélection
+  multiple à valeurs canoniques stables (`fr`/`en`/`de`/`es`/`it`/`pt`/`nl`/`sv`/`zh`/`ja`/`ar`/
+  `autre`, indépendantes des libellés affichés — les noms complets sont affichés dans l'admin,
+  jamais seulement "FR"/"EN"/"DE"). "Autre" révèle un champ libre "Préciser" : le SERVEUR reste
+  l'autorité (`gwseq_sanitize_membre_langues_input()`) — si "Autre" n'est plus sélectionné, la
+  précision est systématiquement remise à vide, même si l'ancienne valeur est encore soumise dans
+  le payload (même discipline que le nettoyage des Labels ANSF lors d'un changement de sexe).
+- **Contact** (tous facultatifs) — Téléphone (texte libre, aucun format imposé, un numéro
+  international n'est jamais dénaturé), E-mail (sanitation WordPress appropriée via
+  `gws_core_field_sanitize('email', ...)`), WhatsApp (donnée INDÉPENDANTE du téléphone principal,
+  jamais supposée identique — simple texte libre à ce stade, adapté à une future construction de
+  lien wa.me, non développée dans ce lot), Instagram/Facebook/LinkedIn/TikTok/Site (URLs
+  sanitisées via `esc_url_raw()`, aucune connexion aux API des réseaux sociaux).
+
+**Titre technique automatique** (§ mécanisme retenu) : le client ne saisit jamais le nom deux
+fois. `post_title` est entièrement dérivé de Prénom + Nom (`gwseq_derive_membre_title()`) via un
+filtre `wp_insert_post_data` — jamais un second `wp_update_post()` dans un hook `save_post`, ce qui
+aurait obligé à se dés-accrocher soi-même pour éviter une boucle de sauvegarde. Ce filtre modifie
+uniquement le tableau `$data` avant son écriture en base : aucun appel récursif possible par
+construction. Protégé par le même nonce que la sauvegarde des meta — une révision, un autosave, ou
+tout appel de `wp_insert_post()` ne portant pas ce nonce précis (ex. Quick Edit, un futur import
+programmatique) laisse le titre déjà enregistré intact, jamais réécrit silencieusement. Fonctionne
+correctement en brouillon, avec le prénom seul, le nom seul ("Jean", jamais "Jean " avec un espace
+superflu), ou les deux vides (titre vide, WordPress affiche alors nativement "(sans titre)"). Le
+champ Titre natif est masqué sur l'écran d'édition (`includes/membre-editor.php`, même technique
+CSS ciblée que `includes/cheval-categories.php` pour l'affordance de catégorie) — 'title' reste un
+support déclaré du post type (stockage/tri/recherche natifs par titre inchangés), seul son bloc de
+saisie visuel disparaît, pour éviter qu'une valeur tapée là ne soit silencieusement remplacée au
+prochain enregistrement.
+
+**Liste "Tous les membres"** (§9) : colonnes **Photo | Nom | Fonction / rôle | Localisation |
+Langues | Ordre** — colonne native "Date" retirée (même choix que Cheval, peu de valeur dans ce
+contexte métier). Photo = miniature WordPress native (`get_the_post_thumbnail($id, array(40,
+40))`), jamais l'image originale. Langues affiche une représentation compacte ("Français,
+Anglais" ; "Autre" affiché via sa précision saisie quand elle existe, plus lisible qu'un simple
+"Autre" répété). Ordre = `menu_order` natif (même mécanisme que Cheval, aucun glisser-déposer dans
+ce lot). Recherche WordPress native pleinement fonctionnelle sans aucun code supplémentaire — le
+titre EST le nom du membre.
+
+**Non développé dans ce lot** (périmètre volontairement limité, conformément à la demande) :
+comptes utilisateurs liés, login, planning, horaires, contrats, salaires, RH, disponibilité,
+réservations, relations avec les chevaux, affectation à des prestations, catégories/départements/
+organigramme d'équipe, taxonomie des fonctions/spécialités/diplômes, CV PDF, import Excel/CSV,
+génération PDF, rendu front, schema.org spécifique, connexion aux API des réseaux sociaux. Ces
+besoins seront réévalués uniquement s'ils apparaissent dans des usages clients réels.
+
+Voir `tests/gws-equestrian-membre-logic-test.php` pour la couverture dédiée (140 assertions :
+membre vide/minimal, titre automatique dans tous les cas demandés, sauvegarde/rechargement de tous
+les champs des trois sections, langues multiples, "Autre" + Préciser et son nettoyage au
+réenregistrement, sanitation e-mail/URLs, téléphone/WhatsApp jamais dénaturés, colonnes de liste,
+sécurité de la sauvegarde, absence d'effet de bord sur Cheval/Prestation/Groupe).
 
 ## Labels ANSF (0.15.0)
 

@@ -19,12 +19,13 @@ if (!defined('ABSPATH')) exit;
 const GWSEQ_CPT_PRESTATION = 'gwseq_prestation';
 const GWSEQ_CPT_GROUPE = 'gwseq_groupe';
 const GWSEQ_CPT_CHEVAL = 'gwseq_cheval';
+const GWSEQ_CPT_MEMBRE = 'gwseq_membre';
 const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
 
 // Version propre au module (distincte de la version du plugin gws-core qui l'héberge) : suit
 // l'avancement des étapes du plan de développement, voir CHANGELOG.md de ce dossier. Atteindra
 // 1.0.0 au gel de la V1 (fin de l'étape 9).
-define('GWSEQ_MODULE_VERSION', '0.16.0');
+define('GWSEQ_MODULE_VERSION', '0.17.0');
 define('GWSEQ_MODULE_URL', GWS_CORE_URL . 'modules/gws-equestrian/');
 
 require_once __DIR__ . '/includes/post-types.php';
@@ -52,3 +53,5 @@ require_once __DIR__ . '/includes/ifce-pdf-text.php';
 require_once __DIR__ . '/includes/ifce-import-parser.php';
 require_once __DIR__ . '/includes/ifce-import-mapper.php';
 require_once __DIR__ . '/includes/ifce-import-admin.php';
+require_once __DIR__ . '/includes/membre-fields.php';
+require_once __DIR__ . '/includes/membre-editor.php';

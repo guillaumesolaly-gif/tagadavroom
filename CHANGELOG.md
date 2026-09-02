@@ -1,5 +1,23 @@
 # Changelog — GWS Starter
 
+## 1.20.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Module Équipe, nouvel objet métier Membre (GWS Equestrian 0.17.0).** Nouveau post type
+  `gwseq_membre`, indépendant de Cheval, pour gérer les personnes qu'une structure équestre
+  souhaite présenter (dirigeants, cavaliers, moniteurs, soigneurs, grooms, responsables d'élevage,
+  vétérinaires intégrés, personnel administratif...) — volontairement simple, ni annuaire RH, ni
+  comptes utilisateurs, ni CRM. Menu d'administration "Équipe" (`Tous les membres`/`Ajouter un
+  membre`), fiche organisée en trois sections simples (Identité, Profil, Contact), tous les champs
+  facultatifs, aucun référentiel/taxonomie créé hormis Langues (sélection multiple à valeurs
+  canoniques stables, "Autre" avec précision libre nettoyée automatiquement par le serveur dès
+  qu'elle n'est plus sélectionnée). Titre technique WordPress automatiquement dérivé de Prénom +
+  Nom via un filtre `wp_insert_post_data` (aucune boucle de sauvegarde possible), champ Titre natif
+  masqué pour éviter une saisie redondante. Liste "Tous les membres" avec colonnes Photo/Nom/
+  Fonction/Localisation/Langues/Ordre. Permissions héritées du type de capacité standard `'post'`,
+  aucune capacité technique supplémentaire créée. Rendu front volontairement non développé dans ce
+  lot. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.17.0) pour le
+  détail complet.
+
 ## 1.19.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Corrections de clôture du back-office Cheval V1 (GWS Equestrian 0.16.0).** Suite à un audit

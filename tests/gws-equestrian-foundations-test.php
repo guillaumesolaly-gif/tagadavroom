@@ -65,10 +65,10 @@ $taxonomies = $GLOBALS['__gwseq_test_taxonomies'];
 
 // --- Post types attendus, ni plus ni moins ---
 gws_test_assert(
-  count($post_types) === 3,
-  'Exactement trois post types enregistrés à cette étape'
+  count($post_types) === 4,
+  'Exactement quatre post types enregistrés à cette étape (Prestation, Groupe, Cheval, Membre)'
 );
-foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL) as $expected) {
+foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE) as $expected) {
   gws_test_assert(
     array_key_exists($expected, $post_types),
     "Post type attendu enregistré : $expected"
@@ -111,6 +111,8 @@ $module_files = array(
   $module_dir . 'includes/groupe-admin.php',
   $module_dir . 'includes/prestation-fields.php',
   $module_dir . 'includes/presets.php',
+  $module_dir . 'includes/membre-fields.php',
+  $module_dir . 'includes/membre-editor.php',
 );
 $prefix_violation_found = false;
 $non_gwseq_functions = array();
@@ -151,12 +153,44 @@ gws_test_assert(($groupe['has_archive'] ?? null) === false, 'Groupe tarifaire : 
 gws_test_assert(($groupe['rewrite'] ?? null) === false, 'Groupe tarifaire : rewrite => false (aucune URL générée)');
 gws_test_assert(($groupe['exclude_from_search'] ?? null) === true, 'Groupe tarifaire : exclu de la recherche');
 
-// --- Prestation et Cheval : publics avec archive, à l'inverse du Groupe tarifaire ---
-foreach (array(GWSEQ_CPT_PRESTATION => 'Prestation', GWSEQ_CPT_CHEVAL => 'Cheval') as $slug => $label) {
+// --- Prestation, Cheval et Membre : publics avec archive, à l'inverse du Groupe tarifaire ---
+foreach (array(GWSEQ_CPT_PRESTATION => 'Prestation', GWSEQ_CPT_CHEVAL => 'Cheval', GWSEQ_CPT_MEMBRE => 'Membre') as $slug => $label) {
   $args = $post_types[$slug] ?? array();
   gws_test_assert(($args['public'] ?? null) === true, "$label : public => true");
   gws_test_assert(($args['has_archive'] ?? null) === true, "$label : has_archive => true");
 }
+
+// --- Module Équipe (Membre) : ordre natif (menu_order), pas d'éditeur classique de contenu, photo
+// via l'image à la une relabellée "Photo" (jamais une meta parallèle) ---
+$membre = $post_types[GWSEQ_CPT_MEMBRE] ?? array();
+gws_test_assert(
+  in_array('page-attributes', $membre['supports'] ?? array(), true),
+  'Membre : support \'page-attributes\' présent (ordre natif menu_order, §6 de la demande)'
+);
+gws_test_assert(
+  in_array('thumbnail', $membre['supports'] ?? array(), true),
+  'Membre : support \'thumbnail\' présent (Photo = image à la une native)'
+);
+gws_test_assert(
+  !in_array('editor', $membre['supports'] ?? array(), true),
+  'Membre : pas de support \'editor\' (fiche 100% structurée, aucun rendu front dans ce lot)'
+);
+gws_test_assert(
+  ($membre['labels']['name'] ?? null) === 'Équipe',
+  'Membre : libellé du menu d\'administration "Équipe" (§1 de la demande)'
+);
+gws_test_assert(
+  ($membre['labels']['singular_name'] ?? null) === 'Membre',
+  'Membre : libellé de fiche singulier "Membre" (§1 de la demande)'
+);
+gws_test_assert(
+  ($membre['labels']['all_items'] ?? null) === 'Tous les membres',
+  'Membre : sous-menu "Tous les membres" (§1 : "Équipe → Tous les membres")'
+);
+gws_test_assert(
+  ($membre['labels']['add_new_item'] ?? null) === 'Ajouter un membre',
+  'Membre : sous-menu "Ajouter un membre" (§1 : "Équipe → Ajouter un membre")'
+);
 
 // --- Étape 3 : Ordre d'affichage natif (page-attributes) sur Prestation et Groupe, Description
 // courte native (excerpt) sur Groupe uniquement ---
