@@ -1,5 +1,20 @@
 # Changelog — GWS Starter
 
+## 1.18.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Labels ANSF (GWS Equestrian 0.15.0), nouveau lot volontairement minimal.** Nouvel onglet
+  "Labels" dans la fiche Cheval, limité aux labels Selle Français / ANSF identifiés pour la
+  commercialisation initiale en France (aucun moteur générique de distinctions) : Selle Français
+  Originel (SFO, disponible pour les trois sexes), les trois labels poulinières Sport/Élevage/
+  Modèle & Allures (femelle uniquement, un seul niveau par famille via un groupe de boutons radio,
+  jamais des cases indépendantes), et Étalon SF Génétique Avenir (mâle et hongre). Sanitation
+  serveur obligatoire indépendante de l'affichage admin ; un changement de sexe nettoie
+  automatiquement les labels devenus incompatibles au prochain enregistrement, SFO toujours
+  préservé. Pictogrammes officiels ANSF pas encore disponibles : le modèle permet une
+  correspondance future, sans aucun pictogramme temporaire. La fonctionnalité de duplication d'un
+  cheval est retirée de la roadmap V1. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.15.0) pour le détail complet.
+
 ## 1.17.6 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif complémentaire : cause racine réelle du bug "Préciser" (GWS Equestrian 0.14.6).** Le

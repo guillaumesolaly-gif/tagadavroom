@@ -74,6 +74,11 @@ function gwseq_cheval_admin_tabs_config() {
       'boxes' => array('gwseq-cheval-commercialisation'),
     ),
     array(
+      'id' => 'labels',
+      'label' => __('Labels', 'gws-core'),
+      'boxes' => array('gwseq-cheval-labels'),
+    ),
+    array(
       'id' => 'pedigree',
       'label' => __('Pedigree', 'gws-core'),
       'boxes' => array('gwseq-cheval-pedigree', 'gwseq-cheval-production', 'gwseq-cheval-pedigree-preview'),

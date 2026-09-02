@@ -81,13 +81,14 @@ $cheval_pedigree_source = file_get_contents($module_dir . 'includes/cheval-pedig
 // =====================================================================================
 
 $tabs = gwseq_cheval_admin_tabs_config();
-gws_test_assert(count($tabs) === 6, 'Onglets : les 6 onglets attendus sont bien déclarés (Identité, Commercial, Pedigree, Indices, Médias, Présentation)');
+gws_test_assert(count($tabs) === 7, 'Onglets : les 7 onglets attendus sont bien déclarés (Identité, Commercial, Labels, Pedigree, Indices, Médias, Présentation)');
 
 $tabs_by_id = array();
 foreach ($tabs as $tab) { $tabs_by_id[$tab['id']] = $tab; }
 
 gws_test_assert($tabs_by_id['identite']['boxes'] === array('gwseq-cheval-identite'), 'Onglet Identité : contient bien la boîte Identité, et uniquement elle');
 gws_test_assert($tabs_by_id['commercial']['boxes'] === array('gwseq-cheval-commercialisation'), 'Onglet Commercial : contient bien la boîte Commercialisation');
+gws_test_assert($tabs_by_id['labels']['boxes'] === array('gwseq-cheval-labels'), 'Onglet Labels (nouveau lot ANSF) : contient bien la boîte Labels, et uniquement elle');
 gws_test_assert(
   $tabs_by_id['pedigree']['boxes'] === array('gwseq-cheval-pedigree', 'gwseq-cheval-production', 'gwseq-cheval-pedigree-preview'),
   'Onglet Pedigree : contient Pedigree, Production (calculée) et l’aperçu développeur, exactement comme demandé'

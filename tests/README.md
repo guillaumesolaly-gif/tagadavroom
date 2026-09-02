@@ -26,6 +26,7 @@ php tests/gws-equestrian-cheval-admin-tabs-test.php
 node tests/gws-equestrian-cheval-admin-tabs-runtime-test.js
 php tests/gws-equestrian-ifce-import-test.php
 node tests/gws-equestrian-race-referentiel-autocomplete-runtime-test.js
+php tests/gws-equestrian-cheval-labels-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -703,3 +704,25 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   Nouveau test PHP dans `gws-equestrian-cheval-logic-test.php` combinant un `race_autre` parasité
   avec la modification simultanée d'un champ sans rapport (robe), pour prouver que l'invariant
   serveur de la 0.14.5 s'applique quel que soit le contenu du reste du formulaire.
+- **Labels ANSF, nouveau lot (0.15.0, `gws-equestrian-cheval-labels-test.php`, 34 assertions)** :
+  sanitation pure (`gwseq_sanitize_cheval_labels_input($raw, $sexe)`) pour les trois sexes et un
+  sexe non renseigné — femelle (SFO + une seule valeur possible par famille de label poulinière,
+  jamais deux niveaux simultanés même avec un payload trafiqué en tableau), mâle et hongre (SFO +
+  SF Génétique Avenir, labels poulinières jamais retenus même explicitement soumis), payload
+  volontairement invalide (valeur hors enum, `null`, tableau malformé) toujours résolu sans erreur.
+  Rendu réel de la meta box conditionné par le sexe courant (les bons champs présents/absents selon
+  le sexe, exactement quatre boutons radio par famille — jamais des checkboxes indépendantes — un
+  seul précoché). Sauvegarde réelle via `gwseq_save_cheval_labels_meta()` (hook `save_post_gwseq_cheval`) :
+  persistance initiale, rejeu du même payload sans interaction avec l'onglet (formulaire natif
+  WordPress soumettant toujours l'état affiché de tous les champs), modification simultanée d'un
+  champ sans rapport (robe) sans effet sur les Labels, changement de sexe dans les DEUX sens avec
+  nettoyage des labels devenus incompatibles MALGRÉ leur présence dans le payload soumis (l'onglet
+  Labels n'ayant pas été rouvert après le changement de sexe), SFO systématiquement préservé,
+  sécurité de la sauvegarde (nonce invalide, permissions insuffisantes, révision). Détecté en
+  cours de route : le stub `checked()`/`selected()` déjà utilisé par TOUS les fichiers de test de ce
+  dossier ne fait que RETOURNER la chaîne sans jamais l'imprimer, contrairement au comportement réel
+  de WordPress (`echo` par défaut) — invisible tant qu'aucune assertion ne vérifie la présence de
+  l'attribut `checked`/`selected` dans un rendu, ce qu'aucun test antérieur ne semble avoir fait ;
+  corrigé UNIQUEMENT dans ce nouveau fichier (les fichiers de test déjà validés n'ont pas été
+  modifiés, hors périmètre de ce lot) — à garder à l'esprit pour un futur test qui voudrait vérifier
+  un état coché/sélectionné ailleurs dans la suite.

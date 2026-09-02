@@ -7,7 +7,7 @@ présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Étape 7 — Import IFCE (PDF), 0.13.2, EN ATTENTE DE RECETTE (Étape 6 — Indices/médias/présentation validée)
+## État actuel : Labels ANSF, GWS Equestrian 0.15.0, VALIDÉ — Import IFCE (0.13.x)/référentiel Race/pedigree/liaison parents GWS également validés en recette runtime (voir `CHANGELOG.md` de ce dossier). Duplication d'un cheval retirée de la roadmap V1 (intérêt devenu faible avec l'import IFCE). Prochaine étape : rendu web des chevaux.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -612,6 +612,61 @@ onglets) :
 28. Repasser en revue les points 1 à 20 ci-dessus dans la nouvelle interface à onglets : confirmer
     l'absence de toute régression sur pedigree, Production, filtres parents, indices, galerie,
     vidéos, contenus éditoriaux, Global Horse ID et données commerciales.
+
+## Labels ANSF (0.15.0)
+
+Nouveau lot volontairement minimal complétant le modèle métier Cheval avant le rendu web : un
+onglet **Labels** (`includes/cheval-labels.php`), limité aux labels Selle Français / ANSF identifiés
+pour la commercialisation initiale en France. AUCUN moteur générique de distinctions, AUCUN
+référentiel multi-stud-books — un futur label d'un autre organisme (KWPN, BWP, HOLST...) est un
+nouveau lot à part entière, jamais une simple entrée de plus dans une liste ici.
+
+**Contenu, dépendant du sexe du cheval** :
+- **Selle Français Originel (SFO)** — case à cocher, disponible pour femelle, mâle ET hongre,
+  jamais restreint ni touché par un changement de sexe.
+- **Labels poulinières** (Label Sport / Label Élevage / Label Modèle & Allures) — UNIQUEMENT
+  femelle. Chaque famille est un ENUM fermé à quatre valeurs mutuellement exclusives (`none`/
+  `tres_bonne`/`excellente`/`elite`), rendu via un groupe de boutons radio — jamais quatre cases à
+  cocher indépendantes qui permettraient une incohérence ("Sport — Élite" ET "Sport — Très Bonne"
+  simultanément).
+- **Étalon SF Génétique Avenir** — case à cocher, mâle ET hongre : un hongre peut avoir obtenu ce
+  statut ou eu une carrière de reproducteur avant castration, sa semence pouvant encore être
+  commercialisée.
+
+Aucune autre règle métier : GWS empêche seulement les incohérences évidentes liées au sexe, jamais
+un moteur de certification ANSF (pas de contrôle de race/stud-book, d'âge, de pedigree, de statut
+reproducteur, d'organisme émetteur, d'année d'obtention, d'URL de certification ou de justificatif).
+
+**Données structurées** : cinq valeurs techniques stables — `_gwseq_label_sfo`,
+`_gwseq_label_sf_genetique_avenir` (booléens `'1'`/`''`), `_gwseq_label_sport`,
+`_gwseq_label_elevage`, `_gwseq_label_modele_allures` (enums) — jamais des libellés destinés à
+l'affichage. Choisies pour qu'une correspondance future vers un pictogramme officiel ANSF (pas
+encore disponible, demande en cours auprès de l'ANSF) reste triviale à construire plus tard (ex.
+`sfo -> asset SFO`, `sport_elite -> asset correspondant`) — aucune fonction de correspondance ni
+pictogramme temporaire n'est ajouté ici, ce sera une évolution séparée une fois les fichiers
+officiels disponibles ; dans l'admin, les libellés texte suffisent pour l'instant.
+
+**Sanitation serveur obligatoire**, SEULE autorité (`gwseq_sanitize_cheval_labels_input($raw,
+$sexe)`) — jamais une dépendance à l'affichage conditionnel admin, qui n'est qu'un confort de
+saisie : un payload délibérément incohérent (ex. labels poulinières soumis pour un mâle) ne peut
+jamais produire une donnée incohérente en base.
+
+**Changement de sexe d'un cheval existant** : $sexe est TOUJOURS la valeur déjà sanitisée de la
+MÊME soumission (`gwseq_sanitize_cheval_identity_input($_POST)['sexe']`), jamais relue depuis une
+meta pas encore enregistrée ni l'ancien sexe déjà en base. Les labels devenus incompatibles avec le
+sexe fraîchement soumis sont donc nettoyés silencieusement au prochain enregistrement volontaire :
+passage vers mâle/hongre remet les trois labels poulinières à `none` ; passage vers femelle remet
+Étalon SF Génétique Avenir à vide. **SFO n'est jamais touché**, quel que soit le sexe. Un sexe non
+renseigné nettoie les deux groupes sexe-dépendants (repli prudent, jamais un label affiché pour un
+sexe qui ne peut pas être confirmé).
+
+**Duplication d'un cheval retirée de la roadmap V1** : avec l'import IFCE, son intérêt est devenu
+faible et sa maintenance créerait des risques inutiles à mesure que l'objet Cheval s'enrichit —
+aucun développement engagé sur ce sujet.
+
+Voir `tests/gws-equestrian-cheval-labels-test.php` pour la couverture dédiée (34 assertions :
+sanitation pure pour les trois sexes, exclusivité des familles, payload invalide, rendu réel,
+sauvegarde/rechargement, changement de sexe dans les deux sens, sécurité de la sauvegarde).
 
 ## Import IFCE (Étape 7)
 
