@@ -137,9 +137,18 @@
  * nom entre un ascendant externe et une fiche GWS : toujours une action explicite de
  * l'utilisateur.
  *
- * SUPPRESSION D'UN CHEVAL RÉFÉRENCÉ : aucun hook de nettoyage automatique sur la suppression
- * d'une fiche Cheval (cela reviendrait à modifier automatiquement d'autres fiches, interdit
- * depuis l'Étape 4). Mettre un parent à la corbeille ne supprime jamais ses produits.
+ * SUPPRESSION D'UN CHEVAL RÉFÉRENCÉ : mettre un parent à la corbeille ne modifie ni ne supprime
+ * jamais ses produits ni la relation stockée — un cheval à la corbeille reste un post bien réel en
+ * base, restauré il retrouve sa relation intacte, sans qu'aucun hook ne soit jamais intervenu entre
+ * les deux (aucun hook ne se déclenche sur une simple mise à la corbeille, `wp_trash_post()`
+ * n'appelant jamais `before_delete_post`). CORRECTIF DE CLÔTURE V1 (§1, ciblé et narrow — seule
+ * exception à l'absence de hook de nettoyage automatique évoquée aux étapes précédentes) : la
+ * SUPPRESSION DÉFINITIVE, elle, laissait jusqu'ici une relation "gws" orpheline (identifiant ne
+ * correspondant plus à aucun post réel, le sélecteur admin affichant une liste vide et le pedigree
+ * résolu "Cheval introuvable (#ID)") — voir gwseq_cleanup_horse_parent_references_on_delete()
+ * ci-dessous, accrochée UNIQUEMENT à `before_delete_post` (jamais `wp_trash_post`), qui réinitialise
+ * la seule relation concernée à "Non renseigné" au moment précis où le post référencé disparaît
+ * réellement de la base — jamais une modification "au cas où", jamais une autre branche touchée.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -578,6 +587,55 @@ function gwseq_get_horse_offspring($cheval_id) {
     ),
   ));
 }
+
+/**
+ * Nettoyage des relations Père/Mère GWS pointant vers un cheval SUPPRIMÉ DÉFINITIVEMENT (clôture
+ * V1, §1 de la demande) — CAUSE EXACTE de « Cheval introuvable (#ID) » observée en recette :
+ * gwseq_get_horse_parent() lit fidèlement le mode et l'identifiant stockés, quel que soit l'état
+ * réel du post correspondant — elle n'a AUCUNE raison de vérifier à la lecture qu'un post existe
+ * encore (ce serait une requête supplémentaire à CHAQUE lecture d'une relation, pour un cas qui
+ * n'était censé se produire qu'au moment précis de la suppression). Rien ne nettoyait jusqu'ici
+ * cette relation au moment où le cheval référencé disparaissait réellement de la base : le mode
+ * restait "gws" avec un identifiant devenu orphelin, d'où un `<select>` de secours vide (aucune
+ * option ne correspond plus à cet identifiant) et un pedigree résolu affichant
+ * "Cheval introuvable (#ID)" (pedigree-resolver.php, repli déjà existant pour un identifiant GWS
+ * qui ne résout plus vers aucun post réel — jamais modifié ici, ce correctif agit UNIQUEMENT en
+ * amont, à la source de la donnée orpheline elle-même).
+ *
+ * Se déclenche UNIQUEMENT sur `before_delete_post` — déclenché par `wp_delete_post()` (suppression
+ * DÉFINITIVE), JAMAIS par `wp_trash_post()` (mise à la corbeille, qui déclenche les hooks
+ * totalement distincts `wp_trash_post`/`trashed_post`). Corbeille ≠ suppression définitive (§1) :
+ * un cheval mis à la corbeille reste un post bien réel en base (post_status = 'trash'), sa relation
+ * doit donc rester intacte telle quelle — comportement déjà correct aujourd'hui et non touché par
+ * ce correctif, qui n'ajoute strictement rien sur le chemin de la mise à la corbeille — et sa
+ * restauration éventuelle (`untrash_post`) doit continuer à faire réapparaître la relation sans
+ * qu'aucune donnée n'ait jamais été altérée entre-temps.
+ *
+ * Réutilise gwseq_get_horse_offspring() (ci-dessus) — LA MÊME requête déjà utilisée par la
+ * Production calculée à la volée — pour trouver les chevaux référençant ce Père/cette Mère,
+ * jamais une seconde requête dupliquée. Pour chaque relation RÉELLEMENT concernée (comparaison
+ * explicite de l'identifiant stocké, jamais une simple présence du mode "gws") : remet le mode à
+ * vide (`''`, "Non renseigné") et supprime l'identifiant devenu orphelin — jamais de création
+ * d'ascendant externe de remplacement (la branche "..._externe" de CE rôle n'est jamais écrite),
+ * jamais une autre branche du pedigree touchée (seul le rôle dont l'identifiant correspond
+ * exactement au post supprimé est modifié).
+ */
+function gwseq_cleanup_horse_parent_references_on_delete($post_id) {
+  if (get_post_type($post_id) !== GWSEQ_CPT_CHEVAL) return;
+  $post_id = (int) $post_id;
+  if (!$post_id) return;
+
+  foreach (gwseq_get_horse_offspring($post_id) as $offspring) {
+    foreach (array('father', 'mother') as $role) {
+      $relation = gwseq_get_horse_parent($offspring->ID, $role);
+      if ($relation['mode'] !== 'gws' || $relation['horse_id'] !== $post_id) continue;
+      $prefix = gwseq_horse_parent_meta_prefix($role);
+      update_post_meta($offspring->ID, $prefix . 'mode', '');
+      delete_post_meta($offspring->ID, $prefix . 'id');
+    }
+  }
+}
+add_action('before_delete_post', 'gwseq_cleanup_horse_parent_references_on_delete');
 
 /* -------------------------------------------------------------------------------------------
  * Meta box et sauvegarde (glue WordPress) — un client parmi d'autres de gwseq_set_horse_parent().

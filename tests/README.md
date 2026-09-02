@@ -726,3 +726,66 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   corrigé UNIQUEMENT dans ce nouveau fichier (les fichiers de test déjà validés n'ont pas été
   modifiés, hors périmètre de ce lot) — à garder à l'esprit pour un futur test qui voudrait vérifier
   un état coché/sélectionné ailleurs dans la suite.
+- **Corrections de clôture du back-office Cheval V1 (0.16.0)** : suite à un audit fonctionnel en
+  conditions réelles, deux correctifs ciblés, couverts par de nouvelles sections dans
+  `gws-equestrian-pedigree-logic-test.php` et `gws-equestrian-cheval-logic-test.php`.
+  - **Nettoyage des relations père/mère à la suppression définitive** (`cheval-pedigree.php`,
+    `gwseq_cleanup_horse_parent_references_on_delete()`) : les 8 scénarios demandés — (1) A père de
+    B, A mis à la corbeille (`post_status` manuel à `'trash'`), relation inchangée ; (2) A restauré,
+    relation toujours inchangée ; (3) A supprimé DÉFINITIVEMENT (appel direct de la fonction, comme
+    pour tout hook dans cette suite — `add_action()` est un stub muet ici), le père de B redevient
+    « Non renseigné » (mode vidé ET `_id` supprimée) ; (4) même scénario côté mère ; (5) un parent
+    utilisé par PLUSIEURS chevaux (père de deux, mère d'un troisième) — les trois relations
+    nettoyées en un seul appel, via la réutilisation de `gwseq_get_horse_offspring()` déjà
+    existante (jamais une requête dupliquée) ; (6) suppression d'un cheval qui n'est parent
+    d'aucun autre — aucun effet de bord sur un cheval tiers avec une relation vers un ID
+    différent (comparaison de snapshot meta) ; (7) une branche de pedigree externe (ascendant
+    hors GWS) reste totalement intacte quand seule la branche GWS voisine est nettoyée ; (8) aucune
+    erreur/notice PHP (le harness de test les aurait fait remonter). Câblage du hook vérifié
+    déclarativement (présence de `add_action('before_delete_post', ...)`, absence de tout
+    branchement sur `wp_trash_post`) et sécurité de type (post d'un autre post type passé à la
+    fonction, aucune erreur). Vérifié par la méthodologie habituelle « retrait puis test » : la
+    fonction de nettoyage temporairement neutralisée fait échouer les 13 nouvelles assertions,
+    restaurée elles repassent toutes.
+  - **Filtres et colonnes de la liste admin** (`cheval-fields.php`) : nouvelle infrastructure de
+    stubs propre à `gws-equestrian-cheval-logic-test.php` (`get_terms()`, `is_admin()`,
+    `$GLOBALS['pagenow']`, une classe `Gws_Test_Wpdb` réimplémentant directement en mémoire
+    l'équivalent de la requête `SELECT DISTINCT ... ORDER BY ... DESC` réelle plutôt que de parser
+    du SQL, et une classe `Gws_Test_Query` minimale avec `get()`/`set()`/`is_main_query()`) — ce
+    fichier n'avait jusqu'ici jamais eu besoin de suivre `post_type`/`post_status` par ID, d'où
+    l'ajout du registre `$GLOBALS['__gwseq_test_posts']` et de l'aide `gws_test_make_post()` déjà
+    présents dans les fichiers de test voisins (`pedigree-logic-test.php`, `ifce-import-test.php`).
+    Colonnes : les six nouvelles clés présentes dans l'ordre exact demandé, absence de la clé
+    `date`, contenu réel de chaque colonne (Sexe et Année avec valeur renseignée et cas « — » non
+    renseigné). Filtres : rendu réel des quatre `<select>`, persistance des valeurs déjà
+    sélectionnées (`selected()` vérifié dans le HTML produit), liste des années sans doublon et
+    triée décroissant, absence de rendu sur un autre post type ; application réelle à une requête
+    factice (`tax_query` par slug pour la catégorie, `meta_query` en relation `AND` regroupant
+    statut/sexe/année, recherche native `s` jamais altérée), rejet d'une valeur de statut/sexe hors
+    référentiel (jamais propagée dans la requête), aucune application sur la liste d'un autre post
+    type.
+  - **Deux bugs de stub découverts et corrigés en cours de route dans
+    `gws-equestrian-cheval-logic-test.php` — jamais dans le code de production, qui reproduisait
+    fidèlement le comportement réel de WordPress** : (a) `sanitize_title()` n'existait pas encore
+    dans ce fichier (jamais appelée avant ce lot) — ajoutée, fidèle à la vraie fonction pour les
+    slugs déjà normalisés utilisés ici (minuscules, tirets) ; (b) `selected()`/`checked()`
+    n'imprimaient pas par défaut (même défaut de stub déjà identifié et documenté pour le fichier
+    Labels ANSF, jamais corrigé dans les autres fichiers faute de besoin jusqu'ici) — corrigées ici
+    aussi pour `echo` par défaut comme le WordPress réel, seul moyen de vérifier la persistance des
+    filtres dans le HTML effectivement produit.
+  - **Un vrai bug de production détecté PAR le nouveau test, puis corrigé** : `(array)
+    $query->get('tax_query')` (et son équivalent pour `meta_query`) provoquait une conversion
+    incorrecte quand WordPress n'a pas encore de tax_query/meta_query dans la requête principale —
+    `WP_Query::get()` renvoie alors la chaîne vide `''` par défaut (jamais un tableau), et `(array)
+    ''` produit `array('')` (un tableau à un élément contenant une chaîne vide), pas un tableau
+    vide. Le filtre Catégorie ajoutait alors sa clause à l'index 1 au lieu de 0, corrompant la
+    structure attendue par `WP_Tax_Query`/`WP_Meta_Query`. Corrigé en vérifiant explicitement
+    `is_array()` avant d'utiliser la valeur (repli sur un tableau vide sinon), plutôt qu'un simple
+    cast. Confirmé par retrait du correctif : le test échoue alors avec une erreur PHP réelle
+    (`TypeError: Cannot access offset of type string on string`), preuve que ce test couvre un
+    risque runtime réel et pas seulement un cas théorique.
+  - Intégralité des suites de tests PHP (16 fichiers) et des deux suites JS runtime de ce dossier
+    ré-exécutée : aucune régression. Une seule anomalie preexistante et sans rapport avec ce lot
+    relevée (`Warning: Array to string conversion` dans `gws-equestrian-cheval-labels-test.php`,
+    ligne 35, déjà présente avant ce lot, hors périmètre — non modifiée, conformément à la consigne
+    de ne toucher à aucun autre comportement).

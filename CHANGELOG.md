@@ -1,5 +1,21 @@
 # Changelog — GWS Starter
 
+## 1.19.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Corrections de clôture du back-office Cheval V1 (GWS Equestrian 0.16.0).** Suite à un audit
+  fonctionnel en conditions réelles, deux correctifs ciblés avant le gel du back-office Cheval V1.
+  (1) Nettoyage des relations père/mère à la suppression DÉFINITIVE d'un cheval : un cheval
+  supprimé définitivement pouvait rester référencé comme père/mère "Cheval déjà enregistré" d'un
+  autre cheval (sélecteur vide, pedigree affichant "Cheval introuvable (#ID)") — corrigé via un
+  nouveau nettoyage accroché uniquement à `before_delete_post` (jamais à la mise à la corbeille,
+  qui continue de préserver intégralement la relation, restauration comprise). (2) Liste
+  d'administration "Tous les chevaux" : quatre filtres cumulables et combinables avec la recherche
+  native (Catégorie, Statut commercial, Sexe, Année de naissance — années construites
+  dynamiquement à partir des seules données réellement présentes), et colonnes ramenées à Nom |
+  Catégories | Sexe | Année | Statut commercial | Prix | Ordre (colonne "Date" native retirée).
+  Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.16.0) pour le détail
+  complet.
+
 ## 1.18.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Labels ANSF (GWS Equestrian 0.15.0), nouveau lot volontairement minimal.** Nouvel onglet

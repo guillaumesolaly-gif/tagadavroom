@@ -5,6 +5,67 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.16.0 — Corrections de clôture du back-office Cheval V1
+
+Suite à un audit fonctionnel du back-office Cheval en conditions réelles (module jugé
+fonctionnellement mature), deux correctifs ciblés avant le gel de la V1 — aucun refactor, aucune
+nouvelle fonctionnalité au-delà de ce qui suit, aucun autre comportement modifié.
+
+**1. Nettoyage des relations père/mère lors de la suppression définitive d'un cheval.**
+
+Cause technique exacte du symptôme observé (« Cheval introuvable (#ID) », sélecteur vide) :
+`gwseq_get_horse_parent()` lit fidèlement les métadonnées `mode`/`horse_id` enregistrées sans
+jamais revérifier, À LA LECTURE, que le post référencé existe encore (comportement volontaire —
+une vérification d'existence à chaque lecture serait coûteuse pour un cas qui ne devait survenir
+qu'au moment précis d'une suppression définitive). Or aucun hook n'intervenait jusqu'ici sur cette
+suppression pour nettoyer la relation en amont : l'identifiant d'un cheval définitivement supprimé
+restait donc enregistré comme père/mère "gws" d'un autre cheval, produisant un sélecteur vide
+(aucun candidat ne correspond plus à cet ID) et le repli `type === 'unavailable'` déjà existant du
+résolveur de pedigree.
+
+**Corbeille ≠ suppression définitive** : mettre un cheval à la corbeille ne déclenche toujours
+aucun nettoyage (`wp_trash_post()` ne déclenche jamais `before_delete_post`) — un parent à la
+corbeille reste un post réel en base, la relation reste intacte, une restauration la retrouve
+automatiquement, exactement comme avant ce correctif. Seule la suppression DÉFINITIVE (bouton
+"Supprimer définitivement" ou vidage de la corbeille) déclenche désormais
+`gwseq_cleanup_horse_parent_references_on_delete()` (accrochée uniquement à `before_delete_post`,
+`includes/cheval-pedigree.php`) : elle recherche, via la fonction déjà existante
+`gwseq_get_horse_offspring()` (jamais dupliquée), tous les chevaux référençant l'ID supprimé comme
+père ou mère en mode "Cheval déjà enregistré", et réinitialise UNIQUEMENT cette relation précise à
+« Non renseigné » (mode vidé, identifiant supprimé) — jamais de reconstruction d'un ascendant
+externe de remplacement, jamais une autre branche du pedigree touchée.
+
+**2. Liste d'administration « Tous les chevaux » — filtres et colonnes.**
+
+Quatre filtres cumulables ajoutés au-dessus de la liste (`includes/cheval-fields.php`), tous
+combinables entre eux ET avec la recherche WordPress native (jamais remplacée) : Catégorie
+(taxonomie existante, aucun second système), Statut commercial et Sexe (référentiels métier déjà
+définis, jamais une nouvelle nomenclature), Année de naissance (liste construite dynamiquement à
+partir des seules années réellement présentes en base — première requête `$wpdb` directe du
+module, `SELECT DISTINCT` trié décroissant, jamais une liste arbitraire d'années inutilisées).
+Mécanisme : `restrict_manage_posts` pour le rendu des `<select>` (persistance des valeurs
+sélectionnées via `selected()`, bouton « Filtrer » ajouté nativement par WordPress dès qu'un
+contenu y est produit), `pre_get_posts` pour l'application réelle (tax_query pour la catégorie,
+meta_query en relation `AND` pour statut/sexe/année, chaque valeur revalidée contre son référentiel
+avant usage — jamais une valeur `$_GET` propagée telle quelle). La pagination WordPress conserve
+nativement ces paramètres, aucun code supplémentaire nécessaire.
+
+Colonnes de la liste ramenées à : Nom | Catégories | Sexe | Année | Statut commercial | Prix |
+Ordre — colonne native « Date » retirée (peu de valeur dans ce contexte métier). Sexe affiche le
+libellé utilisateur (jamais la valeur technique) ; Année affiche uniquement l'année de naissance
+brute ou « — » si non renseignée (jamais un âge calculé) ; Prix et Ordre conservent leur
+comportement métier existant sans modification.
+
+**Tests** (`tests/gws-equestrian-pedigree-logic-test.php` et
+`tests/gws-equestrian-cheval-logic-test.php`) : les 8 scénarios de nettoyage de relation (corbeille
+préservée, restauration, suppression définitive du père/de la mère, parent utilisé par plusieurs
+chevaux, cheval sans production, branches externes non affectées, absence d'erreur PHP), le câblage
+exact du hook (`before_delete_post`, jamais `wp_trash_post`), les quatre filtres individuellement
+et combinés, la combinaison recherche + filtres, la persistance de sélection, la déduplication et
+le tri décroissant des années, le rejet des valeurs hors référentiel, les nouvelles colonnes
+(contenu et cas de données manquantes) et l'absence de la colonne Date. Intégralité des suites
+existantes GWS Core et GWS Equestrian revérifiée, aucune régression.
+
 ## 0.15.0 — Labels ANSF (nouveau lot, volontairement minimal)
 
 Modèle métier Cheval complété avant de passer au rendu web : un nouvel onglet **Labels** dans la

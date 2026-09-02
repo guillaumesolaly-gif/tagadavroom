@@ -72,13 +72,17 @@ function sanitize_textarea_field($value) { return trim((string) $value); }
 // filtrage des caractères (jamais l'inverse) — voir gws-equestrian-pedigree-logic-test.php pour le
 // détail du bug de stub que cet ordre évite (codes de race en MAJUSCULES du référentiel).
 function sanitize_key($value) { return preg_replace('/[^a-z0-9_\-]/', '', strtolower((string) $value)); }
+function sanitize_title($value) { $value = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower((string) $value)), '-'); return $value; }
 function esc_url_raw($value) { $value = trim((string) $value); return $value === '' ? '' : $value; }
 function absint($value) { return abs((int) $value); }
 function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_js($value) { return addslashes((string) $value); }
-function selected($a, $b) { return $a == $b ? ' selected' : ''; }
-function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
+// FIDÈLE au comportement réel (WordPress core echo par défaut) : le code de production appelle ces
+// fonctions en instruction PHP nue (bloc "selected(...);" isolé), en comptant sur cet echo implicite
+// — un stub qui se contente de "return" sans jamais échoir fait disparaître silencieusement l'attribut.
+function selected($a, $b, $echo = true) { $result = $a == $b ? " selected='selected'" : ''; if ($echo) echo $result; return $result; }
+function checked($a, $b = true, $echo = true) { $result = $a == $b ? " checked='checked'" : ''; if ($echo) echo $result; return $result; }
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
 function wp_nonce_field($action, $field) { echo '<input type="hidden" name="' . esc_attr($field) . '" value="stub-nonce">'; }
 
@@ -130,10 +134,60 @@ function metadata_exists($type, $post_id, $key) {
   return array_key_exists($post_id, $GLOBALS['__gwseq_test_meta']) && array_key_exists($key, $GLOBALS['__gwseq_test_meta'][$post_id]);
 }
 function get_post_field($field, $post_id) { return $GLOBALS['__gwseq_test_post_fields'][$post_id][$field] ?? ''; }
+// --- Registre minimal de posts (post_type/post_status), utilisé uniquement par le $wpdb de secours
+// des filtres admin (clôture V1) pour distinguer un cheval réel d'un post sans rapport — jamais
+// nécessaire auparavant dans ce fichier, qui ne testait aucune requête traversant les post types ---
+$GLOBALS['__gwseq_test_posts'] = array();
+function gws_test_make_post($id, $post_type, $title, $status = 'publish') {
+  $GLOBALS['__gwseq_test_posts'][$id] = array('post_type' => $post_type, 'post_status' => $status, 'post_title' => $title);
+}
 $GLOBALS['__gwseq_test_terms'] = array();
 function get_the_terms($post_id, $taxonomy) { return $GLOBALS['__gwseq_test_terms'][$post_id] ?? false; }
 function wp_list_pluck($list, $field) {
   return array_map(function ($item) use ($field) { return is_object($item) ? $item->$field : $item[$field]; }, $list);
+}
+
+// --- Filtres de la liste admin (clôture V1) : termes réels de la taxonomie Catégorie de cheval,
+// jamais une seconde liste codée en dur ---
+$GLOBALS['__gwseq_test_all_terms'] = array();
+function get_terms($args = array()) { return $GLOBALS['__gwseq_test_all_terms']; }
+function is_admin() { return true; }
+$GLOBALS['pagenow'] = 'edit.php';
+
+// --- $wpdb minimal : SEULE requête SQL directe de tout le module
+// (gwseq_cheval_admin_list_annees_naissance_presentes()) — plutôt que d'interpréter la chaîne SQL
+// (jamais exécutée ici), get_col() reproduit fidèlement la même logique (années distinctes de
+// _gwseq_annee_naissance parmi les chevaux non trashés, triées décroissant) directement depuis la
+// même base en mémoire que le reste de cette suite ---
+class Gws_Test_Wpdb {
+  public $postmeta = 'wp_postmeta';
+  public $posts = 'wp_posts';
+  public function prepare($query, ...$args) {
+    return vsprintf(str_replace(array('%s', '%d'), array("'%s'", '%d'), $query), $args);
+  }
+  public function get_col($query) {
+    $years = array();
+    foreach ($GLOBALS['__gwseq_test_meta'] as $post_id => $meta) {
+      $post_type = $GLOBALS['__gwseq_test_posts'][$post_id]['post_type'] ?? null;
+      $post_status = $GLOBALS['__gwseq_test_posts'][$post_id]['post_status'] ?? null;
+      if ($post_type !== GWSEQ_CPT_CHEVAL || $post_status === 'trash') continue;
+      $annee = $meta['_gwseq_annee_naissance'] ?? '';
+      if ($annee !== '' && !in_array((string) $annee, $years, true)) $years[] = (string) $annee;
+    }
+    rsort($years, SORT_NUMERIC);
+    return $years;
+  }
+}
+$GLOBALS['wpdb'] = new Gws_Test_Wpdb();
+
+// --- Faux WP_Query minimal (get()/set()/is_main_query()) pour exercer
+// gwseq_apply_cheval_admin_list_filters() sans dépendre d'une vraie requête SQL ---
+class Gws_Test_Query {
+  public $vars = array();
+  public function __construct($vars = array()) { $this->vars = $vars; }
+  public function is_main_query() { return true; }
+  public function get($key) { return $this->vars[$key] ?? ''; }
+  public function set($key, $value) { $this->vars[$key] = $value; }
 }
 
 // --- Réglages globaux (devise réutilisée depuis l'Étape 3, jamais un réglage propre au cheval) ---
@@ -639,10 +693,16 @@ gws_test_assert(strpos($cheval_registration, "'title', 'thumbnail', 'page-attrib
 gws_test_assert(strpos($cheval_registration, "'featured_image' => __('Photo principale'") !== false, 'Post type Cheval : libellé "Photo principale" appliqué à l’image à la une native (aucune meta parallèle)');
 
 // =====================================================================================
-// Colonnes d'administration : Catégories / Statut commercial / Prix / Ordre
+// Colonnes d'administration : Catégories / Sexe / Année / Statut commercial / Prix / Ordre
+// (clôture V1, §3 de la demande — colonne native "Date" retirée)
 // =====================================================================================
 $columns = gwseq_cheval_admin_columns(array('cb' => '<input type="checkbox">', 'title' => 'Titre', 'date' => 'Date'));
-gws_test_assert(array_key_exists('gwseq_categories', $columns) && array_key_exists('gwseq_statut', $columns) && array_key_exists('gwseq_prix', $columns) && array_key_exists('gwseq_ordre', $columns), 'Colonnes admin : Catégories/Statut commercial/Prix/Ordre toutes ajoutées');
+gws_test_assert(
+  array_key_exists('gwseq_categories', $columns) && array_key_exists('gwseq_sexe', $columns) && array_key_exists('gwseq_annee', $columns) && array_key_exists('gwseq_statut', $columns) && array_key_exists('gwseq_prix', $columns) && array_key_exists('gwseq_ordre', $columns),
+  'Colonnes admin : Catégories/Sexe/Année/Statut commercial/Prix/Ordre toutes ajoutées'
+);
+gws_test_assert(!array_key_exists('date', $columns), 'Colonnes admin (§3) : la colonne native "Date" est bien retirée de cette vue');
+gws_test_assert(array_keys($columns) === array('cb', 'title', 'gwseq_categories', 'gwseq_sexe', 'gwseq_annee', 'gwseq_statut', 'gwseq_prix', 'gwseq_ordre'), 'Colonnes admin : ordre exact demandé — Nom | Catégories | Sexe | Année | Statut commercial | Prix | Ordre (cb en plus, natif WordPress, toujours en premier)');
 
 $GLOBALS['__gwseq_test_terms'][800] = array((object) array('name' => 'Chevaux à vendre'), (object) array('name' => 'Chevaux de sport'));
 ob_start();
@@ -653,7 +713,7 @@ ob_start();
 gwseq_cheval_admin_column_content('gwseq_categories', 801);
 gws_test_assert(ob_get_clean() === '—', 'Colonne Catégories : aucune catégorie -> tiret, jamais d’erreur');
 
-$GLOBALS['__gwseq_test_meta'][802] = array('_gwseq_statut_commercial' => 'for_sale', '_gwseq_prix_mode' => 'fixed', '_gwseq_prix_fixe' => 15000.0);
+$GLOBALS['__gwseq_test_meta'][802] = array('_gwseq_statut_commercial' => 'for_sale', '_gwseq_prix_mode' => 'fixed', '_gwseq_prix_fixe' => 15000.0, '_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2019);
 ob_start();
 gwseq_cheval_admin_column_content('gwseq_statut', 802);
 gws_test_assert(ob_get_clean() === 'À vendre', 'Colonne Statut commercial : libellé résolu depuis la valeur technique');
@@ -662,10 +722,85 @@ ob_start();
 gwseq_cheval_admin_column_content('gwseq_prix', 802);
 gws_test_assert(ob_get_clean() === '15 000 €', 'Colonne Prix : résumé formaté avec la devise par défaut (EUR)');
 
+ob_start();
+gwseq_cheval_admin_column_content('gwseq_sexe', 802);
+gws_test_assert(ob_get_clean() === 'Femelle', 'Colonne Sexe : le libellé utilisateur ("Femelle") est bien affiché, jamais la valeur technique ("female")');
+
+ob_start();
+gwseq_cheval_admin_column_content('gwseq_annee', 802);
+gws_test_assert(ob_get_clean() === '2019', 'Colonne Année : uniquement l’année de naissance brute, jamais un âge calculé');
+
+$GLOBALS['__gwseq_test_meta'][803] = array(); // sexe et année manquants
+ob_start();
+gwseq_cheval_admin_column_content('gwseq_sexe', 803);
+gws_test_assert(ob_get_clean() === '—', 'Colonne Sexe : sexe non renseigné -> tiret, jamais une erreur ni une valeur devinée');
+ob_start();
+gwseq_cheval_admin_column_content('gwseq_annee', 803);
+gws_test_assert(ob_get_clean() === '—', 'Colonne Année : année non renseignée -> tiret (§3 : "si elle n’est pas renseignée, afficher —")');
+
 $GLOBALS['__gwseq_test_post_fields'][802]['menu_order'] = 30;
 ob_start();
 gwseq_cheval_admin_column_content('gwseq_ordre', 802);
 gws_test_assert(ob_get_clean() === '30', 'Colonne Ordre : menu_order natif affiché');
+
+// =====================================================================================
+// Filtres de la liste admin (clôture V1, §2 de la demande) : Catégorie / Statut commercial /
+// Année de naissance / Sexe — cumulables, persistants, combinables avec la recherche native.
+// =====================================================================================
+
+// --- Rendu réel des quatre filtres, avec persistance des valeurs déjà sélectionnées ---
+$GLOBALS['__gwseq_test_all_terms'] = array(
+  (object) array('slug' => 'chevaux-de-sport', 'name' => 'Chevaux de sport'),
+  (object) array('slug' => 'poulinieres', 'name' => 'Poulinières'),
+);
+$GLOBALS['__gwseq_test_meta'][810] = array('_gwseq_annee_naissance' => 2019);
+$GLOBALS['__gwseq_test_meta'][811] = array('_gwseq_annee_naissance' => 2021);
+$GLOBALS['__gwseq_test_meta'][812] = array('_gwseq_annee_naissance' => 2019); // doublon volontaire : ne doit apparaître qu'une fois
+gws_test_make_post(810, GWSEQ_CPT_CHEVAL, 'Cheval 2019 A');
+gws_test_make_post(811, GWSEQ_CPT_CHEVAL, 'Cheval 2021');
+gws_test_make_post(812, GWSEQ_CPT_CHEVAL, 'Cheval 2019 B');
+$_GET = array('gwseq_filter_categorie' => 'chevaux-de-sport', 'gwseq_filter_statut' => 'for_sale', 'gwseq_filter_annee' => '2019', 'gwseq_filter_sexe' => 'female');
+ob_start();
+gwseq_render_cheval_admin_list_filters(GWSEQ_CPT_CHEVAL);
+$filters_html = ob_get_clean();
+gws_test_assert(strpos($filters_html, 'name="gwseq_filter_categorie"') !== false && strpos($filters_html, 'name="gwseq_filter_statut"') !== false && strpos($filters_html, 'name="gwseq_filter_annee"') !== false && strpos($filters_html, 'name="gwseq_filter_sexe"') !== false, 'Filtres admin : les quatre filtres (Catégorie/Statut/Année/Sexe) sont bien rendus');
+gws_test_assert(preg_match('/value="chevaux-de-sport"\s+selected/', $filters_html) === 1, 'Filtres admin (persistance) : la catégorie déjà sélectionnée reste affichée dans le contrôle');
+gws_test_assert(preg_match('/value="for_sale"\s+selected/', $filters_html) === 1, 'Filtres admin (persistance) : le statut commercial déjà sélectionné reste affiché');
+gws_test_assert(preg_match('/value="2019"\s+selected/', $filters_html) === 1, 'Filtres admin (persistance) : l’année déjà sélectionnée reste affichée');
+gws_test_assert(preg_match('/value="female"\s+selected/', $filters_html) === 1, 'Filtres admin (persistance) : le sexe déjà sélectionné reste affiché');
+gws_test_assert(substr_count($filters_html, '<option value="2021"') === 1 && substr_count($filters_html, '<option value="2019"') === 1, 'Filtres admin (années) : seules les années RÉELLEMENT présentes apparaissent, jamais une liste arbitraire, et jamais de doublon');
+gws_test_assert(strpos($filters_html, '2021') < strpos($filters_html, '2019'), 'Filtres admin (années) : triées décroissant, les plus récentes en premier');
+
+ob_start();
+gwseq_render_cheval_admin_list_filters('gwseq_prestation');
+gws_test_assert(ob_get_clean() === '', 'Filtres admin : ne s’affichent jamais sur un écran liste d’un AUTRE post type');
+
+// --- Application réelle des filtres à la requête (cumulables, combinables avec la recherche native) ---
+$query = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_CHEVAL, 's' => 'Jamerose'));
+$_GET = array('gwseq_filter_categorie' => 'chevaux-de-sport', 'gwseq_filter_statut' => 'for_sale', 'gwseq_filter_annee' => '2019', 'gwseq_filter_sexe' => 'female');
+gwseq_apply_cheval_admin_list_filters($query);
+gws_test_assert($query->get('s') === 'Jamerose', 'Filtres admin : la recherche WordPress native ($_GET[\'s\']) n’est jamais altérée par l’application des filtres');
+$applied_tax_query = $query->get('tax_query');
+gws_test_assert(is_array($applied_tax_query) && $applied_tax_query[0]['taxonomy'] === GWSEQ_TAX_CATEGORIE_CHEVAL && $applied_tax_query[0]['field'] === 'slug' && $applied_tax_query[0]['terms'] === 'chevaux-de-sport', 'Filtres admin : le filtre Catégorie applique bien un tax_query par slug sur la taxonomie existante');
+$applied_meta_query = $query->get('meta_query');
+$meta_keys_applied = array_column(array_filter($applied_meta_query, 'is_array'), 'key');
+gws_test_assert(in_array('_gwseq_statut_commercial', $meta_keys_applied, true) && in_array('_gwseq_sexe', $meta_keys_applied, true) && in_array('_gwseq_annee_naissance', $meta_keys_applied, true), 'Filtres admin : les QUATRE critères (catégorie + statut + année + sexe) sont bien cumulés simultanément (relation AND)');
+gws_test_assert(($applied_meta_query['relation'] ?? null) === 'AND', 'Filtres admin : les critères meta cumulés utilisent bien une relation "AND" — un cheval doit correspondre à TOUS les critères');
+
+// --- Une valeur invalide/trafiquée (statut/sexe hors enum) est ignorée, jamais propagée telle
+// quelle dans la requête ---
+$query_invalid = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_CHEVAL));
+$_GET = array('gwseq_filter_statut' => 'valeur-inventee', 'gwseq_filter_sexe' => 'autre-chose');
+gwseq_apply_cheval_admin_list_filters($query_invalid);
+gws_test_assert(empty($query_invalid->get('meta_query')), 'Filtres admin : une valeur de statut/sexe hors du référentiel existant est ignorée, jamais propagée telle quelle dans la requête');
+
+// --- Jamais appliqués en dehors de l'écran liste Cheval (autre post type, ou requête secondaire) ---
+$query_other_post_type = new Gws_Test_Query(array('post_type' => 'gwseq_prestation'));
+$_GET = array('gwseq_filter_sexe' => 'female');
+gwseq_apply_cheval_admin_list_filters($query_other_post_type);
+gws_test_assert(empty($query_other_post_type->get('meta_query')), 'Filtres admin : jamais appliqués sur la liste d’un autre post type');
+
+$_GET = array();
 
 // =====================================================================================
 // Assets : uniquement sur l'écran d'édition d'une fiche cheval

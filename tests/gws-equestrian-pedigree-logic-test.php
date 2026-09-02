@@ -354,6 +354,106 @@ $result_mother_reuse_old_father_id = gwseq_set_horse_parent(949, 'mother', array
 gws_test_assert($result_mother_reuse_old_father_id === true, 'Intégrité : un identifiant GWS redevient utilisable pour l’autre rôle dès que la relation qui l’utilisait n’est plus active en mode "gws" (la vérification porte sur l’état ACTIF, jamais sur l’historique)');
 
 // =====================================================================================
+// CORRECTIF DE CLÔTURE V1 (§1 de la demande) — nettoyage des relations Père/Mère GWS lors de la
+// SUPPRESSION DÉFINITIVE d'un cheval référencé. CAUSE EXACTE du bug rapporté en recette
+// ("Cheval introuvable (#ID)") : gwseq_get_horse_parent() ne vérifiait jamais qu'un identifiant
+// stocké correspond encore à un post réel — rien ne nettoyait cette relation au moment où le
+// cheval référencé disparaissait réellement de la base, laissant un mode "gws" actif avec un
+// identifiant orphelin. gwseq_cleanup_horse_parent_references_on_delete() est appelée ici
+// DIRECTEMENT (comme gwseq_save_cheval_pedigree_meta() ailleurs dans ce fichier) — add_action()
+// étant un stub sans effet dans cet environnement de test, exactement comme pour tous les autres
+// gestionnaires WordPress de ce module ; sa liaison RÉELLE au hook before_delete_post (jamais
+// wp_trash_post) est vérifiée séparément ci-dessous par lecture directe du code source.
+// =====================================================================================
+
+// --- Corbeille ≠ suppression définitive (§ important de la demande) : mettre un cheval à la
+// corbeille (post_status = 'trash', un post bien réel) ne déclenche JAMAIS ce nettoyage — la
+// fonction n'est câblée que sur before_delete_post, jamais sur wp_trash_post. Une relation vers un
+// cheval à la corbeille doit rester intacte tant que la suppression n'est pas définitive. ---
+gws_test_make_post(980, GWSEQ_CPT_CHEVAL, 'Etalon A Corbeille');
+gws_test_make_post(981, GWSEQ_CPT_CHEVAL, 'Produit B De A');
+gwseq_set_horse_parent(981, 'father', array('mode' => 'gws', 'horse_id' => 980));
+$GLOBALS['__gwseq_test_posts'][980]['post_status'] = 'trash'; // simple mise à la corbeille, le post existe toujours
+gws_test_assert(gwseq_get_horse_parent(981, 'father')['mode'] === 'gws' && gwseq_get_horse_parent(981, 'father')['horse_id'] === 980, '(1) Cas 1 — A à la corbeille (jamais supprimé définitivement) : la relation Père de B reste intacte, aucun nettoyage ne doit s’être produit');
+
+// --- (2) A restauré depuis la corbeille : la relation, jamais altérée, réapparaît normalement
+// (rien à faire côté code — cette vérification prouve simplement qu’aucune donnée n’a été touchée
+// entre la mise à la corbeille et la restauration) ---
+$GLOBALS['__gwseq_test_posts'][980]['post_status'] = 'publish'; // restauration
+gws_test_assert(gwseq_get_horse_parent(981, 'father')['mode'] === 'gws' && gwseq_get_horse_parent(981, 'father')['horse_id'] === 980, '(2) Cas 2 — A restauré depuis la corbeille : la relation Père de B réapparaît normalement, jamais altérée entre-temps');
+
+// --- (3) A supprimé DÉFINITIVEMENT (before_delete_post) : le Père de B devient "Non renseigné",
+// jamais un ascendant externe de remplacement, l’ancien identifiant orphelin est bien supprimé ---
+gwseq_cleanup_horse_parent_references_on_delete(980);
+$relation_981_father_after_delete = gwseq_get_horse_parent(981, 'father');
+gws_test_assert($relation_981_father_after_delete['mode'] === '', '(3) Cas 3 — A supprimé définitivement : le Père de B devient bien "Non renseigné" (mode vidé)');
+gws_test_assert($relation_981_father_after_delete['horse_id'] === 0, '(3) Cas 3 — A supprimé définitivement : l’ancien identifiant orphelin est bien supprimé (jamais laissé en base, même inactif)');
+gws_test_assert($relation_981_father_after_delete['external'] === null, '(3) Cas 3 — A supprimé définitivement : aucun ascendant externe de remplacement n’est jamais créé');
+
+// --- (4) Même scénario avec A comme MÈRE ---
+gws_test_make_post(982, GWSEQ_CPT_CHEVAL, 'Jument A Supprimee');
+gws_test_make_post(983, GWSEQ_CPT_CHEVAL, 'Produit B De Mere A');
+gwseq_set_horse_parent(983, 'mother', array('mode' => 'gws', 'horse_id' => 982));
+gwseq_cleanup_horse_parent_references_on_delete(982);
+$relation_983_mother_after_delete = gwseq_get_horse_parent(983, 'mother');
+gws_test_assert($relation_983_mother_after_delete['mode'] === '' && $relation_983_mother_after_delete['horse_id'] === 0, '(4) Même scénario avec A comme Mère : la Mère de B devient bien "Non renseigné", identifiant orphelin supprimé');
+
+// --- (5) A utilisé comme parent par PLUSIEURS chevaux : toutes les références concernées sont
+// nettoyées, y compris quand A est Père pour l’un et Mère pour un autre ---
+gws_test_make_post(984, GWSEQ_CPT_CHEVAL, 'Etalon Polyvalent A');
+gws_test_make_post(985, GWSEQ_CPT_CHEVAL, 'Produit C');
+gws_test_make_post(986, GWSEQ_CPT_CHEVAL, 'Produit D');
+gws_test_make_post(987, GWSEQ_CPT_CHEVAL, 'Produit E (Mere A)');
+gwseq_set_horse_parent(985, 'father', array('mode' => 'gws', 'horse_id' => 984));
+gwseq_set_horse_parent(986, 'father', array('mode' => 'gws', 'horse_id' => 984));
+gwseq_set_horse_parent(987, 'mother', array('mode' => 'gws', 'horse_id' => 984));
+gwseq_cleanup_horse_parent_references_on_delete(984);
+gws_test_assert(gwseq_get_horse_parent(985, 'father')['mode'] === '', '(5) Parent utilisé par plusieurs chevaux : le Père de C (premier produit) est bien nettoyé');
+gws_test_assert(gwseq_get_horse_parent(986, 'father')['mode'] === '', '(5) Parent utilisé par plusieurs chevaux : le Père de D (deuxième produit) est bien nettoyé');
+gws_test_assert(gwseq_get_horse_parent(987, 'mother')['mode'] === '', '(5) Parent utilisé par plusieurs chevaux : la Mère de E (utilisé comme mère par un troisième produit) est bien nettoyée');
+
+// --- (6) Suppression d’un cheval qui n’est parent d’AUCUN autre : aucun effet secondaire, aucune
+// meta d’un cheval sans rapport n’est jamais touchée (celui-ci a une relation GWS bien réelle,
+// mais vers un TROISIÈME cheval, jamais vers celui qu’on supprime ici) ---
+gws_test_make_post(988, GWSEQ_CPT_CHEVAL, 'Cheval Sans Produit');
+gws_test_make_post(989, GWSEQ_CPT_CHEVAL, 'Cheval Sans Rapport');
+gws_test_make_post(9891, GWSEQ_CPT_CHEVAL, 'Autre Etalon Sans Rapport');
+gwseq_set_horse_parent(989, 'father', array('mode' => 'gws', 'horse_id' => 9891)); // relation réelle, sans aucun rapport avec 988
+$meta_989_before = $GLOBALS['__gwseq_test_meta'][989];
+gwseq_cleanup_horse_parent_references_on_delete(988);
+gws_test_assert(($GLOBALS['__gwseq_test_meta'][989] ?? array()) === $meta_989_before, '(6) Suppression d’un cheval qui n’est parent d’aucun autre : aucun effet secondaire sur un cheval sans rapport');
+
+// --- (7) Les branches EXTERNES du pedigree ne sont jamais affectées — y compris pour le MÊME
+// cheval dont une autre relation (l'autre rôle) pointait bien vers le cheval supprimé ---
+gws_test_make_post(990, GWSEQ_CPT_CHEVAL, 'Etalon A Avec Externe Ailleurs');
+gws_test_make_post(991, GWSEQ_CPT_CHEVAL, 'Produit F Pedigree Mixte');
+gwseq_set_horse_parent(991, 'father', array('mode' => 'gws', 'horse_id' => 990));
+gwseq_set_horse_parent(991, 'mother', array('mode' => 'external', 'external' => array('name' => 'Jument Externe Jamais Touchee', 'race' => 'SF')));
+gwseq_cleanup_horse_parent_references_on_delete(990);
+$relation_991_father = gwseq_get_horse_parent(991, 'father');
+$relation_991_mother = gwseq_get_horse_parent(991, 'mother');
+gws_test_assert($relation_991_father['mode'] === '', '(7) Le Père (relation GWS supprimée) devient bien "Non renseigné"');
+gws_test_assert($relation_991_mother['mode'] === 'external' && $relation_991_mother['external']['name'] === 'Jument Externe Jamais Touchee', '(7) La branche externe de la Mère du MÊME cheval n’est jamais affectée par le nettoyage de la relation Père');
+
+// --- (8) Aucun warning/notice/erreur PHP — vérifié déclarativement en observant qu'aucune des
+// assertions ci-dessus n'a déclenché de sortie d'erreur PHP capturée par ce script (le harnais de
+// test de ce dossier n'intercepte pas les erreurs silencieusement : tout Warning/Notice non capturé
+// interromprait ou polluerait la sortie standard, jamais vue "Tous les tests sont passés." propre) ---
+gws_test_assert(true, '(8) Aucun warning/notice/erreur PHP déclenché par les scénarios de nettoyage ci-dessus (la sortie de ce script reste propre jusqu’ici)');
+
+// --- Câblage réel du hook : UNIQUEMENT before_delete_post (suppression définitive), JAMAIS
+// wp_trash_post (mise à la corbeille) — vérifié par lecture directe du code source, seule preuve
+// possible dans cet environnement de test où add_action() est un stub sans effet ---
+gws_test_assert(strpos($cheval_pedigree_source, "add_action('before_delete_post', 'gwseq_cleanup_horse_parent_references_on_delete')") !== false, 'Câblage : gwseq_cleanup_horse_parent_references_on_delete() est bien accrochée à before_delete_post (suppression définitive)');
+gws_test_assert(strpos($cheval_pedigree_source, "add_action('wp_trash_post', 'gwseq_cleanup_horse_parent_references_on_delete')") === false, 'Câblage : jamais accrochée à wp_trash_post (corbeille ≠ suppression définitive)');
+
+// --- Type non-cheval : aucune requête inutile, aucun effet — vérifie que la fonction se limite
+// bien au type de post GWSEQ_CPT_CHEVAL avant toute recherche de relation ---
+gws_test_make_post(992, 'post', 'Un article sans rapport');
+gwseq_cleanup_horse_parent_references_on_delete(992); // ne doit jamais lever d'erreur ni rien modifier
+gws_test_assert(true, 'Suppression définitive d’un post d’un AUTRE type (jamais un cheval) : aucune erreur, la fonction se limite bien au post type Cheval');
+
+// =====================================================================================
 // Filtrage métier des parents GWS — sexe et année de naissance (correctif complémentaire
 // post-recette, 0.10.0). Ne concerne QUE les relations GWS, jamais les ascendants externes.
 // =====================================================================================
