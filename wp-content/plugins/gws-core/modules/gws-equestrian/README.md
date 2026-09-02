@@ -1,13 +1,14 @@
 # GWS Equestrian (gws-core)
 
 Module métier pour les professionnels du monde équestre (pension, enseignement, élevage,
-reproduction, vente) : gestion des prestations/tarifs, des fiches chevaux, et de l'équipe. Voir le
-pendant présentation dans `wp-content/themes/gws-starter/modules/gws-equestrian/`.
+reproduction, vente) : gestion des prestations/tarifs, des fiches chevaux, de l'équipe, et des
+actualités (adaptation du système natif WordPress). Voir le pendant présentation dans
+`wp-content/themes/gws-starter/modules/gws-equestrian/`.
 
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Module Équipe (nouvel objet métier Membre), GWS Equestrian 0.17.0 — back-office Cheval V1 validé en recette runtime (corrections de clôture 0.16.0, Labels ANSF 0.15.0, Import IFCE 0.13.x, référentiel Race/pedigree/liaison parents GWS, voir `CHANGELOG.md` de ce dossier). Duplication d'un cheval retirée de la roadmap V1 (intérêt devenu faible avec l'import IFCE). Module Équipe en attente de validation runtime manuelle. Prochaine étape : rendu web (chevaux et équipe).
+## État actuel : Bloc Actualités + filtre Prestations par Groupe tarifaire, GWS Equestrian 0.18.0 — Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime (voir `CHANGELOG.md` de ce dossier). Duplication d'un cheval retirée de la roadmap V1. Bloc Actualités en attente de validation runtime manuelle. Prochaine étape : rendu web (chevaux, équipe, actualités).
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -612,6 +613,53 @@ onglets) :
 28. Repasser en revue les points 1 à 20 ci-dessus dans la nouvelle interface à onglets : confirmer
     l'absence de toute régression sur pedigree, Production, filtres parents, indices, galerie,
     vidéos, contenus éditoriaux, Global Horse ID et données commerciales.
+
+## Bloc Actualités + filtre Prestations par Groupe tarifaire (0.18.0)
+
+**Actualités** (`includes/actualites.php`) : réutilisation intégrale du système NATIF des articles
+WordPress (`post`) plutôt qu'un nouveau CPT — objectif volontairement simple, adapter le
+vocabulaire et les usages plutôt que construire un système éditorial parallèle. Audit préalable :
+`post` était encore dans son état par défaut WordPress (aucune personnalisation existante trouvée
+dans `gws-core` ni `gws-starter`).
+
+- **Vocabulaire "Actualités"** via le filtre natif `post_type_labels_post` (mécanisme WordPress
+  prévu pour personnaliser le vocabulaire d'un post type déjà enregistré, y compris natif — jamais
+  une réinscription de `post`) : Actualités / Toutes les actualités / Ajouter une actualité /
+  Modifier l'actualité / Nouvelle actualité / Rechercher une actualité, plus les libellés natifs
+  visibles dans le même parcours (notifications de publication, médiathèque, filtre de liste...).
+- **Étiquettes masquées, jamais supprimées** (`post_tag`) via le filtre natif
+  `register_taxonomy_args`, scopé à cette seule taxonomie (`show_ui => false`,
+  `show_admin_column => false`) : aucune désinscription, aucune donnée détruite (`show_in_rest`
+  inchangé). Portée assumée et signalée : `post_tag` étant unique et partagée par tout le site,
+  le masquage s'applique à toute édition de `post` dès que GWS Equestrian est actif — le périmètre
+  voulu, sans bascule plus fine possible sans développement plus lourd, volontairement non engagé.
+- **Commentaires/trackbacks retirés** pour les NOUVELLES Actualités
+  (`remove_post_type_support('post', 'comments'|'trackbacks')`) : effet natif documenté de
+  WordPress lui-même — une fois le support retiré, `get_default_comment_status('post')` renvoie
+  systématiquement `'closed'`, sans code supplémentaire. Aucune donnée de commentaire existante ni
+  aucun article déjà publié n'est modifié.
+- **Modification rapide retirée** en réutilisant `gwseq_remove_quick_edit_row_action()`
+  (`includes/admin-ui.php`, déjà partagée par Chevaux/Membres/Prestations/Groupes tarifaires) —
+  `post` y est ajouté, jamais un second filtre dupliqué.
+- **Catégories et champs d'édition : aucun code.** La taxonomie `category` native reste
+  strictement inchangée (aucune catégorie créée automatiquement, celles existantes préservées) ;
+  titre, contenu, image à la une, date, statut de publication et auteur restent les mécanismes
+  natifs, aucun champ métier supplémentaire en V1. Aucun rendu front développé dans ce lot — les
+  Actualités restent exploitables plus tard via `WP_Query`/catégories/image à la
+  une/contenu/date/permalien, mécanismes WordPress standards jamais compliqués par ce lot.
+
+Voir `tests/gws-equestrian-actualites-logic-test.php` pour la couverture dédiée.
+
+**Filtre de la liste Prestations par Groupe tarifaire** (`includes/prestation-fields.php`) :
+liste déroulante au-dessus de `Prestations → Toutes les prestations` (valeur par défaut "Tous les
+groupes tarifaires"), combinable avec la recherche native et la pagination. Réutilise
+EXACTEMENT la relation déjà en place (`_gwseq_prestation_groupe_id`), via une nouvelle fonction
+`gwseq_get_prestation_groupe_choices()` extraite pour n'avoir qu'UNE SEULE requête de liste des
+groupes, partagée avec le sélecteur de la fiche Prestation — aucune deuxième logique de
+classement. "Sans groupe tarifaire" couvre proprement les deux cas réels via une clause
+`meta_query` en relation `OR` : une prestation dont la meta vaut explicitement `0` (relation
+retirée volontairement) ET une prestation créée avant l'existence de cette relation, dont la meta
+n'existe simplement pas (`NOT EXISTS`).
 
 ## Module Équipe (0.17.0)
 

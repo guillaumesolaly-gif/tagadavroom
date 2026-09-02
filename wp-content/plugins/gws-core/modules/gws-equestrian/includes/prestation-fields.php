@@ -274,16 +274,26 @@ function gwseq_add_prestation_meta_boxes() {
 }
 add_action('add_meta_boxes_' . GWSEQ_CPT_PRESTATION, 'gwseq_add_prestation_meta_boxes');
 
-function gwseq_render_prestation_groupe_box($post) {
-  wp_nonce_field(GWSEQ_PRESTATION_NONCE_ACTION, GWSEQ_PRESTATION_NONCE_FIELD);
-  $current = (int) get_post_meta($post->ID, '_gwseq_prestation_groupe_id', true);
-  $groupes = get_posts(array(
+/**
+ * Tous les Groupes tarifaires disponibles, dans l'ordre d'affichage — SEULE requête de cette liste
+ * (jamais dupliquée) : réutilisée à la fois par le sélecteur de la fiche Prestation ci-dessous et
+ * par le filtre de la liste d'administration (voir plus bas), pour ne jamais faire dériver deux
+ * énumérations indépendantes du même ensemble de groupes.
+ */
+function gwseq_get_prestation_groupe_choices() {
+  return get_posts(array(
     'post_type' => GWSEQ_CPT_GROUPE,
     'post_status' => array('publish', 'draft', 'pending', 'private'),
     'numberposts' => -1,
     'orderby' => 'menu_order title',
     'order' => 'ASC',
   ));
+}
+
+function gwseq_render_prestation_groupe_box($post) {
+  wp_nonce_field(GWSEQ_PRESTATION_NONCE_ACTION, GWSEQ_PRESTATION_NONCE_FIELD);
+  $current = (int) get_post_meta($post->ID, '_gwseq_prestation_groupe_id', true);
+  $groupes = gwseq_get_prestation_groupe_choices();
   echo '<label class="screen-reader-text" for="gwseq-prestation-groupe-id">' . esc_html__('Groupe tarifaire', 'gws-core') . '</label>';
   echo '<select class="widefat" id="gwseq-prestation-groupe-id" name="_gwseq_prestation_groupe_id">';
   echo '<option value="0">' . esc_html__('— Aucun groupe —', 'gws-core') . '</option>';
@@ -411,6 +421,68 @@ function gwseq_prestation_admin_column_content($column, $post_id) {
   }
 }
 add_action('manage_' . GWSEQ_CPT_PRESTATION . '_posts_custom_column', 'gwseq_prestation_admin_column_content', 10, 2);
+
+/* -------------------------------------------------------------------------------------------
+ * Filtre de la liste d'administration par Groupe tarifaire (demande complémentaire post-recette
+ * Équipe) : réutilise EXACTEMENT la relation déjà en place (_gwseq_prestation_groupe_id,
+ * gwseq_get_prestation_groupe_choices() ci-dessus) — aucune deuxième logique de classement,
+ * aucune donnée ni modèle modifiés. Combinable avec la recherche WordPress native et avec la
+ * pagination (les liens de pagination de WP_List_Table conservent nativement les paramètres
+ * `$_GET` déjà présents, sans code supplémentaire ici — même mécanisme déjà utilisé pour les
+ * filtres de la liste Cheval).
+ * ----------------------------------------------------------------------------------------- */
+
+function gwseq_render_prestation_admin_list_filter($post_type) {
+  if ($post_type !== GWSEQ_CPT_PRESTATION) return;
+  $selected = isset($_GET['gwseq_filter_groupe']) ? sanitize_text_field(wp_unslash($_GET['gwseq_filter_groupe'])) : '';
+  $groupes = gwseq_get_prestation_groupe_choices();
+  ?>
+  <select name="gwseq_filter_groupe">
+    <option value=""><?php esc_html_e('Tous les groupes tarifaires', 'gws-core'); ?></option>
+    <option value="0" <?php selected($selected, '0'); ?>><?php esc_html_e('Sans groupe tarifaire', 'gws-core'); ?></option>
+    <?php foreach ($groupes as $groupe) : ?>
+      <option value="<?php echo esc_attr($groupe->ID); ?>" <?php selected($selected, (string) $groupe->ID); ?>><?php echo esc_html(get_the_title($groupe)); ?></option>
+    <?php endforeach; ?>
+  </select>
+  <?php
+}
+add_action('restrict_manage_posts', 'gwseq_render_prestation_admin_list_filter');
+
+/**
+ * Application réelle du filtre à la requête principale de la liste (jamais un second WP_Query,
+ * jamais un rebuild de la liste — voir gwseq_apply_cheval_admin_list_filters() pour le même
+ * principe déjà appliqué à la liste Chevaux). "Sans groupe tarifaire" couvre PROPREMENT les deux
+ * cas réels : une prestation dont la meta vaut explicitement 0 (relation retirée volontairement)
+ * ET une prestation créée avant l'existence de cette relation, dont la meta n'existe simplement
+ * pas encore (`NOT EXISTS`) — sans ce second cas, ces prestations plus anciennes resteraient
+ * invisibles du filtre alors qu'elles n'ont, de fait, aucun groupe.
+ */
+function gwseq_apply_prestation_admin_list_filter($query) {
+  if (!is_admin() || !$query->is_main_query()) return;
+  global $pagenow;
+  if ($pagenow !== 'edit.php' || $query->get('post_type') !== GWSEQ_CPT_PRESTATION) return;
+  if (!isset($_GET['gwseq_filter_groupe']) || $_GET['gwseq_filter_groupe'] === '') return;
+
+  $raw = sanitize_text_field(wp_unslash($_GET['gwseq_filter_groupe']));
+  if (!is_numeric($raw)) return;
+  $groupe_id = (int) $raw;
+
+  $meta_query = $query->get('meta_query');
+  $meta_query = is_array($meta_query) ? $meta_query : array();
+
+  if ($groupe_id === 0) {
+    $meta_query[] = array(
+      'relation' => 'OR',
+      array('key' => '_gwseq_prestation_groupe_id', 'value' => 0, 'compare' => '=', 'type' => 'NUMERIC'),
+      array('key' => '_gwseq_prestation_groupe_id', 'compare' => 'NOT EXISTS'),
+    );
+  } else {
+    $meta_query[] = array('key' => '_gwseq_prestation_groupe_id', 'value' => $groupe_id, 'compare' => '=', 'type' => 'NUMERIC');
+  }
+
+  $query->set('meta_query', $meta_query);
+}
+add_action('pre_get_posts', 'gwseq_apply_prestation_admin_list_filter');
 
 /* -------------------------------------------------------------------------------------------
  * Assets : uniquement sur l'écran d'édition d'une Prestation (affichage conditionnel des champs

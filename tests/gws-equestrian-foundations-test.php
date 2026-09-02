@@ -41,6 +41,13 @@ function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
 // register_post_meta n'a besoin que d'exister : les fichiers de l'Étape 3 l'appellent sur 'init'
 // (donc réellement exécuté par ce stub) mais ce test ne porte pas sur les meta enregistrées.
 function register_post_meta($object_type, $meta_key, $args = array()) {}
+// Actualités (adaptation de `post`) : gwseq_remove_actualites_comments_support() est accrochée sur
+// 'init' (donc réellement exécutée par ce stub) — on capture les appels plutôt que de supposer leur
+// effet, sans se soucier ici de leur contenu (hors périmètre de ce test sur les fondations).
+$GLOBALS['__gwseq_test_removed_post_type_support'] = array();
+function remove_post_type_support($post_type, $feature) {
+  $GLOBALS['__gwseq_test_removed_post_type_support'][] = array($post_type, $feature);
+}
 // i18n (Étape 3, relecture) : les libellés de post types/taxonomie passent désormais par __() —
 // ce test porte sur les arguments d'enregistrement, pas sur la traduction, donc simple passe-plat.
 function __($text, $domain = 'default') { return $text; }
@@ -208,9 +215,9 @@ foreach ($expected_search_items as $slug => $expected_label) {
   );
 }
 
-// --- Action de ligne "Modification rapide" (Quick Edit) retirée UNIQUEMENT sur les quatre objets
-// métier GWS Equestrian, jamais globalement (micro-correction post-recette Équipe) ---
-foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE) as $slug) {
+// --- Action de ligne "Modification rapide" (Quick Edit) retirée sur les quatre objets métier GWS
+// Equestrian ET sur `post` (Actualités, §6 de la demande Actualités), jamais globalement ---
+foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, 'post') as $slug) {
   $native_actions = array('edit' => '<a>Modifier</a>', 'inline hide-if-no-js' => '<button>Modification rapide</button>', 'trash' => '<a>Corbeille</a>');
   $filtered = gwseq_remove_quick_edit_row_action($native_actions, (object) array('post_type' => $slug));
   gws_test_assert(
@@ -222,11 +229,14 @@ foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_C
     "Post type '$slug' : les autres actions de ligne (Modifier, Corbeille) restent intactes"
   );
 }
+// Contrôle négatif : un post type totalement hors périmètre GWS (Pages, natif WordPress, jamais
+// touché par ce module) conserve Quick Edit — la preuve qu'il ne s'agit jamais d'une désactivation
+// globale, y compris maintenant que `post` fait partie des post types ciblés.
 $native_actions_other = array('edit' => '<a>Modifier</a>', 'inline hide-if-no-js' => '<button>Modification rapide</button>');
-$filtered_other = gwseq_remove_quick_edit_row_action($native_actions_other, (object) array('post_type' => 'post'));
+$filtered_other = gwseq_remove_quick_edit_row_action($native_actions_other, (object) array('post_type' => 'page'));
 gws_test_assert(
   array_key_exists('inline hide-if-no-js', $filtered_other),
-  'Quick Edit : jamais désactivé globalement — un Article (post) conserve son action "Modification rapide"'
+  'Quick Edit : jamais désactivé globalement — les Pages conservent leur action "Modification rapide"'
 );
 
 // --- Étape 3 : Ordre d'affichage natif (page-attributes) sur Prestation et Groupe, Description
@@ -257,6 +267,22 @@ if ($categorie !== null) {
     'Taxonomie catégorie de cheval non hiérarchique (compatible multi-valeurs, un cheval peut avoir plusieurs catégories)'
   );
 }
+
+// --- Actualités (adaptation de `post`) : commentaires/trackbacks bien retirés au chargement du
+// module (voir tests/gws-equestrian-actualites-logic-test.php pour la couverture complète du bloc
+// Actualités — labels, masquage des Étiquettes, permissions Éditeur) ---
+gws_test_assert(
+  in_array(array('post', 'comments'), $GLOBALS['__gwseq_test_removed_post_type_support'], true),
+  'Actualités : le support des commentaires est bien retiré de `post` au chargement du module'
+);
+gws_test_assert(
+  in_array(array('post', 'trackbacks'), $GLOBALS['__gwseq_test_removed_post_type_support'], true),
+  'Actualités : le support des trackbacks/pings est bien retiré de `post` au chargement du module'
+);
+gws_test_assert(
+  !array_key_exists('post', $post_types) && !array_key_exists('page', $post_types),
+  'Actualités : `post` (et `page`) ne sont jamais réenregistrés par le module — post_type reste bien le natif WordPress, jamais un nouveau `gwseq_actualite`'
+);
 
 echo ($failures === 0 ? 'Tous les tests sont passés.' : "$failures test(s) en échec.") . "\n";
 exit($failures === 0 ? 0 : 1);

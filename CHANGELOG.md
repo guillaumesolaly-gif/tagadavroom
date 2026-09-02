@@ -1,5 +1,18 @@
 # Changelog — GWS Starter
 
+## 1.21.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Bloc Actualités + filtre Prestations par Groupe tarifaire (GWS Equestrian 0.18.0).**
+  Adaptation du système NATIF des articles WordPress (`post`) au vocabulaire GWS Equestrian —
+  aucun nouveau post type, aucune migration : vocabulaire "Actualités" (menu, écrans, notifications),
+  Étiquettes masquées de l'interface (jamais supprimées ni désinscrites), commentaires/trackbacks
+  retirés pour les nouvelles Actualités, Modification rapide retirée (réutilisation de la fonction
+  déjà existante pour les objets métier GWS). Catégories natives et champs d'édition (titre,
+  contenu, image à la une, date, statut, auteur) inchangés, aucun rendu front développé. Ajout
+  d'un filtre par Groupe tarifaire dans `Prestations → Toutes les prestations` (dont le cas "Sans
+  groupe tarifaire"), réutilisant la relation déjà existante. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.18.0) pour le détail complet.
+
 ## 1.20.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Micro-corrections UX post-recette Équipe (GWS Equestrian 0.17.1).** Placeholders et aides de

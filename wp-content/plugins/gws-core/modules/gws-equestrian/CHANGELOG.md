@@ -5,6 +5,66 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.18.0 — Bloc Actualités (adaptation de `post`) + filtre Prestations par Groupe tarifaire
+
+**Audit préalable** (avant toute modification) : aucune personnalisation existante de `post` n'a
+été trouvée dans `gws-core` ni dans `gws-starter` — ni libellés, ni support retiré, ni réglage de
+discussion, ni action de menu/liste, ni gestion de `post_tag`. `post` était encore dans son état
+par défaut WordPress.
+
+**Actualités** (`includes/actualites.php`) : réutilisation intégrale du système NATIF des articles
+WordPress (`post`) — AUCUN nouveau post type (`gwseq_actualite` n'existe pas), aucune migration,
+aucun système éditorial parallèle. Quatre mécanismes natifs distincts, jamais une réécriture de
+l'enregistrement de `post`/`post_tag` :
+1. **Vocabulaire "Actualités"** via le filtre natif `post_type_labels_post` (mécanisme WordPress
+   prévu pour personnaliser le vocabulaire d'un post type déjà enregistré, y compris natif) :
+   Actualités / Toutes les actualités / Ajouter une actualité / Modifier l'actualité / Nouvelle
+   actualité / Rechercher une actualité, et les libellés natifs pertinents visibles dans le même
+   parcours d'écran (notifications de publication, médiathèque, filtre de liste...).
+2. **Étiquettes masquées, jamais supprimées** (`post_tag`) via le filtre natif
+   `register_taxonomy_args` (`show_ui => false`, `show_admin_column => false`) : aucune
+   désinscription de la taxonomie, aucune donnée détruite (`show_in_rest` inchangé). Portée
+   signalée : `post_tag` étant unique et partagée par tout le site, ce masquage s'applique à toute
+   édition de `post` dès que GWS Equestrian est actif — le périmètre voulu, sans bascule plus fine
+   possible sans développement plus lourd, volontairement non engagé.
+3. **Commentaires/trackbacks retirés** pour les nouvelles Actualités via
+   `remove_post_type_support('post', 'comments'|'trackbacks')`, accroché après l'enregistrement
+   natif de `post`. Effet natif documenté de WordPress lui-même : une fois le support retiré,
+   `get_default_comment_status('post')` renvoie systématiquement `'closed'` pour toute NOUVELLE
+   Actualité, quel que soit le réglage global Discussion — sans code supplémentaire. Aucune donnée
+   de commentaire existante, ni le statut déjà enregistré sur une Actualité existante, n'est
+   modifié.
+4. **Modification rapide retirée** en réutilisant la fonction déjà existante
+   `gwseq_remove_quick_edit_row_action()` (`includes/admin-ui.php`, déjà partagée par
+   Chevaux/Membres/Prestations/Groupes tarifaires) — `post` y est simplement ajouté, jamais un
+   second filtre dupliqué.
+
+Catégories (§3) et champs d'édition (§2) : AUCUN code — la taxonomie `category` native reste
+strictement inchangée (aucune catégorie créée automatiquement, celles existantes préservées),
+titre/contenu/image à la une/date/statut/auteur restent les mécanismes natifs, aucun champ métier
+supplémentaire. Aucun rendu front développé dans ce lot.
+
+**Filtre de la liste Prestations par Groupe tarifaire** (`includes/prestation-fields.php`,
+demande complémentaire) : liste déroulante au-dessus de `Prestations → Toutes les prestations`
+(valeur par défaut "Tous les groupes tarifaires"), combinable avec la recherche native et la
+pagination. Réutilise EXACTEMENT la relation déjà en place (`_gwseq_prestation_groupe_id`,
+`gwseq_get_prestation_groupe_choices()` — nouvelle fonction extraite pour n'avoir qu'UNE SEULE
+requête de liste des groupes, partagée avec le sélecteur de la fiche Prestation), aucune deuxième
+logique de classement, aucune donnée ni modèle modifiés. "Sans groupe tarifaire" couvre proprement
+les deux cas réels via une clause `meta_query` en relation `OR` : une prestation dont la meta vaut
+explicitement `0` (relation retirée volontairement) ET une prestation créée avant l'existence de
+cette relation, dont la meta n'existe simplement pas (`NOT EXISTS`).
+
+**Tests** : nouveau fichier `tests/gws-equestrian-actualites-logic-test.php` (46 assertions :
+`post` reste `post`, vocabulaire, masquage non destructif des Étiquettes, retrait des
+commentaires/trackbacks, Modification rapide, permissions Éditeur, non-régression sur les quatre
+objets métier GWS) ; `tests/gws-equestrian-foundations-test.php` mis à jour (retrait de
+Modification rapide étendu à `post`, contrôle négatif basculé sur les Pages) ; nouvelles
+assertions dans `tests/gws-equestrian-prestations-logic-test.php` pour le filtre Groupe tarifaire
+(rendu, persistance, application réelle à la requête, cas "Sans groupe tarifaire", non-régression).
+Toutes les régressions attendues confirmées par retrait/restauration. Intégralité des suites
+existantes (19 fichiers PHP + 2 suites JS runtime) revérifiée, aucune régression.
+
 ## 0.17.1 — Micro-corrections UX post-recette Équipe
 
 Suite à la validation runtime du module Équipe (0.17.0), quatre micro-corrections ciblées avant le

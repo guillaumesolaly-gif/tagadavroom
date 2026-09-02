@@ -37,15 +37,47 @@ function esc_html__($text, $domain = 'default') { return esc_html($text); }
 function esc_attr__($text, $domain = 'default') { return esc_attr($text); }
 function esc_html_e($text, $domain = 'default') { echo esc_html($text); }
 function esc_attr_e($text, $domain = 'default') { echo esc_attr($text); }
-function selected($a, $b) { return $a == $b ? ' selected' : ''; }
-function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
+// FIDÈLE au comportement réel de WordPress (echo par défaut) — voir
+// gws-equestrian-cheval-logic-test.php pour le détail du bug de stub que cela évite (un rendu
+// conditionnel devenant silencieusement invisible dans les assertions).
+function selected($a, $b, $echo = true) { $result = $a == $b ? ' selected' : ''; if ($echo) echo $result; return $result; }
+function checked($a, $b = true, $echo = true) { $result = $a == $b ? ' checked' : ''; if ($echo) echo $result; return $result; }
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
 
 // --- Registres en mémoire simulant la base : posts (pour la relation groupe) et post meta ---
 $GLOBALS['__gwseq_test_posts'] = array(); // id => post_type
 $GLOBALS['__gwseq_test_titles'] = array(); // id => titre courant (pour vérifier le renommage)
+$GLOBALS['__gwseq_test_post_status'] = array(); // id => statut (par défaut 'publish' si absent)
 function get_post_type($post_id) { return $GLOBALS['__gwseq_test_posts'][$post_id] ?? false; }
-function get_the_title($post_id) { return $GLOBALS['__gwseq_test_titles'][$post_id] ?? ''; }
+// Accepte soit un ID (déjà utilisé partout ailleurs dans ce fichier), soit un objet post-like tel
+// que retourné par le get_posts() ci-dessous (gwseq_get_prestation_groupe_choices()) — même
+// signature que la vraie get_the_title() de WordPress.
+function get_the_title($post) {
+  $post_id = is_object($post) ? $post->ID : $post;
+  return $GLOBALS['__gwseq_test_titles'][$post_id] ?? '';
+}
+// Filtre de la liste Prestations (demande complémentaire) : seule requête directe de ce fichier,
+// reproduit fidèlement le seul besoin réel (post_type + exclusion de la corbeille), jamais toute
+// la richesse de get_posts().
+function get_posts($args = array()) {
+  $post_type = $args['post_type'] ?? 'post';
+  $results = array();
+  foreach ($GLOBALS['__gwseq_test_posts'] as $id => $type) {
+    if ($type !== $post_type) continue;
+    if (($GLOBALS['__gwseq_test_post_status'][$id] ?? 'publish') === 'trash') continue;
+    $results[] = (object) array('ID' => $id);
+  }
+  return $results;
+}
+function is_admin() { return true; }
+$GLOBALS['pagenow'] = 'edit.php';
+class Gws_Test_Query {
+  public $vars = array();
+  public function __construct($vars = array()) { $this->vars = $vars; }
+  public function is_main_query() { return true; }
+  public function get($key) { return $this->vars[$key] ?? ''; }
+  public function set($key, $value) { $this->vars[$key] = $value; }
+}
 
 $GLOBALS['__gwseq_test_meta'] = array(); // post_id => [meta_key => value]
 function update_post_meta($post_id, $key, $value) {
@@ -421,6 +453,105 @@ gws_test_assert(
     && $GLOBALS['__gwseq_test_meta'][46]['_gwseq_tarif_prix'] === 99.0,
   'Cas valide : nonce/capability/autosave/révision tous corrects -> les meta sont bien enregistrées'
 );
+
+// =====================================================================================
+// Filtre de la liste d'administration par Groupe tarifaire (demande complémentaire)
+// =====================================================================================
+
+// --- Fixtures : trois groupes tarifaires, un groupe mis à la corbeille (jamais proposé dans le
+// filtre), et quatre prestations (une par groupe réel, une explicitement sans groupe (meta = 0),
+// une sans la meta du tout — simule une prestation créée avant l'existence de cette relation) ---
+$GLOBALS['__gwseq_test_posts'][10] = GWSEQ_CPT_GROUPE;
+$GLOBALS['__gwseq_test_titles'][10] = 'Pensions';
+$GLOBALS['__gwseq_test_posts'][11] = GWSEQ_CPT_GROUPE;
+$GLOBALS['__gwseq_test_titles'][11] = 'Cours collectifs';
+$GLOBALS['__gwseq_test_posts'][12] = GWSEQ_CPT_GROUPE;
+$GLOBALS['__gwseq_test_titles'][12] = 'Groupe supprimé';
+$GLOBALS['__gwseq_test_post_status'][12] = 'trash';
+
+$GLOBALS['__gwseq_test_posts'][70] = GWSEQ_CPT_PRESTATION;
+$GLOBALS['__gwseq_test_meta'][70] = array('_gwseq_prestation_groupe_id' => 10);
+$GLOBALS['__gwseq_test_posts'][71] = GWSEQ_CPT_PRESTATION;
+$GLOBALS['__gwseq_test_meta'][71] = array('_gwseq_prestation_groupe_id' => 11);
+$GLOBALS['__gwseq_test_posts'][72] = GWSEQ_CPT_PRESTATION;
+$GLOBALS['__gwseq_test_meta'][72] = array('_gwseq_prestation_groupe_id' => 0); // "Sans groupe" explicite
+$GLOBALS['__gwseq_test_posts'][73] = GWSEQ_CPT_PRESTATION;
+$GLOBALS['__gwseq_test_meta'][73] = array(); // jamais enregistrée avec cette relation (prestation antérieure)
+
+// --- Rendu réel du contrôle : les groupes réels proposés, le groupe à la corbeille absent,
+// l'option "Sans groupe tarifaire" et "Tous les groupes tarifaires" toujours présentes ---
+$_GET = array();
+ob_start();
+gwseq_render_prestation_admin_list_filter(GWSEQ_CPT_PRESTATION);
+$filter_html = ob_get_clean();
+gws_test_assert(strpos($filter_html, 'name="gwseq_filter_groupe"') !== false, 'Filtre Groupe tarifaire : le contrôle est bien rendu');
+gws_test_assert(strpos($filter_html, '>Tous les groupes tarifaires<') !== false, 'Filtre Groupe tarifaire : valeur par défaut "Tous les groupes tarifaires"');
+gws_test_assert(strpos($filter_html, '>Sans groupe tarifaire<') !== false, 'Filtre Groupe tarifaire : option "Sans groupe tarifaire" proposée');
+gws_test_assert(strpos($filter_html, '>Pensions<') !== false && strpos($filter_html, '>Cours collectifs<') !== false, 'Filtre Groupe tarifaire : tous les groupes tarifaires réels sont proposés');
+gws_test_assert(strpos($filter_html, 'Groupe supprimé') === false, 'Filtre Groupe tarifaire : un groupe à la corbeille n\'est jamais proposé');
+
+// --- Persistance de la sélection déjà appliquée ---
+$_GET = array('gwseq_filter_groupe' => '10');
+ob_start();
+gwseq_render_prestation_admin_list_filter(GWSEQ_CPT_PRESTATION);
+$filter_html_selected = ob_get_clean();
+gws_test_assert(preg_match('/value="10"\s+selected/', $filter_html_selected) === 1, 'Filtre Groupe tarifaire : la sélection déjà appliquée reste affichée dans le contrôle');
+
+// --- Ne s'affiche jamais sur un écran liste d'un autre post type ---
+ob_start();
+gwseq_render_prestation_admin_list_filter(GWSEQ_CPT_GROUPE);
+gws_test_assert(ob_get_clean() === '', 'Filtre Groupe tarifaire : ne s\'affiche jamais sur un écran liste d\'un autre post type');
+
+// --- Application réelle à la requête : un groupe précis, combiné avec la recherche native ---
+$_GET = array('gwseq_filter_groupe' => '10');
+$query = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_PRESTATION, 's' => 'poney'));
+gwseq_apply_prestation_admin_list_filter($query);
+gws_test_assert($query->get('s') === 'poney', 'Filtre Groupe tarifaire : la recherche WordPress native n\'est jamais altérée par le filtre');
+$applied_meta_query = $query->get('meta_query');
+gws_test_assert(
+  is_array($applied_meta_query) && $applied_meta_query[0]['key'] === '_gwseq_prestation_groupe_id' && (int) $applied_meta_query[0]['value'] === 10,
+  'Filtre Groupe tarifaire : sélectionner un groupe applique bien un meta_query sur la relation déjà en place (_gwseq_prestation_groupe_id), aucune deuxième logique de classement'
+);
+
+// --- "Sans groupe tarifaire" : couvre proprement les deux cas réels (meta = 0 ET meta absente) ---
+$_GET = array('gwseq_filter_groupe' => '0');
+$query_sans_groupe = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_PRESTATION));
+gwseq_apply_prestation_admin_list_filter($query_sans_groupe);
+$sans_groupe_meta_query = $query_sans_groupe->get('meta_query');
+gws_test_assert(
+  is_array($sans_groupe_meta_query) && ($sans_groupe_meta_query[0]['relation'] ?? null) === 'OR',
+  'Filtre Groupe tarifaire "Sans groupe tarifaire" : requête combinée (relation OR)'
+);
+$sans_groupe_clauses = $sans_groupe_meta_query[0] ?? array();
+$has_value_zero_clause = false;
+$has_not_exists_clause = false;
+foreach ($sans_groupe_clauses as $clause) {
+  if (!is_array($clause)) continue;
+  if (($clause['key'] ?? null) === '_gwseq_prestation_groupe_id' && ($clause['compare'] ?? null) === '=' && (int) ($clause['value'] ?? -1) === 0) $has_value_zero_clause = true;
+  if (($clause['key'] ?? null) === '_gwseq_prestation_groupe_id' && ($clause['compare'] ?? null) === 'NOT EXISTS') $has_not_exists_clause = true;
+}
+gws_test_assert($has_value_zero_clause, 'Filtre Groupe tarifaire "Sans groupe tarifaire" : couvre le cas meta = 0 (relation explicitement retirée)');
+gws_test_assert($has_not_exists_clause, 'Filtre Groupe tarifaire "Sans groupe tarifaire" : couvre AUSSI le cas meta absente (prestation créée avant cette relation)');
+
+// --- Valeur absente/vide : jamais de filtre appliqué (aucune régression sur la liste normale) ---
+$_GET = array();
+$query_no_filter = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_PRESTATION));
+gwseq_apply_prestation_admin_list_filter($query_no_filter);
+gws_test_assert($query_no_filter->get('meta_query') === '', 'Filtre Groupe tarifaire : aucun filtre soumis -> requête normale inchangée, aucune régression sur la liste Prestations existante');
+
+// --- Valeur non numérique trafiquée : jamais propagée dans la requête ---
+$_GET = array('gwseq_filter_groupe' => 'invalide');
+$query_invalid = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_PRESTATION));
+gwseq_apply_prestation_admin_list_filter($query_invalid);
+gws_test_assert($query_invalid->get('meta_query') === '', 'Filtre Groupe tarifaire : valeur non numérique trafiquée -> jamais propagée dans la requête');
+
+// --- Jamais appliqué à la liste d'un autre post type (ex. Groupe tarifaire lui-même) ---
+$_GET = array('gwseq_filter_groupe' => '10');
+$query_other_type = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_GROUPE));
+gwseq_apply_prestation_admin_list_filter($query_other_type);
+gws_test_assert($query_other_type->get('meta_query') === '', 'Filtre Groupe tarifaire : jamais appliqué à la liste d\'un autre post type');
+
+$_GET = array();
 
 // --- Autosave : testé en dernier, DOING_AUTOSAVE ne peut être défini qu'une fois par processus
 // PHP et resterait sinon "vrai" pour tous les cas suivants ---

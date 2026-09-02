@@ -27,6 +27,8 @@ node tests/gws-equestrian-cheval-admin-tabs-runtime-test.js
 php tests/gws-equestrian-ifce-import-test.php
 node tests/gws-equestrian-race-referentiel-autocomplete-runtime-test.js
 php tests/gws-equestrian-cheval-labels-test.php
+php tests/gws-equestrian-membre-logic-test.php
+php tests/gws-equestrian-actualites-logic-test.php
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
@@ -872,3 +874,49 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
     Prestation/Groupe/Cheval modifiée.
   - Intégralité des suites de tests PHP (18 fichiers) et des deux suites JS runtime de ce dossier
     ré-exécutée : aucune régression.
+- **Bloc Actualités, adaptation de `post` (0.18.0, `gws-equestrian-actualites-logic-test.php`, 46
+  assertions)** : fichier nouveau, stubs minimaux propres à ce fichier (`register_taxonomy_args`
+  et `post_type_labels_post` capturés comme n'importe quel autre filtre, `remove_post_type_support`
+  capturé plutôt que simulé). `post` n'est jamais réenregistré (`register_post_type()` toujours
+  appelé exactement pour les quatre post types métier GWS, jamais `post` ni `gwseq_actualite`).
+  Vocabulaire : `gwseq_actualites_post_labels()` exercée avec un faux objet `$labels` représentant
+  fidèlement ce que `get_post_type_labels()` calculerait réellement pour `post` avant filtrage (pas
+  seulement un tableau vide) — vérifie chaque libellé demandé ET qu'une propriété non listée
+  (`parent_item_colon`) n'est jamais écrasée (le filtre ne réinitialise pas l'objet entier).
+  Étiquettes : `gwseq_hide_post_tag_ui()` exercée avec des arguments par défaut réalistes,
+  `show_ui`/`show_admin_column` bien remis à `false`, `show_in_rest`/`public` INCHANGÉS, et la
+  taxonomie `category` ainsi que la Catégorie de cheval du module Chevaux traversent le filtre sans
+  aucune altération (non-régression croisée). Commentaires/trackbacks : les deux appels à
+  `remove_post_type_support('post', ...)` bien capturés, jamais appliqués à un autre post type.
+  Modification rapide : un seul filtre `post_row_actions` enregistré au total (la fonction déjà
+  existante d'`includes/admin-ui.php` est réutilisée, jamais un second filtre dupliqué), `post`
+  bien ajouté à sa liste de post types ciblés (recherche par expression régulière dans le code
+  source plutôt qu'un texte figé, pour tolérer l'ordre des éléments du tableau), Pages toujours
+  épargnées (contrôle négatif). Permissions Éditeur : vérifié par absence de toute manipulation de
+  capacité dans le fichier (`current_user_can`/`map_meta_cap`/`add_cap`), le rôle Éditeur conservant
+  la totalité de ses droits natifs sur `post`. Non-régression : toujours exactement quatre post
+  types métier GWS enregistrés, taxonomie Catégorie de cheval inchangée. Deux vérifications par
+  retrait/restauration effectuées en cours de route (vocabulaire, masquage des Étiquettes,
+  commentaires/trackbacks) pour prouver que ces assertions détectent réellement une régression.
+  `tests/gws-equestrian-foundations-test.php` mis à jour en conséquence : Modification rapide
+  étendue à `post` (l'ancienne assertion utilisait justement `post` comme groupe témoin « jamais
+  touché » — bascule nécessaire du témoin sur les Pages, seul post type réellement hors périmètre
+  maintenant), et nouvelles assertions déclaratives sur le retrait des commentaires/trackbacks.
+- **Filtre de la liste Prestations par Groupe tarifaire (demande complémentaire,
+  `gws-equestrian-prestations-logic-test.php`)** : nouveaux stubs (`get_posts()` reproduisant
+  fidèlement le seul besoin réel — post_type + exclusion de la corbeille —, `is_admin()`,
+  `$GLOBALS['pagenow']`, `Gws_Test_Query`) ; `get_the_title()` étendue pour accepter soit un ID
+  (déjà utilisé partout ailleurs dans ce fichier) soit un objet post-like, comme la vraie fonction
+  WordPress. Détecté et corrigé au passage : le stub `selected()`/`checked()` de ce fichier
+  n'échoyait pas par défaut, même défaut déjà rencontré et documenté pour d'autres fichiers de
+  cette suite — corrigé ici aussi, seul moyen de vérifier la persistance de la sélection dans le
+  HTML réellement produit. Couverture : rendu réel du contrôle (tous les groupes réels proposés,
+  un groupe à la corbeille jamais proposé, persistance de la sélection), absence d'affichage sur un
+  autre post type, application réelle à la requête (meta_query sur `_gwseq_prestation_groupe_id`,
+  recherche native jamais altérée), le cas "Sans groupe tarifaire" couvrant PROPREMENT les deux
+  situations réelles (`meta_query` en relation `OR` : valeur explicitement `0` ET meta totalement
+  absente pour une prestation créée avant l'existence de cette relation), valeur absente/vide
+  laissant la requête inchangée, valeur trafiquée non numérique jamais propagée, non-application à
+  un autre post type. Vérifié par retrait/restauration (le cas "Sans groupe tarifaire" en
+  particulier). Intégralité des suites existantes (19 fichiers PHP + 2 suites JS runtime)
+  ré-exécutée après ce lot : aucune régression.

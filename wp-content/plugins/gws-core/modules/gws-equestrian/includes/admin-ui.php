@@ -52,18 +52,23 @@ add_action('pre_get_posts', 'gwseq_admin_default_order_by_menu_order');
 
 /**
  * Retire l'action de ligne "Modification rapide" (Quick Edit) des listes d'administration des
- * quatre objets métier GWS Equestrian (micro-correction post-recette Équipe) : ces fiches sont
- * suffisamment structurées (meta boxes dédiées, titre parfois auto-dérivé pour Membre) pour que
- * l'édition doive toujours passer par la fiche complète — jamais par le formulaire minimal et
- * générique de Quick Edit, qui ignore de toute façon ces champs métier. CIBLÉ UNIQUEMENT sur ces
- * quatre post types via le filtre natif `post_row_actions` (jamais une désactivation globale de
- * Quick Edit dans WordPress, qui resterait pleinement disponible pour les Articles/Pages et tout
- * autre post type). La clé 'inline hide-if-no-js' est l'identifiant natif WordPress de cette action
- * précise (voir `WP_Posts_List_Table::handle_row_actions()`) — seule cette entrée est retirée,
- * aucune autre action de ligne (Modifier, Corbeille, Voir/Aperçu...) n'est touchée.
+ * objets métier GWS Equestrian (micro-correction post-recette Équipe ; étendu à `post` lors de
+ * l'adaptation Actualités — §6/§8 de cette demande : « si une fonction générique déjà existante
+ * doit proprement prendre en charge post, la réutiliser plutôt que dupliquer un second filtre »).
+ * Ces fiches sont suffisamment structurées (meta boxes dédiées, titre parfois auto-dérivé pour
+ * Membre) pour que l'édition doive toujours passer par la fiche complète — jamais par le
+ * formulaire minimal et générique de Quick Edit. CIBLÉ UNIQUEMENT sur ces post types via le filtre
+ * natif `post_row_actions` (jamais une désactivation globale de Quick Edit dans WordPress, qui
+ * reste pleinement disponible pour les Pages et tout autre post type hors périmètre GWS). La clé
+ * 'inline hide-if-no-js' est l'identifiant natif WordPress de cette action précise (voir
+ * `WP_Posts_List_Table::handle_row_actions()`) — seule cette entrée est retirée, aucune autre
+ * action de ligne (Modifier, Corbeille, Voir/Aperçu...) n'est touchée.
  */
 function gwseq_remove_quick_edit_row_action($actions, $post) {
-  if (in_array($post->post_type, array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE), true)) {
+  // 'post' (natif, présenté comme "Actualités" — voir includes/actualites.php) est ajouté ici
+  // volontairement à côté des quatre post types métier GWS, jamais comme une nouvelle constante
+  // GWSEQ_CPT_* : ce n'est pas un post type inventé par le module.
+  if (in_array($post->post_type, array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, 'post'), true)) {
     unset($actions['inline hide-if-no-js']);
   }
   return $actions;
