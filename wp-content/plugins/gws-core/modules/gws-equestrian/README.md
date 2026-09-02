@@ -951,6 +951,21 @@ s'affiche désormais en lignes explicitement étiquetées (Race / Stud-book, Sex
 de naissance) plutôt qu'en un résumé unique concaténé par des virgules, où un « non détectée » isolé
 ne permettait pas de savoir à quelle donnée il se rapportait.
 
+#### Correctif complémentaire 0.14.6 — cause racine réelle du bug "Préciser" (soumission sans interaction)
+
+Le correctif "Préciser" de la 0.14.5 restait insuffisant : une race canonique correctement affichée
+au chargement réapparaissait avec "Préciser" rempli après un simple clic sur "Publier"/"Mettre à
+jour", SANS avoir touché au champ Race — y compris en modifiant seulement un champ sans rapport.
+**Cause exacte** : `hasPickedThisSession` (`assets/race-referentiel-autocomplete.js`) démarrait à
+`false` sans condition, y compris pour un champ déjà correctement rempli au chargement — le filet
+de sécurité de soumission (déclenché sur N'IMPORTE QUEL submit du formulaire) traitait alors le
+libellé affiché comme une saisie jamais validée et réécrivait le code en "autre" + recopiait ce
+libellé dans "Préciser". **Correctif minimal** : un champ chargé avec un code déjà présent démarre
+désormais comme une sélection déjà validée (`hasPickedThisSession = codeInput.value !== ''`) ;
+`focus`/`input` continuent de la repasser à `false` dès que l'utilisateur touche réellement le
+champ. Nouveaux tests JS reproduisant littéralement le scénario "jamais touché, formulaire soumis"
+et son inverse, vérifiés positifs contre le correctif et négatifs contre l'ancien code.
+
 #### Correctifs post-recette 0.14.5 — pedigree IFCE, bug "Préciser" persistant, rattachement Père/Mère GWS
 
 **A — Reconstruction incorrecte de certains pedigrees IFCE.** Deux VRAIS documents distincts (Asb

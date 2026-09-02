@@ -187,7 +187,22 @@
     }
 
     var tag = '[field #' + fieldIndex + ']';
-    var hasPickedThisSession = false;
+    // CORRECTIF RUNTIME (bug "Préciser" reproductible à chaque sauvegarde SANS interaction avec ce
+    // champ précis — recette complémentaire 0.14.5) : un code déjà présent au chargement (rendu par
+    // PHP, ex. "SF") est une sélection DÉJÀ VALIDE — jamais une saisie libre en attente de
+    // committement. Initialiser `hasPickedThisSession` à `false` sans condition (comme avant ce
+    // correctif) faisait que `commitPendingValue()` (appelée par le filet de sécurité de soumission
+    // ci-dessous, sur N'IMPORTE QUEL submit du formulaire — y compris un enregistrement qui ne
+    // touche à aucun autre onglet, ni même à ce champ) traitait alors le LIBELLÉ AFFICHÉ ("Selle
+    // Français") comme une saisie jamais validée : elle réécrivait le code caché en "autre" et
+    // recopiait ce libellé dans "race_autre" — précisément parce qu'aucun clic explicite sur un
+    // résultat (`selectEntry()`, seul autre endroit qui met `hasPickedThisSession` à `true`) n'avait
+    // eu lieu CETTE session-ci, alors que la valeur était déjà parfaitement correcte. Un champ
+    // rechargé avec un code déjà renseigné (canonique OU "autre") démarre donc désormais déjà
+    // "validé" ; `focus`/`input` continuent, comme avant, à repasser `hasPickedThisSession` à `false`
+    // dès que l'utilisateur touche RÉELLEMENT ce champ précis, pour que commitPendingValue()
+    // redevienne actif sur une véritable nouvelle saisie.
+    var hasPickedThisSession = codeInput.value !== '';
     var currentEntries = [];
     var activeIndex = -1;
 

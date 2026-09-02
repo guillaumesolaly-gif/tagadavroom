@@ -595,6 +595,53 @@ function runScenario() {
   ok('Scénario 12 — instrumentation : le résultat "Oldenburg" est bien VISIBLE (liste non masquée)', built.resultsList.hidden === false);
 }
 
+/* ===========================================================================================
+ * Scénario 13 — CORRECTIF RUNTIME (bug "Préciser" reproductible à CHAQUE sauvegarde, recette
+ * complémentaire 0.14.5) : un champ chargé avec une race CANONIQUE déjà correcte (ex. "SF" /
+ * "Selle Français", rendue par PHP), sur lequel l'utilisateur ne pose JAMAIS le focus ni ne tape
+ * quoi que ce soit — reproduit exactement "Cas 1" de la demande ("ne toucher à aucun champ, cliquer
+ * simplement sur Publier/Mettre à jour"). AVANT ce correctif, le filet de sécurité de soumission
+ * (`commitPendingValue()`, déclenché par N'IMPORTE QUEL submit du formulaire, y compris un
+ * enregistrement qui ne touche à aucun autre champ) traitait le libellé affiché comme une saisie
+ * jamais validée (aucun clic explicite sur un résultat cette session-ci) et réécrivait le code caché
+ * en "autre" + recopiait le libellé dans "race_autre" — alors que rien n'avait été modifié.
+ * =========================================================================================== */
+{
+  const { fieldA, form } = runScenario();
+  // Aucun focus, aucune frappe, aucun clic sur ce champ précis — uniquement la soumission du
+  // formulaire, exactement comme un clic sur "Publier"/"Mettre à jour" sans y avoir touché.
+  form.dispatch('submit');
+  ok('Scénario 13 — champ chargé avec une race canonique ("SF"), JAMAIS touché, formulaire soumis : le code caché reste "SF" (jamais réécrit en "autre")', fieldA.codeInput.value === 'SF');
+  ok('Scénario 13 — le champ de recherche affiche toujours "Selle Français" (valeur d’origine, jamais altérée)', fieldA.search.value === 'Selle Français');
+  ok('Scénario 13 — le champ "Autre — préciser" reste vide (le libellé canonique n’a JAMAIS été recopié dedans)', fieldA.autreInput.value === '');
+  ok('Scénario 13 — le bloc "Autre — préciser" reste bien masqué', fieldA.autreWrap.style.display === 'none');
+}
+
+/* ===========================================================================================
+ * Scénario 14 — même correctif, cas INVERSE explicitement demandé en recette : un champ chargé
+ * avec le sentinel "autre" et une précision libre déjà enregistrée ("Camargue"), JAMAIS touché,
+ * formulaire soumis directement — cette précision libre doit rester intacte (elle est légitime,
+ * pas un résidu à effacer), non régressée par le correctif du Scénario 13 ci-dessus.
+ * =========================================================================================== */
+{
+  const form = new FakeElement('form');
+  fakeDocument.children = [];
+  fakeDocument.activeElement = null;
+  fakeDocument._listeners = {};
+  fakeDocument.appendChild(form);
+  const scriptPath14 = path.join(__dirname, '..', 'wp-content', 'plugins', 'gws-core', 'modules', 'gws-equestrian', 'assets', 'race-referentiel-autocomplete.js');
+  const source14 = fs.readFileSync(scriptPath14, 'utf8');
+  const built14 = buildRaceField(form, 'autre', 'Camargue', 'gwseq-race-scenario14');
+  const sandbox14 = { window: { gwseqRaceReferentiel: gwseqRaceReferentielConfig, console: { log() {}, warn() {}, error() {} } }, document: fakeDocument };
+  sandbox14.window.document = fakeDocument;
+  vm.runInContext(source14, vm.createContext(sandbox14), { filename: 'race-referentiel-autocomplete.js' });
+  fakeDocument.dispatch('DOMContentLoaded');
+  form.dispatch('submit');
+  ok('Scénario 14 — champ chargé avec "autre" + précision libre déjà enregistrée ("Camargue"), JAMAIS touché, formulaire soumis : le code caché reste "autre"', built14.codeInput.value === 'autre');
+  ok('Scénario 14 — la précision libre "Camargue" reste intacte (non effacée par le correctif du Scénario 13)', built14.autreInput.value === 'Camargue');
+  ok('Scénario 14 — le bloc "Autre — préciser" reste bien visible', built14.autreWrap.style.display === '');
+}
+
 console.log('');
 console.log(assertionCount + ' assertions, ' + failureCount + ' échec(s).');
 process.exit(failureCount === 0 ? 0 : 1);

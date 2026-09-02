@@ -278,6 +278,16 @@ gws_test_assert($i['race'] === '' && $i['race_autre'] === '', 'Correctif runtime
 $i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => 'autre', '_gwseq_race_autre' => 'Camargue'));
 gws_test_assert($i['race'] === 'autre' && $i['race_autre'] === 'Camargue', 'Non-régression : "Autre" avec une précision libre reste bien conservé tel quel (seul cas où race_autre doit survivre)');
 
+// --- CORRECTIF RUNTIME COMPLÉMENTAIRE (recette : bug "Préciser" reproductible à CHAQUE
+// sauvegarde, y compris sans toucher au champ Race, y compris en modifiant seulement un AUTRE
+// champ/onglet) : reproduit littéralement le payload $_POST tel que la cause racine (côté
+// JavaScript, voir assets/race-referentiel-autocomplete.js) le produisait avant son correctif — un
+// code canonique correct accompagné d'un "race_autre" parasité par le libellé affiché — ET une
+// modification simultanée d'un champ SANS RAPPORT (ici la robe), pour prouver que l'invariant
+// serveur s'applique quel que soit le contenu du reste du formulaire ---
+$i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => 'sf', '_gwseq_race_autre' => 'Selle Français', '_gwseq_robe' => 'gris'));
+gws_test_assert($i['race'] === 'SF' && $i['race_autre'] === '' && $i['robe'] === 'gris', 'Correctif runtime "Préciser" (invariant serveur) : race=SF conservé, race_autre forcé à vide, ET la modification simultanée d’un autre champ (robe) est bien prise en compte normalement — l’invariant ne dépend jamais du reste du formulaire');
+
 // --- Même correctif, côté RENDU (auto-guérison à l'affichage d'une donnée déjà enregistrée AVANT
 // ce correctif, sans attendre un nouvel enregistrement) : gwseq_render_race_referentiel_field()
 // ne doit JAMAIS afficher ni resoumettre un "Préciser" non vide quand le code n'est pas "autre" —

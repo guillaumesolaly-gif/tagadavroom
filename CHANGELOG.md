@@ -1,5 +1,18 @@
 # Changelog — GWS Starter
 
+## 1.17.6 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif complémentaire : cause racine réelle du bug "Préciser" (GWS Equestrian 0.14.6).** Le
+  correctif 0.14.5 restait insuffisant : une race canonique correctement affichée réapparaissait
+  avec "Préciser" rempli après un simple clic sur "Publier"/"Mettre à jour" sans avoir touché au
+  champ Race. Cause exacte : le composant de recherche traitait tout champ jamais explicitement
+  "sélectionné" cette session-ci (même déjà correctement rempli au chargement) comme une saisie
+  libre en attente, et le filet de sécurité de soumission (déclenché sur n'importe quel
+  enregistrement) réécrivait alors le code en "autre" avec le libellé affiché recopié dans
+  "Préciser". Corrigé en une ligne : un champ chargé avec un code déjà valide démarre désormais
+  comme une sélection déjà validée. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.14.6) pour le détail complet.
+
 ## 1.17.5 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctifs post-recette : reconstruction du pedigree IFCE, bug "Préciser" persistant,

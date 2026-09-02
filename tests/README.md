@@ -687,3 +687,19 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   n'a pu être vérifiée qu'indirectement, via la fonction pure `gwseq_ifce_preview_parent_candidate_rejection_reason()`
   appelée directement avec des identifiants explicites — reste à confirmer dans un vrai WordPress
   que le `<select>` liste effectivement les bons candidats, désactivés avec la bonne raison.
+- **Correctif complémentaire 0.14.6 — cause racine réelle du bug "Préciser" (soumission sans
+  interaction avec le champ Race)** : le correctif 0.14.5 (sanitation + visibilité) restait
+  insuffisant — un champ chargé avec une race canonique déjà correcte réapparaissait avec "Préciser"
+  rempli après N'IMPORTE QUEL submit du formulaire, y compris sans toucher au champ Race. Cause
+  exacte : `hasPickedThisSession` (`assets/race-referentiel-autocomplete.js`) démarrait à `false`
+  sans condition, y compris pour un champ déjà valide au chargement — le filet de sécurité de
+  soumission (`commitPendingValue()`) traitait alors le libellé affiché comme une saisie jamais
+  validée. **Scénario 13** (`gws-equestrian-race-referentiel-autocomplete-runtime-test.js`) reproduit
+  littéralement ce cas (champ chargé avec "SF"/"Selle Français", AUCUN focus/frappe/clic, formulaire
+  soumis directement) et vérifie que le code caché reste "SF", jamais réécrit en "autre" — vérifié
+  positif contre le correctif et NÉGATIF contre l'ancien code (rejeu direct). **Scénario 14** vérifie
+  le cas inverse (champ chargé avec "autre" + précision libre déjà enregistrée, jamais touché,
+  précision préservée), pour prouver que le correctif du Scénario 13 ne régresse pas ce cas légitime.
+  Nouveau test PHP dans `gws-equestrian-cheval-logic-test.php` combinant un `race_autre` parasité
+  avec la modification simultanée d'un champ sans rapport (robe), pour prouver que l'invariant
+  serveur de la 0.14.5 s'applique quel que soit le contenu du reste du formulaire.

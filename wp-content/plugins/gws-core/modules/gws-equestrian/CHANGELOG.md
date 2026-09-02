@@ -5,6 +5,43 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.14.6 — Correctif complémentaire : cause racine réelle du bug "Préciser" (soumission sans interaction)
+
+Recette complémentaire de la 0.14.5 : le correctif du bug "Préciser" restait insuffisant — une race
+canonique correctement affichée au chargement (ex. "SF"/"Selle Français") réapparaissait avec
+"Préciser = Selle Français" après un simple clic sur "Publier"/"Mettre à jour" SANS avoir touché au
+champ Race, y compris en ne modifiant qu'un champ sans rapport (robe, Commercialisation, un autre
+onglet). Une resélection manuelle via l'autocomplétion corrigeait temporairement l'état — la piste
+explicite demandée en recette ("comparer le payload POST réel, pas seulement la sanitation après
+réception") a mené directement à la cause.
+
+**Cause exacte.** `assets/race-referentiel-autocomplete.js` initialisait `hasPickedThisSession` à
+`false` INCONDITIONNELLEMENT à chaque `initField()` — y compris pour un champ chargé avec une race
+DÉJÀ VALIDE (rendue par PHP). Le filet de sécurité de soumission (`commitPendingValue()`, déclenché
+sur N'IMPORTE QUEL submit du formulaire, y compris un enregistrement qui ne touche à aucun autre
+champ) ne fait rien tant que `hasPickedThisSession` est `true` ; sinon, il traite le libellé
+AFFICHÉ dans le champ de recherche comme une saisie libre jamais validée, et réécrit le code caché
+en "autre" + recopie ce libellé dans "race_autre". Comme seul un clic explicite sur un résultat
+(`selectEntry()`) met `hasPickedThisSession` à `true`, un champ jamais touché depuis le chargement
+de la page (par définition le cas le plus courant — enregistrer une fiche sans modifier sa race)
+déclenchait ce filet à CHAQUE soumission, alors que rien n'avait changé.
+
+**Correctif minimal** : `hasPickedThisSession` est désormais initialisé à `codeInput.value !== ''`
+— un code déjà présent au chargement est une sélection déjà valide, jamais une saisie en attente de
+committement. `focus`/`input` continuent, sans aucun changement, à repasser cette valeur à `false`
+dès que l'utilisateur touche réellement le champ, pour que le filet de sécurité redevienne actif sur
+une véritable nouvelle saisie (comportement "Autre" sur saisie libre jamais validée, Scénario 6,
+non régressé).
+
+**Tests** : deux nouveaux scénarios JS reproduisant littéralement "Cas 1" de la demande (champ
+chargé avec une race canonique, jamais touché, formulaire soumis directement) et son inverse (champ
+chargé avec "autre" + précision libre déjà enregistrée, jamais touché, précision préservée) —
+vérifiés positifs contre le correctif et négatifs contre l'ancien code. Nouveau test PHP combinant
+un `race_autre` parasité avec la modification simultanée d'un champ sans rapport (robe), pour
+prouver que l'invariant serveur déjà en place depuis la 0.14.5 (`gwseq_sanitize_race_referentiel_autre()`)
+s'applique quel que soit le contenu du reste du formulaire. Aucun des autres correctifs 0.14.5 n'a
+été modifié.
+
 ## 0.14.5 — Correctifs post-recette : reconstruction du pedigree IFCE, bug "Préciser" persistant, rattachement Père/Mère GWS pendant l'import
 
 Recette fonctionnelle de la 0.14.4/Core 1.17.4 largement validée en runtime réel (autocomplétion
