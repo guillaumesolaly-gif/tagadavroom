@@ -665,3 +665,25 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   sélection, code caché synchronisé, sauvegarde, rechargement) — sur la fiche identité ET sur un
   ascendant du pedigree ; le filet de sécurité (`<select>` de secours, voir plus haut) reste la
   garantie immédiate tant que cette confirmation n'a pas eu lieu.
+- **Correctifs post-recette 0.14.5** : (A) reconstruction du pedigree IFCE — deux VRAIS documents
+  distincts (Asb Conquistador, Cornet Obolensky) présentaient le même défaut (un ascendant dont le
+  nom/l'alias/le stud-book/l'année débordaient sur deux lignes produisait un ascendant FANTÔME,
+  décalant tous les ascendants suivants) ; couvert par des assertions STRUCTURELLES sur l'arbre réel
+  (nom, alias, race, année, position généalogique, père, mère) contre les deux vrais PDF dans
+  `gws-equestrian-ifce-import-test.php`, vérifiées positives contre le nouveau code et NÉGATIVES
+  contre l'ancien (rejeu direct) — un simple décompte du nombre d'ascendants ne suffisait pas à
+  détecter ce bug, leçon appliquée ici. (B) bug "Préciser" persistant — couvert dans
+  `gws-equestrian-cheval-logic-test.php` et `gws-equestrian-pedigree-logic-test.php` à la fois côté
+  sanitation (`race_autre` jamais conservé hors du cas "autre") et côté rendu (auto-guérison d'une
+  donnée déjà en base, visibilité du bloc "Préciser" du `<select>` de secours), chaque assertion
+  vérifiée positive contre le correctif et négative contre l'ancien code. (C) rattachement Père/Mère
+  GWS pendant l'import IFCE — couvert dans `gws-equestrian-ifce-import-test.php` : sanitation du
+  choix soumis, absence de copie externe en parallèle d'une relation GWS, "Ne pas importer ce
+  parent", conflit "même cheval père ET mère" (réutilise l'intégrité déjà validée pour la saisie
+  manuelle, sans la dupliquer), sans effet quand "Importer le pedigree" est décoché, et rendu réel
+  des trois choix sur la prévisualisation de Jamerose de Félines. Le stub `get_posts()` de ce fichier
+  de test renvoie toujours un tableau vide (base en mémoire minimale) : la liste RÉELLE des candidats
+  GWS proposés dans le `<select>` de la prévisualisation (chevaux existants, filtrés par sexe/année)
+  n'a pu être vérifiée qu'indirectement, via la fonction pure `gwseq_ifce_preview_parent_candidate_rejection_reason()`
+  appelée directement avec des identifiants explicites — reste à confirmer dans un vrai WordPress
+  que le `<select>` liste effectivement les bons candidats, désactivés avec la bonne raison.

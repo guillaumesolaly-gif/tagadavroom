@@ -76,6 +76,7 @@ function esc_url_raw($value) { $value = trim((string) $value); return $value ===
 function absint($value) { return abs((int) $value); }
 function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
+function esc_js($value) { return addslashes((string) $value); }
 function selected($a, $b) { return $a == $b ? ' selected' : ''; }
 function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
@@ -262,6 +263,59 @@ gws_test_assert($i['race'] === 'autre' && $i['race_autre'] === 'Camargue', 'Race
 gws_test_assert(gwseq_cheval_race_label('autre', 'Camargue') === 'Camargue', 'Libellé race "Autre" : la précision saisie est restituée telle quelle');
 $i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => 'stud-book-invente'));
 gws_test_assert($i['race'] === '', 'Race invalide/inconnue : rejetée, jamais stockée telle quelle, JAMAIS transformée automatiquement en "Autre"');
+
+// --- CORRECTIF RUNTIME (bug "Préciser réapparaît avec une race canonique", §1 de la demande) : le
+// composant de recherche ne vide jamais lui-même son propre champ "Autre" au moment où un choix
+// canonique est sélectionné à nouveau (voir assets/race-referentiel-autocomplete.js) — un texte
+// libre resté dans ce champ caché pouvait donc être soumis ET enregistré alors qu'une race
+// canonique était pourtant bien sélectionnée. gwseq_sanitize_cheval_identity_input() doit désormais
+// FORCER "race_autre" à une chaîne vide dès que "race" n'est pas exactement "autre", quel que soit
+// le texte soumis dans "_gwseq_race_autre" ---
+$i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => 'sf', '_gwseq_race_autre' => 'Selle Français'));
+gws_test_assert($i['race'] === 'SF' && $i['race_autre'] === '', 'Correctif runtime "Préciser" : une race canonique soumise avec un texte "Autre" resté dans le formulaire (ex. "Selle Français") ne conserve JAMAIS ce texte — race_autre forcé à vide');
+$i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => '', '_gwseq_race_autre' => 'Un texte oublié'));
+gws_test_assert($i['race'] === '' && $i['race_autre'] === '', 'Correctif runtime "Préciser" : une race vide soumise avec un texte "Autre" resté dans le formulaire ne conserve pas non plus ce texte');
+$i = gwseq_sanitize_cheval_identity_input(array('_gwseq_race' => 'autre', '_gwseq_race_autre' => 'Camargue'));
+gws_test_assert($i['race'] === 'autre' && $i['race_autre'] === 'Camargue', 'Non-régression : "Autre" avec une précision libre reste bien conservé tel quel (seul cas où race_autre doit survivre)');
+
+// --- Même correctif, côté RENDU (auto-guérison à l'affichage d'une donnée déjà enregistrée AVANT
+// ce correctif, sans attendre un nouvel enregistrement) : gwseq_render_race_referentiel_field()
+// ne doit JAMAIS afficher ni resoumettre un "Préciser" non vide quand le code n'est pas "autre" —
+// ni sur le composant de recherche, ni sur le <select> de secours (§6, qui n'avait jusqu'ici AUCUNE
+// condition de visibilité sur son propre bloc "Préciser", contrairement au composant de recherche) ---
+ob_start();
+gwseq_render_race_referentiel_field(array(
+  'field_name' => '_gwseq_race_test',
+  'autre_field_name' => '_gwseq_race_autre_test',
+  'input_id' => 'gwseq-race-test-precis',
+  'current_code' => 'SF',
+  'current_autre' => 'Selle Français', // donnée déjà en base AVANT ce correctif, jamais réécrite rétroactivement
+));
+$race_field_html_stale = ob_get_clean();
+// Cible précisément les DEUX champs "Préciser" (composant de recherche ET <select> de secours) —
+// jamais le champ de recherche principal lui-même, qui affiche légitimement "Selle Français" comme
+// libellé de la race canonique sélectionnée (ce n’est pas ce qui est testé ici).
+gws_test_assert(strpos($race_field_html_stale, 'class="regular-text gwseq-race-field__autre" data-gwseq-race-field-name="_gwseq_race_autre_test" value=""') !== false, 'Correctif runtime "Préciser" (rendu) : le champ "Préciser" du composant de recherche est bien VIDÉ à l’affichage malgré une donnée "race_autre" déjà en base (auto-guérison)');
+gws_test_assert(strpos($race_field_html_stale, 'class="regular-text gwseq-race-field__fallback-autre" name="_gwseq_race_autre_test" value=""') !== false, 'Correctif runtime "Préciser" (rendu, <select> de secours §6) : le champ "Préciser" du <select> de secours est également bien VIDÉ à l’affichage malgré une donnée "race_autre" déjà en base (auto-guérison)');
+gws_test_assert(preg_match('/gwseq-race-field__autre-wrap" style="display:none;"/', $race_field_html_stale) === 1, 'Correctif runtime "Préciser" (rendu) : le bloc "Préciser" du composant de recherche reste bien masqué pour une race canonique');
+gws_test_assert(preg_match('/gwseq-race-field__fallback-autre-wrap" id="[^"]*" style="display:none;"/', $race_field_html_stale) === 1, 'Correctif runtime "Préciser" (rendu, <select> de secours §6) : le bloc "Préciser" du <select> de secours est désormais AUSSI masqué pour une race canonique — AVANT ce correctif, il n’avait aucune condition de visibilité et restait visible en permanence');
+gws_test_assert(strpos($race_field_html_stale, "onchange=\"var w=document.getElementById('gwseq-race-test-precis-autre-wrap')") !== false, 'Correctif runtime "Préciser" (rendu, <select> de secours §6) : un attribut onchange en JavaScript PUR (indépendant de assets/race-referentiel-autocomplete.js) re-bascule la visibilité du bloc "Préciser" si l’utilisateur choisit "Autre" via le <select> de secours, garantissant que le filet de sécurité §6 reste utilisable même si ce script échoue');
+
+ob_start();
+gwseq_render_race_referentiel_field(array(
+  'field_name' => '_gwseq_race_test',
+  'autre_field_name' => '_gwseq_race_autre_test',
+  'input_id' => 'gwseq-race-test-autre',
+  'current_code' => 'autre',
+  'current_autre' => 'Camargue',
+));
+$race_field_html_autre = ob_get_clean();
+// Trois occurrences légitimes quand le code est réellement "autre" : le champ de recherche
+// principal affiche lui-même la précision libre ($display_value = current_autre pour ce cas), en
+// plus des deux champs "Préciser" dédiés (composant de recherche + <select> de secours) ---
+gws_test_assert(substr_count($race_field_html_autre, 'value="Camargue"') === 3, 'Non-régression : quand le code est réellement "autre", la précision libre reste bien affichée — champ de recherche principal, "Préciser" du composant de recherche, ET "Préciser" du <select> de secours');
+gws_test_assert(strpos($race_field_html_autre, 'gwseq-race-field__autre-wrap" style=""') !== false, 'Non-régression : le bloc "Préciser" du composant de recherche reste bien visible quand le code est "autre"');
+gws_test_assert(preg_match('/gwseq-race-field__fallback-autre-wrap" id="[^"]*" style=""/', $race_field_html_autre) === 1, 'Non-régression : le bloc "Préciser" du <select> de secours reste bien visible quand le code est "autre"');
 
 // --- Taille en centimètres, jamais en notation "1m68" ---
 $i = gwseq_sanitize_cheval_identity_input(array('_gwseq_taille_cm' => '168'));

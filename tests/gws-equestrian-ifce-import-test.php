@@ -448,6 +448,32 @@ gws_test_assert(($asb['identity']['nom'] ?? null) === 'ASB CONQUISTADOR' && ($as
 gws_test_assert(($asb['identity']['annee_naissance'] ?? null) === 2001, 'Correctif runtime : l’année de naissance d’Asb Conquistador ("né(e) en 2001, étalon") est désormais correctement extraite');
 gws_test_assert(($asb['identity']['race'] ?? null) === 'BWP', 'Correctif normalisation croisée : la race "Belgian Warmblood" résout désormais vers le code canonique "BWP", jamais "Autre"');
 
+// --- CORRECTIF RUNTIME (recette 0.14.5) : reconstruction du pedigree — la ligne réelle
+// "CORRADO I Alias SAN PATRIGNANO CORRADO" est suivie, dans le VRAI document, d'une ligne DISTINCTE
+// "(DEU) HOLST 1985" (le marqueur pays, le stud-book ET l'année ont débordé ensemble sur la ligne
+// suivante). AVANT ce correctif, cette seconde ligne n'était pas reconnue comme une continuation du
+// nom de l'ascendant précédent et devenait un ASCENDANT FANTÔME ("HOLST 1985"), décalant d'un rang
+// la position généalogique de TOUS les ascendants suivants dans la file — la mère réelle héritant à
+// tort du rôle de père, etc. Vérifie ici la structure RÉELLE de l'arbre (nom, alias, race, année,
+// position généalogique, père, mère), pas seulement un décompte du nombre d'ascendants (un parser
+// peut trouver le bon nombre d'ascendants tout en les plaçant aux mauvaises positions) ---
+$corrado_node = $asb['pedigree']['father']['father'] ?? null;
+gws_test_assert($corrado_node !== null && $corrado_node['name'] === 'SAN PATRIGNANO CORRADO', 'Correctif runtime pedigree : le grand-père paternel d’Asb Conquistador est bien "SAN PATRIGNANO CORRADO" (alias retenu comme nom), à la bonne position généalogique');
+gws_test_assert(($corrado_node['race'] ?? null) === 'HOLST', 'Correctif runtime pedigree : la race de SAN PATRIGNANO CORRADO ("(DEU) HOLST 1985", débordée sur la ligne suivante dans le vrai document) est bien rattachée à CET ascendant — "HOLST" — et non perdue dans un ascendant fantôme');
+gws_test_assert(($corrado_node['annee_naissance'] ?? null) === 1985, 'Correctif runtime pedigree : l’année de naissance de SAN PATRIGNANO CORRADO (1985, débordée sur la ligne suivante) est bien rattachée à CET ascendant');
+gws_test_assert(($corrado_node['father']['name'] ?? null) === 'COR DE LA BRYERE', 'Correctif runtime pedigree : le père de SAN PATRIGNANO CORRADO est bien "COR DE LA BRYERE" — AVANT ce correctif, cette position était occupée par l’ascendant fantôme "HOLST 1985"');
+gws_test_assert(($corrado_node['mother']['name'] ?? null) === 'SOLEIL', 'Correctif runtime pedigree : la mère de SAN PATRIGNANO CORRADO est bien "SOLEIL" — AVANT ce correctif, "COR DE LA BRYERE" (son véritable père) se retrouvait décalé à tort à cette position de mère');
+$asb_all_names = array();
+$gws_test_collect_names = function ($node) use (&$gws_test_collect_names, &$asb_all_names) {
+  if (!is_array($node)) return;
+  $asb_all_names[] = $node['name'] ?? '';
+  $gws_test_collect_names($node['father'] ?? null);
+  $gws_test_collect_names($node['mother'] ?? null);
+};
+$gws_test_collect_names($asb['pedigree']['father']);
+$gws_test_collect_names($asb['pedigree']['mother']);
+gws_test_assert(!in_array('HOLST 1985', $asb_all_names, true) && !in_array('(DEU) HOLST 1985', $asb_all_names, true), 'Correctif runtime pedigree : aucun ascendant fantôme "HOLST 1985" n’existe dans l’arbre reconstruit');
+
 // --- Cornet Obolensky (alias de Windows vh Costersveld) : "Belgian Warmblood, Mâle, Gris, 1m71,
 // né(e) en 1999, étalon" — robe ET taille présentes (6 segments). Ce document extrayait déjà
 // correctement l’année AVANT ce correctif (non-régression explicitement vérifiée) ; sa race, en
@@ -459,6 +485,23 @@ gws_test_assert(($cornet['identity']['nom'] ?? null) === 'CORNET OBOLENSKY' && (
 gws_test_assert(($cornet['identity']['annee_naissance'] ?? null) === 1999, 'Non-régression : Cornet Obolensky extrayait déjà correctement son année de naissance (1999) avant ce correctif, toujours vrai après (segments Robe et Taille tous deux présents sur cette fiche)');
 gws_test_assert(($cornet['identity']['taille_cm'] ?? null) === 171, 'Non-régression : la taille ("1m71") reste correctement extraite quand elle est présente, malgré la nouvelle détection dynamique de la position des segments');
 gws_test_assert(($cornet['identity']['race'] ?? null) === 'BWP', 'Correctif normalisation croisée : la race "Belgian Warmblood" de Cornet Obolensky résout également vers "BWP"');
+
+// --- Même correctif runtime que ci-dessus (branche CORRADO), vérifié sur un second document réel
+// distinct — même motif exact ("CORRADO I Alias SAN PATRIGNANO CORRADO" / "(DEU) HOLST 1985" sur
+// la ligne suivante), jamais traité comme un cas isolé propre à Asb Conquistador. Ce document porte
+// en outre l’arbre COMPLET à 3 générations (14 ascendants) : vérifie la structure entière, pas
+// seulement la branche corrigée. ---
+gws_test_assert(($cornet['pedigree']['count'] ?? null) === 14, 'Cornet Obolensky : les 14 ascendants de l’arbre complet à 3 générations sont bien reconnus (aucun ascendant fantôme n’a consommé un rang)');
+$cornet_corrado_node = $cornet['pedigree']['father']['father'] ?? null;
+gws_test_assert($cornet_corrado_node !== null && $cornet_corrado_node['name'] === 'SAN PATRIGNANO CORRADO' && $cornet_corrado_node['race'] === 'HOLST' && $cornet_corrado_node['annee_naissance'] === 1985, 'Correctif runtime pedigree (second document réel) : SAN PATRIGNANO CORRADO à la bonne position, avec sa race et son année correctement rattachées');
+gws_test_assert(($cornet_corrado_node['father']['name'] ?? null) === 'COR DE LA BRYERE' && ($cornet_corrado_node['mother']['name'] ?? null) === 'SOLEIL', 'Correctif runtime pedigree (second document réel) : père "COR DE LA BRYERE" et mère "SOLEIL" de SAN PATRIGNANO CORRADO à leurs bonnes positions');
+// --- Vérification de bout en bout de l’ARBRE ENTIER (nom, race, année, position) — pas seulement
+// la branche corrigée, pour prouver qu’aucune autre position n’a été décalée par le correctif ---
+gws_test_assert(($cornet['pedigree']['father']['name'] ?? null) === 'CLINTON' && ($cornet['pedigree']['father']['race'] ?? null) === 'HOLST' && ($cornet['pedigree']['father']['annee_naissance'] ?? null) === 1993, 'Cornet Obolensky : Père = CLINTON (HOLST, 1993)');
+gws_test_assert(($cornet['pedigree']['father']['mother']['name'] ?? null) === 'URTE I' && ($cornet['pedigree']['father']['mother']['father']['name'] ?? null) === 'MASETTO' && ($cornet['pedigree']['father']['mother']['mother']['name'] ?? null) === 'OHRA', 'Cornet Obolensky : branche maternelle de CLINTON intacte (URTE I -> MASETTO x OHRA), non décalée par le correctif de la branche paternelle');
+gws_test_assert(($cornet['pedigree']['mother']['name'] ?? null) === 'RABANNA VAN COSTERSVELD', 'Cornet Obolensky : Mère = RABANNA VAN COSTERSVELD, à sa bonne position (non décalée par le correctif appliqué à la branche paternelle)');
+gws_test_assert(($cornet['pedigree']['mother']['father']['name'] ?? null) === 'HEARTBREAKER' && ($cornet['pedigree']['mother']['father']['father']['name'] ?? null) === 'NIMMERDOR' && ($cornet['pedigree']['mother']['father']['mother']['name'] ?? null) === 'BACAROLE', 'Cornet Obolensky : branche HEARTBREAKER (-> NIMMERDOR x BACAROLE) à sa bonne position');
+gws_test_assert(($cornet['pedigree']['mother']['mother']['name'] ?? null) === 'HOLIVEA VAN COSTERSVELD' && ($cornet['pedigree']['mother']['mother']['father']['name'] ?? null) === 'RANDEL Z' && ($cornet['pedigree']['mother']['mother']['mother']['name'] ?? null) === 'GUDULA O', 'Cornet Obolensky : branche HOLIVEA VAN COSTERSVELD (-> RANDEL Z x GUDULA O, avec sa propre continuation d’année isolée "1984" déjà validée) à sa bonne position, non affectée par le correctif de la branche CORRADO plus haut dans l’arbre');
 
 // --- Iowa Jal : format standard à 5 segments (Race, Sexe, Robe, Taille, "né(e) en AAAA", sans
 // mention finale ", étalon") — non-régression explicite du format déjà couvert par Jamerose. ---
@@ -515,6 +558,75 @@ $mapped_mother = gwseq_get_horse_parent(60, 'mother');
 gws_test_assert($mapped_father['mode'] === 'external' && $mapped_father['horse_id'] === 0, 'Mapping pedigree : le Père est importé en mode "external" — jamais "gws" (§8, aucune fiche GWS créée pour un ascendant)');
 gws_test_assert($mapped_father['external']['name'] === 'UNTOUCHABLE 27' && $mapped_father['external']['father']['name'] === 'HORS LA LOI II', 'Mapping pedigree : l’arbre Père est bien persisté via gwseq_set_horse_parent(), relecture exacte (nom d’usage/alias "UNTOUCHABLE 27" conservé)');
 gws_test_assert($mapped_mother['mode'] === 'external' && $mapped_mother['external']['name'] === 'NATIVE DE FELINES', 'Mapping pedigree : la Mère est bien persistée en mode "external"');
+
+// =====================================================================================
+// 4bis. Choix Père/Mère GWS pendant l'import (§3 de la demande) — rattacher un parent DIRECT
+// détecté par l'IFCE à une fiche Cheval GWS déjà existante, plutôt qu'un ascendant externe.
+// =====================================================================================
+
+// --- gwseq_sanitize_ifce_preview_parent_choice() : fonction pure, mêmes garanties que le reste du
+// module (jamais un accès direct à $_POST ailleurs que dans le gestionnaire HTTP) ---
+gws_test_make_post(700, GWSEQ_CPT_CHEVAL, 'Étalon GWS Existant');
+gws_test_assert(gwseq_sanitize_ifce_preview_parent_choice(array('gwseq_ifce_pere_mode' => 'gws', 'gwseq_ifce_pere_gws_id' => '700'), 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id') === array('mode' => 'gws', 'horse_id' => 700), 'Choix Père/Mère GWS : mode "gws" avec un identifiant réel de fiche Cheval -> conservé tel quel');
+gws_test_assert(gwseq_sanitize_ifce_preview_parent_choice(array('gwseq_ifce_pere_mode' => 'gws', 'gwseq_ifce_pere_gws_id' => '999999'), 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id') === array('mode' => 'external'), 'Choix Père/Mère GWS : mode "gws" avec un identifiant inexistant -> repli sur "external" (comportement déjà validé), jamais une relation orpheline');
+gws_test_assert(gwseq_sanitize_ifce_preview_parent_choice(array('gwseq_ifce_pere_mode' => 'skip'), 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id') === array('mode' => 'skip'), 'Choix Père/Mère GWS : mode "skip" conservé tel quel');
+gws_test_assert(gwseq_sanitize_ifce_preview_parent_choice(array(), 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id') === array('mode' => 'external'), 'Choix Père/Mère GWS : mode absent du formulaire -> repli sur "external" (comportement déjà validé, inchangé)');
+gws_test_assert(gwseq_sanitize_ifce_preview_parent_choice(array('gwseq_ifce_pere_mode' => 'valeur-invalide'), 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id') === array('mode' => 'external'), 'Choix Père/Mère GWS : une valeur de mode inconnue -> repli sur "external", jamais une valeur arbitraire propagée');
+
+// --- Lier le Père détecté à une fiche GWS déjà existante : AUCUNE copie externe créée en
+// parallèle (jamais les deux à la fois), la vraie relation GWS via gwseq_set_horse_parent() (MÊME
+// fonction que la saisie manuelle du pedigree, jamais une écriture directe dupliquée ici) ---
+gws_test_make_post(701, GWSEQ_CPT_CHEVAL, 'Nouveau Cheval Importé');
+gws_test_make_post(702, GWSEQ_CPT_CHEVAL, 'Étalon Père GWS');
+gwseq_set_cheval_identity(702, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2000));
+gwseq_ifce_map_import(701, $jamerose_parsed, array('identity' => true, 'indices' => false, 'pedigree' => true), array(
+  'father' => array('mode' => 'gws', 'horse_id' => 702),
+));
+$linked_father = gwseq_get_horse_parent(701, 'father');
+gws_test_assert($linked_father['mode'] === 'gws' && $linked_father['horse_id'] === 702, 'Choix Père/Mère GWS : le Père est bien lié à la fiche GWS existante (mode "gws"), jamais "external"');
+gws_test_assert($linked_father['external'] === null, 'Choix Père/Mère GWS : aucune copie externe du Père n’est créée en parallèle de la relation GWS (jamais les deux à la fois)');
+
+// --- "Ne pas importer ce parent" : aucune relation créée pour ce rôle, quelles que soient les
+// données détectées par l’IFCE pour ce parent ---
+gws_test_make_post(703, GWSEQ_CPT_CHEVAL, 'Nouveau Cheval Importé Sans Mère');
+gwseq_ifce_map_import(703, $jamerose_parsed, array('identity' => true, 'indices' => false, 'pedigree' => true), array(
+  'mother' => array('mode' => 'skip'),
+));
+gws_test_assert(gwseq_get_horse_parent(703, 'mother')['mode'] === '', 'Choix Père/Mère GWS : "Ne pas importer ce parent" -> aucune relation créée pour ce rôle');
+gws_test_assert(gwseq_get_horse_parent(703, 'father')['mode'] === 'external', 'Choix Père/Mère GWS : le choix "skip" de la Mère n’affecte jamais le Père (chaque rôle traité indépendamment) — comportement "external" par défaut toujours actif pour le Père');
+
+// --- Intégrité déjà validée pour la saisie manuelle (§ un même cheval GWS ne peut jamais être à la
+// fois père ET mère) : réutilisée SANS AUCUNE règle dupliquée ici, simplement parce que
+// gwseq_ifce_map_import() traite Père PUIS Mère dans cet ordre, exactement comme documenté ---
+gws_test_make_post(704, GWSEQ_CPT_CHEVAL, 'Nouveau Cheval Importé Conflit');
+gws_test_make_post(705, GWSEQ_CPT_CHEVAL, 'Cheval Ambigu');
+// Sexe volontairement non renseigné : ce test porte sur le conflit père/mère, pas sur le filtre
+// sexe (déjà couvert séparément plus haut dans cette section) — un sexe vide reste toujours autorisé
+// pour les deux rôles (gwseq_horse_sexe_compatible_with_role()), donc n'interfère pas ici.
+gwseq_ifce_map_import(704, $jamerose_parsed, array('identity' => true, 'indices' => false, 'pedigree' => true), array(
+  'father' => array('mode' => 'gws', 'horse_id' => 705),
+  'mother' => array('mode' => 'gws', 'horse_id' => 705),
+));
+gws_test_assert(gwseq_get_horse_parent(704, 'father')['mode'] === 'gws' && gwseq_get_horse_parent(704, 'father')['horse_id'] === 705, 'Choix Père/Mère GWS : le Père, traité EN PREMIER, est bien lié normalement');
+gws_test_assert(gwseq_get_horse_parent(704, 'mother')['mode'] === '', 'Choix Père/Mère GWS : le MÊME cheval GWS ne peut jamais être lié comme Mère en plus du Père (gwseq_set_horse_parent() rejette silencieusement, aucune relation créée pour la Mère — intégrité déjà validée pour la saisie manuelle, réutilisée sans duplication)');
+
+// --- "Importer le pedigree" décoché : le choix Père/Mère GWS reste sans le moindre effet, comme
+// n’importe quel autre champ de la section pedigree (comportement déjà validé, non régressé) ---
+gws_test_make_post(706, GWSEQ_CPT_CHEVAL, 'Nouveau Cheval Sans Pedigree Importe');
+gwseq_ifce_map_import(706, $jamerose_parsed, array('identity' => true, 'indices' => false, 'pedigree' => false), array(
+  'father' => array('mode' => 'gws', 'horse_id' => 702),
+));
+gws_test_assert(gwseq_get_horse_parent(706, 'father')['mode'] === '', 'Choix Père/Mère GWS : sans effet quand "Importer le pedigree" est décoché — comportement déjà validé (import sans pedigree = aucun ascendant enregistré) non régressé');
+
+// --- gwseq_ifce_preview_parent_candidate_rejection_reason() (écran de prévisualisation, avant que
+// la fiche important n’existe) : réutilise SANS LES DUPLIQUER les mêmes règles de sexe/année que la
+// saisie manuelle du pedigree ---
+gws_test_make_post(710, GWSEQ_CPT_CHEVAL, 'Jument Candidate');
+gwseq_set_cheval_identity(710, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2010));
+gws_test_assert(gwseq_ifce_preview_parent_candidate_rejection_reason('father', 710, 2019) === 'sexe', 'Prévisualisation IFCE : une jument proposée comme Père est bien rejetée ("sexe"), même règle que la saisie manuelle');
+gws_test_assert(gwseq_ifce_preview_parent_candidate_rejection_reason('mother', 710, 2019) === '', 'Prévisualisation IFCE : la même jument, née avant le cheval importé (2010 < 2019), est bien acceptée comme Mère');
+gws_test_assert(gwseq_ifce_preview_parent_candidate_rejection_reason('mother', 710, 2005) === 'annee', 'Prévisualisation IFCE : la même jument, née APRÈS le cheval importé (2010 > 2005), est bien rejetée ("annee")');
+gws_test_assert(gwseq_ifce_preview_parent_candidate_rejection_reason('mother', 0, 2019) === '', 'Prévisualisation IFCE : un identifiant vide (« — Choisir un cheval — ») n’est jamais un rejet, simplement l’absence de choix');
 
 // --- Import partiel (§9) : seule l’Identité est cochée -> Indices/Pedigree jamais touchés ---
 gws_test_make_post(61, GWSEQ_CPT_CHEVAL, 'JAMEROSE DE FELINES');
@@ -628,6 +740,16 @@ gwseq_render_ifce_import_preview('faketoken123', $jamerose_parsed);
 $preview_form_html = ob_get_clean();
 gws_test_assert(strpos($preview_form_html, 'admin-post.php') !== false, 'Formulaire de confirmation : soumet bien vers admin-post.php');
 gws_test_assert(strpos($preview_form_html, 'name="action" value="gwseq_ifce_import_confirm"') !== false, 'Formulaire de confirmation : porte bien le champ "action" attendu par admin-post.php pour router vers admin_post_gwseq_ifce_import_confirm');
+
+// --- Choix Père/Mère GWS (§3 de la demande) : rendu réel sur la prévisualisation de Jamerose de
+// Félines, dont le Père (UNTOUCHABLE 27) et la Mère (NATIVE DE FELINES) sont bien détectés ---
+gws_test_assert(strpos($preview_form_html, 'name="gwseq_ifce_pere_mode" value="external" checked') !== false, 'Prévisualisation IFCE : le choix "Importer comme ascendant externe" est bien proposé pour le Père, et reste le répli sélectionné par défaut (comportement déjà validé)');
+gws_test_assert(strpos($preview_form_html, 'name="gwseq_ifce_pere_mode" value="gws"') !== false, 'Prévisualisation IFCE : le choix "Lier à un cheval déjà enregistré" est bien proposé pour le Père');
+gws_test_assert(strpos($preview_form_html, 'name="gwseq_ifce_pere_mode" value="skip"') !== false, 'Prévisualisation IFCE : le choix "Ne pas importer ce parent" est bien proposé pour le Père');
+gws_test_assert(strpos($preview_form_html, 'name="gwseq_ifce_pere_gws_id"') !== false, 'Prévisualisation IFCE : le sélecteur de cheval GWS pour le Père est bien présent');
+gws_test_assert(strpos($preview_form_html, 'name="gwseq_ifce_mere_mode" value="external" checked') !== false, 'Prévisualisation IFCE : même choix également proposé pour la Mère, "external" répli par défaut');
+gws_test_assert(strpos($preview_form_html, 'UNTOUCHABLE 27') !== false, 'Prévisualisation IFCE : le nom du Père détecté (UNTOUCHABLE 27) est bien affiché dans le résumé du choix');
+gws_test_assert(strpos($preview_form_html, 'NATIVE DE FELINES') !== false, 'Prévisualisation IFCE : le nom de la Mère détectée (NATIVE DE FELINES) est bien affiché dans le résumé du choix');
 
 // --- Ajustement UX de la prévisualisation (recette runtime, §8) : chaque donnée d'identité est
 // désormais affichée sur sa propre ligne EXPLICITEMENT étiquetée ("Race / Stud-book :", "Sexe :",

@@ -5,6 +5,54 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.14.5 — Correctifs post-recette : reconstruction du pedigree IFCE, bug "Préciser" persistant, rattachement Père/Mère GWS pendant l'import
+
+Recette fonctionnelle de la 0.14.4/Core 1.17.4 largement validée en runtime réel (autocomplétion
+Race identité et pedigree opérationnelle de bout en bout, persistance, suppression, "Autre",
+indices, médias, catégories, commercialisation, import IFCE sans indices/pedigree — voir la demande
+pour la liste complète). Trois sujets ciblés traités dans ce lot, sans aucune autre évolution.
+
+**A — Reconstruction incorrecte de certains pedigrees IFCE (bug important, deux documents réels
+distincts : Asb Conquistador et Cornet Obolensky).** Cause exacte : `CORRADO I Alias SAN PATRIGNANO
+CORRADO` est suivi, dans les deux VRAIS documents, d'une ligne DISTINCTE `(DEU) HOLST 1985` — le
+marqueur pays, le code de stud-book ET l'année ont débordé ENSEMBLE sur une seconde ligne. Seule une
+ligne composée UNIQUEMENT d'une année isolée était jusqu'ici reconnue comme continuation visuelle
+d'un ascendant ; cette ligne ne l'était pas et devenait un ASCENDANT FANTÔME ("HOLST 1985"), décalant
+d'un rang la position généalogique de tous les ascendants suivants dans la file — la mère réelle
+héritant à tort du rôle de père, etc. `gwseq_ifce_looks_like_pedigree_continuation_line()`
+(`ifce-import-parser.php`) reconnaît désormais toute ligne qui se réduit entièrement à un marqueur
+pays/code de stud-book/année (avec ou sans année isolée) comme une continuation, jamais un ascendant
+distinct. **Tests** : la détection d'un simple décompte du nombre d'ascendants ne suffit pas — un
+parser peut trouver le bon nombre tout en les plaçant aux mauvaises positions — nouvelles assertions
+structurelles sur l'arbre RÉEL (nom, alias, race, année, position généalogique, père, mère) contre
+les deux VRAIS PDF, vérifiées positives contre le nouveau code et négatives contre l'ancien.
+
+**B — Le champ "Préciser" pouvait réapparaître avec une valeur alors qu'une race canonique était
+sélectionnée**, notamment après une sauvegarde touchant d'autres onglets. Cause double : (1) le
+composant de recherche ne vide jamais lui-même son propre champ "Autre" quand un choix canonique est
+re-sélectionné, un texte libre resté dans ce champ caché pouvait donc être soumis ET enregistré ;
+`gwseq_sanitize_cheval_identity_input()`/`gwseq_sanitize_external_ancestor_tree()` sanitisaient
+`race_autre` indépendamment de `race`. (2) le bloc "Préciser" du `<select>` de secours (0.14.3)
+n'avait jusqu'ici AUCUNE condition de visibilité, contrairement à celui du composant de recherche.
+Corrigé par une seule fonction partagée `gwseq_sanitize_race_referentiel_autre($race, $raw_autre)`
+(`race-referentiel.php`, force une chaîne vide dès que `$race` n'est pas exactement "autre"),
+utilisée à l'identique par l'identité et les ascendants externes ; `gwseq_render_race_referentiel_field()`
+masque désormais aussi le bloc "Préciser" du `<select>` de secours selon le code courant (avec un
+attribut `onchange` en JavaScript PUR, indépendant du script principal, pour rester utilisable même
+si celui-ci échoue) et "auto-guérit" à l'affichage une donnée déjà enregistrée avant ce correctif.
+
+**C — Rattacher Père/Mère à des chevaux GWS pendant l'import IFCE (évolution).** L'écran de
+prévisualisation propose désormais, pour les deux parents DIRECTS uniquement (jamais les 12
+ascendants suivants), un choix entre "Importer comme ascendant externe" (répli par défaut, inchangé),
+"Lier à un cheval déjà enregistré" (sélecteur réutilisant les mêmes règles métier que la saisie
+manuelle du pedigree — compatibilité de sexe, année strictement antérieure, aucun cheval commun aux
+deux rôles) et "Ne pas importer ce parent". `gwseq_ifce_map_import()` relaie cette décision vers
+`gwseq_set_horse_parent()` (MÊME fonction que la saisie manuelle, jamais une règle dupliquée), en
+traitant systématiquement Père puis Mère — c'est ce qui permet au conflit "même cheval comme père ET
+mère" d'être détecté sans le moindre code de validation supplémentaire. Sans effet si "Importer le
+pedigree" reste décoché (comportement déjà validé, non régressé). Paramètre entièrement optionnel
+(comportement par défaut strictement identique si omis) : aucun appelant existant n'est affecté.
+
 ## 0.14.4 — Correctif runtime : cause exacte de l'échec d'initialisation (ul dans un p), champ de recherche opérationnel
 
 Recette du filet de sécurité 0.14.3 : le `<select>` de secours s'affichait bien (garantie tenue),

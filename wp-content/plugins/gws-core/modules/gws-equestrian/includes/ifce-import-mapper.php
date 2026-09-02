@@ -33,8 +33,28 @@ if (!defined('ABSPATH')) exit;
  * 'valid' === true) à la fiche Cheval $post_id, pour les sections activées dans $sections. Ne
  * modifie jamais une section non activée. Retourne false si $post_id ou $parsed est invalide,
  * true sinon (même garantie de type que les fonctions métier qu'elle appelle).
+ *
+ * $parent_choices (§3 de la demande, "rattacher Père/Mère à des chevaux GWS pendant l'import" —
+ * PARAMÈTRE OPTIONNEL, comportement 100% inchangé si omis) : {father, mother}, chacun
+ * {mode, horse_id} — décision prise par l'utilisateur sur l'écran de prévisualisation, UNIQUEMENT
+ * pour les deux parents DIRECTS (jamais les 12 ascendants suivants, qui restent gérés par l'arbre
+ * externe importé ou par le pedigree propre du cheval GWS lié, selon la logique déjà existante) :
+ * - 'external' (répli par défaut, comportement déjà validé, inchangé) : les données détectées par
+ *   l'IFCE pour ce parent sont importées dans la structure externe, exactement comme avant ce
+ *   correctif ;
+ * - 'gws' : relie ce parent à une fiche Cheval GWS déjà existante (`horse_id`) au lieu de créer un
+ *   ascendant externe — AUCUNE copie externe en parallèle (voir plus bas, jamais les deux à la
+ *   fois) ;
+ * - 'skip' : n'importe aucune relation pour ce parent, quelles que soient les données détectées.
+ * Père puis Mère sont TOUJOURS traités DANS CET ORDRE ci-dessous, jamais l'inverse : c'est ce qui
+ * permet à gwseq_set_horse_parent() (includes/cheval-pedigree.php, RÈGLE MÉTIER UNIQUE ET CENTRALE,
+ * jamais dupliquée ici) d'appliquer, pour la Mère, le contrôle "même cheval comme père ET mère" en
+ * relisant la relation Père déjà enregistrée juste avant — exactement le même mécanisme que la
+ * saisie manuelle, sans le moindre code de validation supplémentaire ici. Cette fonction reste par
+ * ailleurs identique à sa mise en oeuvre précédente : ne construit ni ne recalcule aucune règle
+ * métier, ne fait toujours que relayer une décision déjà validée vers gwseq_set_horse_parent().
  */
-function gwseq_ifce_map_import($post_id, $parsed, $sections) {
+function gwseq_ifce_map_import($post_id, $parsed, $sections, $parent_choices = array()) {
   $post_id = (int) $post_id;
   if (!$post_id || empty($parsed['valid'])) return false;
   $sections = is_array($sections) ? $sections : array();
@@ -84,11 +104,28 @@ function gwseq_ifce_map_import($post_id, $parsed, $sections) {
 
   if (!empty($sections['pedigree'])) {
     $pedigree = $parsed['pedigree'];
-    if (!empty($pedigree['father'])) {
-      gwseq_set_horse_parent($post_id, 'father', array('mode' => 'external', 'external' => $pedigree['father']));
-    }
-    if (!empty($pedigree['mother'])) {
-      gwseq_set_horse_parent($post_id, 'mother', array('mode' => 'external', 'external' => $pedigree['mother']));
+    $parent_choices = is_array($parent_choices) ? $parent_choices : array();
+    // Père PUIS Mère, toujours dans cet ordre — voir le docblock ci-dessus.
+    foreach (array('father', 'mother') as $role) {
+      $branch = $pedigree[$role] ?? null;
+      $choice = is_array($parent_choices[$role] ?? null) ? $parent_choices[$role] : array();
+      $mode = $choice['mode'] ?? 'external';
+
+      if ($mode === 'skip') continue; // décision explicite de l'utilisateur : aucune relation créée
+
+      if ($mode === 'gws') {
+        $horse_id = (int) ($choice['horse_id'] ?? 0);
+        // Validation déjà entièrement assurée par gwseq_set_horse_parent() lui-même (auto-référence
+        // impossible pour une fiche qui vient d'être créée, sexe/année/conflit avec l'autre rôle) —
+        // aucune règle dupliquée ici ; un candidat rejeté ne modifie simplement rien pour ce rôle.
+        if ($horse_id) gwseq_set_horse_parent($post_id, $role, array('mode' => 'gws', 'horse_id' => $horse_id));
+        continue;
+      }
+
+      // 'external' (répli par défaut) : comportement déjà validé, strictement inchangé.
+      if (!empty($branch)) {
+        gwseq_set_horse_parent($post_id, $role, array('mode' => 'external', 'external' => $branch));
+      }
     }
   }
 

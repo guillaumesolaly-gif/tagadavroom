@@ -1,5 +1,25 @@
 # Changelog — GWS Starter
 
+## 1.17.5 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctifs post-recette : reconstruction du pedigree IFCE, bug "Préciser" persistant,
+  rattachement Père/Mère GWS pendant l'import (GWS Equestrian 0.14.5).** (A) Deux fiches IFCE
+  réelles distinctes (Asb Conquistador, Cornet Obolensky) faisaient reconstruire un pedigree faux :
+  un ascendant dont le nom, l'alias, le stud-book et l'année débordaient sur deux lignes du document
+  produisait un ASCENDANT FANTÔME, décalant la position de tous les ascendants suivants — corrigé en
+  étendant la détection des continuations de ligne, vérifié par des tests structurels sur l'arbre
+  réel (pas seulement un décompte du nombre d'ascendants) contre les deux vrais documents. (B) Le
+  champ "Préciser" pouvait réapparaître avec une ancienne valeur alors qu'une race canonique était
+  sélectionnée (le composant ne vidait jamais son propre champ "Autre" en resélectionnant une race
+  canonique, et le `<select>` de secours n'avait aucune condition de visibilité sur son propre bloc
+  "Préciser") — corrigé pour l'identité et le pedigree, avec auto-guérison à l'affichage d'une
+  donnée déjà enregistrée. (C) L'écran de prévisualisation d'import IFCE permet désormais de relier
+  le Père et la Mère détectés à une fiche Cheval GWS déjà existante, plutôt que de systématiquement
+  créer un ascendant externe — réutilise les mêmes règles métier que la saisie manuelle du pedigree
+  (sexe, année, aucun cheval commun aux deux rôles), sans effet si l'import du pedigree est
+  désactivé. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.14.5) pour
+  le détail complet.
+
 ## 1.17.4 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif runtime : cause exacte de l'échec d'initialisation du champ Race, un `<ul>` ne peut

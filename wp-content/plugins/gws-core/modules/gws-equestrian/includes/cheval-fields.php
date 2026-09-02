@@ -211,7 +211,10 @@ function gwseq_sanitize_cheval_identity_input($raw) {
     'robe' => $robe,
     'robe_autre' => gws_core_field_sanitize('text', $raw['_gwseq_robe_autre'] ?? ''),
     'race' => $race,
-    'race_autre' => gws_core_field_sanitize('text', $raw['_gwseq_race_autre'] ?? ''),
+    // CORRECTIF RUNTIME (bug "Préciser réapparaît avec une race canonique") : jamais le texte brut
+    // soumis tel quel — gwseq_sanitize_race_referentiel_autre() (race-referentiel.php) force une
+    // chaîne vide dès que $race n'est pas exactement "autre", quoi que le champ caché ait soumis.
+    'race_autre' => gwseq_sanitize_race_referentiel_autre($race, $raw['_gwseq_race_autre'] ?? ''),
     'taille_cm' => gwseq_sanitize_cheval_taille($raw['_gwseq_taille_cm'] ?? ''),
     'eleveur' => gws_core_field_sanitize('text', $raw['_gwseq_eleveur'] ?? ''),
     'proprietaire' => gws_core_field_sanitize('text', $raw['_gwseq_proprietaire'] ?? ''),

@@ -275,6 +275,30 @@ function gwseq_horse_parent_rejection_reason_label($reason) {
 }
 
 /**
+ * Variante de gwseq_horse_parent_candidate_rejection_reason() (ci-dessus, RÈGLE MÉTIER UNIQUE ET
+ * CENTRALE) pour l'écran de prévisualisation IFCE (§3 de la demande, "rattacher Père/Mère à des
+ * chevaux GWS pendant l'import") : la fiche important n'existe PAS ENCORE à ce stade (créée
+ * seulement à la confirmation) — ni auto-référence possible (aucun ID à comparer), ni conflit avec
+ * l'autre rôle vérifiable en base (rien n'y est encore enregistré pour cette fiche). Réutilise
+ * SANS LES DUPLIQUER les deux fonctions pures déjà utilisées par la validation existante
+ * (gwseq_horse_sexe_compatible_with_role(), gwseq_horse_birth_year_compatible()) ; $child_annee_naissance
+ * est fournie directement (l'année DÉTECTÉE par le parseur IFCE, jamais relue depuis une fiche qui
+ * n'existe pas encore). Le conflit "même cheval comme père ET mère" reste appliqué — à la
+ * confirmation, une fois la fiche réellement créée — par gwseq_set_horse_parent() lui-même
+ * (gwseq_ifce_map_import(), includes/ifce-import-mapper.php, traite Père puis Mère dans cet ordre :
+ * la relation Père est donc déjà enregistrée avant que gwseq_horse_parent_candidate_rejection_reason()
+ * n'évalue la Mère, exactement comme pour la saisie manuelle).
+ */
+function gwseq_ifce_preview_parent_candidate_rejection_reason($role, $candidate_id, $child_annee_naissance) {
+  $candidate_id = (int) $candidate_id;
+  if (!$candidate_id) return '';
+  $candidate_identity = gwseq_get_cheval_identity($candidate_id);
+  if (!gwseq_horse_sexe_compatible_with_role($candidate_identity['sexe'], $role)) return 'sexe';
+  if (!gwseq_horse_birth_year_compatible($candidate_identity['annee_naissance'], $child_annee_naissance)) return 'annee';
+  return '';
+}
+
+/**
  * Sanitise récursivement un ascendant externe et ses propres ascendants : {name, race, race_autre,
  * annee_naissance, father, mother}, father/mother de la même forme. Race/Stud-book/Appellation
  * réutilise désormais le référentiel COMPLET (includes/race-referentiel.php — 154 entrées races +
@@ -314,7 +338,10 @@ function gwseq_sanitize_external_ancestor_tree($raw, $depth_remaining, $previous
   if ($name === '') return null;
 
   $race = gwseq_sanitize_race_referentiel_code($raw['race'] ?? '');
-  $race_autre = gws_core_field_sanitize('text', $raw['race_autre'] ?? '');
+  // CORRECTIF RUNTIME (bug "Préciser réapparaît avec une race canonique", même correctif que
+  // l'identité, voir cheval-fields.php et gwseq_sanitize_race_referentiel_autre() ci-dessous) :
+  // jamais le texte brut soumis tel quel dès que $race n'est pas exactement "autre".
+  $race_autre = gwseq_sanitize_race_referentiel_autre($race, $raw['race_autre'] ?? '');
   $annee_naissance = gwseq_sanitize_ancestor_annee_naissance($raw['annee_naissance'] ?? '');
 
   $node = array(

@@ -246,6 +246,27 @@ function gwseq_sanitize_race_referentiel_code($raw) {
   return $entry !== null ? $entry['code'] : '';
 }
 
+/**
+ * Sanitise la précision libre "Autre" ($_POST-shaped, ex. `_gwseq_race_autre` ou
+ * `..._externe[race_autre]`) — CORRECTIF RUNTIME (§1 de la demande, bug "Préciser réapparaît avec
+ * une race canonique") : $race_code DOIT déjà être le code CANONIQUE final déjà sanitisé (voir
+ * gwseq_sanitize_race_referentiel_code() ci-dessus, TOUJOURS appelé avant celui-ci par l'appelant).
+ * Retourne systématiquement une chaîne VIDE dès que $race_code n'est pas exactement le sentinel
+ * "autre" — jamais le texte brut soumis tel quel. AVANT ce correctif, chaque appelant
+ * (cheval-fields.php, cheval-pedigree.php) sanitisait `race_autre` indépendamment de la valeur de
+ * `race`, si bien qu'un texte libre resté dans un champ caché (le composant de recherche ne vide
+ * jamais lui-même son propre champ "Autre" au moment où un choix canonique est sélectionné à
+ * nouveau, voir assets/race-referentiel-autocomplete.js) pouvait être enregistré et relu au
+ * prochain chargement alors qu'une race canonique était pourtant bien sélectionnée — SEULE
+ * implémentation de cette règle dans le module, utilisée à l'identique par l'identité du cheval et
+ * les ascendants externes, pour ne jamais dupliquer cette logique ni risquer de l'appliquer à un
+ * seul des deux chemins de saisie.
+ */
+function gwseq_sanitize_race_referentiel_autre($race_code, $raw_autre) {
+  if ($race_code !== 'autre') return '';
+  return gws_core_field_sanitize('text', $raw_autre ?? '');
+}
+
 function gwseq_race_referentiel_type($code) {
   $entry = gwseq_race_referentiel_get($code);
   return $entry !== null ? $entry['type'] : '';
@@ -459,17 +480,30 @@ function gwseq_render_race_referentiel_field($args) {
   ));
 
   $current_code = (string) $args['current_code'];
+  // CORRECTIF RUNTIME (bug "Préciser réapparaît avec une race canonique", §1 de la demande) : la
+  // précision libre n'a de sens QUE si le code est exactement "autre" — recalculée ici plutôt que
+  // de faire confiance telle quelle à $args['current_autre'], pour "auto-guérir" à l'affichage une
+  // donnée déjà enregistrée AVANT ce correctif (gwseq_sanitize_race_referentiel_autre() empêche
+  // toute nouvelle occurrence dès le prochain enregistrement, mais ne réécrit jamais rétroactivement
+  // une donnée déjà en base) — jamais affichée ni soumise à nouveau tant que le code reste canonique.
+  $current_autre = $current_code === 'autre' ? (string) $args['current_autre'] : '';
   $display_value = '';
   if ($current_code === 'autre') {
-    $display_value = (string) $args['current_autre'];
+    $display_value = $current_autre;
   } elseif ($current_code !== '') {
     $display_value = gwseq_race_referentiel_display_label($current_code);
   }
   $fallback_id = $args['input_id'] !== '' ? $args['input_id'] . '-fallback' : '';
+  $autre_wrap_id = $args['input_id'] !== '' ? $args['input_id'] . '-autre-wrap' : '';
   ?>
   <span class="gwseq-race-field-wrap">
     <span class="gwseq-race-field__fallback-wrap">
-      <select class="gwseq-race-field__fallback" id="<?php echo esc_attr($fallback_id); ?>" name="<?php echo esc_attr($args['field_name']); ?>">
+      <select
+        class="gwseq-race-field__fallback"
+        id="<?php echo esc_attr($fallback_id); ?>"
+        name="<?php echo esc_attr($args['field_name']); ?>"
+        onchange="var w=document.getElementById('<?php echo esc_js($autre_wrap_id); ?>'); if (w) w.style.display = (this.value === 'autre') ? '' : 'none';"
+      >
         <option value=""><?php esc_html_e('— Non renseignée —', 'gws-core'); ?></option>
         <?php foreach (gwseq_race_referentiel_entries() as $entry) : ?>
           <option value="<?php echo esc_attr($entry['code']); ?>" <?php selected($current_code, $entry['code']); ?>><?php echo esc_html($entry['gws']); ?> (<?php echo esc_html($entry['code']); ?>)</option>
@@ -477,8 +511,20 @@ function gwseq_render_race_referentiel_field($args) {
         <option value="autre" <?php selected($current_code, 'autre'); ?>><?php esc_html_e('Autre — préciser', 'gws-core'); ?></option>
       </select>
       <br>
-      <label><?php esc_html_e('Si « Autre » : préciser', 'gws-core'); ?></label>
-      <input type="text" class="regular-text gwseq-race-field__fallback-autre" name="<?php echo esc_attr($args['autre_field_name']); ?>" value="<?php echo esc_attr($args['current_autre']); ?>">
+      <?php /*
+       * CORRECTIF RUNTIME (bug "Préciser réapparaît avec une race canonique", §1 de la demande) :
+       * ce bloc "Préciser" du <select> de secours n'était jusqu'ici JAMAIS masqué, contrairement au
+       * bloc équivalent du composant de recherche juste en dessous — visible en permanence dès que
+       * le <select> de secours était le contrôle actif, quelle que soit sa valeur réellement
+       * sélectionnée. Masqué désormais par défaut selon l'état serveur ($current_code), et
+       * re-basculé par un attribut `onchange` en JS PUR, directement sur le <select> — fonctionne
+       * même si assets/race-referentiel-autocomplete.js échoue à charger ou s'exécute en erreur
+       * (le filet de sécurité §6 ne doit jamais dépendre de ce script pour rester utilisable).
+       */ ?>
+      <span class="gwseq-race-field__fallback-autre-wrap" id="<?php echo esc_attr($autre_wrap_id); ?>" style="<?php echo $current_code === 'autre' ? '' : 'display:none;'; ?>">
+        <label><?php esc_html_e('Si « Autre » : préciser', 'gws-core'); ?></label>
+        <input type="text" class="regular-text gwseq-race-field__fallback-autre" name="<?php echo esc_attr($args['autre_field_name']); ?>" value="<?php echo esc_attr($current_autre); ?>">
+      </span>
     </span>
     <span class="gwseq-race-field" data-gwseq-race-field style="display:none;">
       <input
@@ -496,7 +542,7 @@ function gwseq_render_race_referentiel_field($args) {
       <ul class="gwseq-race-field__results" role="listbox" hidden></ul>
       <span class="gwseq-race-field__autre-wrap" style="<?php echo $current_code === 'autre' ? '' : 'display:none;'; ?>">
         <label><?php esc_html_e('Préciser', 'gws-core'); ?></label>
-        <input type="text" class="regular-text gwseq-race-field__autre" data-gwseq-race-field-name="<?php echo esc_attr($args['autre_field_name']); ?>" value="<?php echo esc_attr($args['current_autre']); ?>">
+        <input type="text" class="regular-text gwseq-race-field__autre" data-gwseq-race-field-name="<?php echo esc_attr($args['autre_field_name']); ?>" value="<?php echo esc_attr($current_autre); ?>">
       </span>
     </span>
   </span>

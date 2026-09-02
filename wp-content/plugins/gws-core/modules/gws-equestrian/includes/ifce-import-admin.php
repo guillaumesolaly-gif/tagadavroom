@@ -351,7 +351,7 @@ add_action('admin_post_gwseq_ifce_import_upload', 'gwseq_handle_ifce_import_uplo
  * `wp_safe_redirect()`/`exit` elle-même — mêmes garanties de testabilité que
  * gwseq_process_ifce_import_upload() ci-dessus.
  */
-function gwseq_process_ifce_import_confirm($token, $sections) {
+function gwseq_process_ifce_import_confirm($token, $sections, $parent_choices = array()) {
   $data = gwseq_get_ifce_import_transient($token);
   if ($data === false) {
     return array(
@@ -376,10 +376,29 @@ function gwseq_process_ifce_import_confirm($token, $sections) {
     );
   }
 
-  gwseq_ifce_map_import($post_id, $parsed, $sections);
+  gwseq_ifce_map_import($post_id, $parsed, $sections, $parent_choices);
   gwseq_delete_ifce_import_transient($token);
 
   return array('redirect' => get_edit_post_link($post_id, 'raw'), 'notice' => null);
+}
+
+/**
+ * Sanitise le choix Père/Mère GWS soumis depuis l'écran de prévisualisation (§3 de la demande) —
+ * `$_POST`-shaped, jamais un accès direct à `$_POST` ailleurs que dans gwseq_handle_ifce_import_confirm()
+ * ci-dessous (même discipline que le reste du module). 'gws' n'est retenu que si l'identifiant
+ * soumis correspond réellement à une fiche Cheval existante (gwseq_sanitize_horse_parent_gws_id(),
+ * MÊME fonction que la saisie manuelle du pedigree — jamais une seconde validation dupliquée) ;
+ * repli sur 'external' (comportement déjà validé, inchangé) pour toute valeur absente ou invalide.
+ */
+function gwseq_sanitize_ifce_preview_parent_choice($raw, $mode_key, $horse_id_key) {
+  $mode = isset($raw[$mode_key]) ? sanitize_key(wp_unslash($raw[$mode_key])) : 'external';
+  if ($mode === 'gws') {
+    $horse_id = gwseq_sanitize_horse_parent_gws_id($raw[$horse_id_key] ?? 0, 0);
+    if (!$horse_id) return array('mode' => 'external');
+    return array('mode' => 'gws', 'horse_id' => $horse_id);
+  }
+  if ($mode === 'skip') return array('mode' => 'skip');
+  return array('mode' => 'external');
 }
 
 /**
@@ -398,8 +417,15 @@ function gwseq_handle_ifce_import_confirm() {
     'indices' => !empty($_POST['gwseq_ifce_import_indices']),
     'pedigree' => !empty($_POST['gwseq_ifce_import_pedigree']),
   );
+  // Choix Père/Mère GWS (§3 de la demande) : lu ici quel que soit l'état de la case "Importer le
+  // pedigree" ci-dessus — gwseq_ifce_map_import() ignore de toute façon entièrement ce paramètre
+  // dès que $sections['pedigree'] est faux, exactement comme le reste de la section pedigree.
+  $parent_choices = array(
+    'father' => gwseq_sanitize_ifce_preview_parent_choice($_POST, 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id'),
+    'mother' => gwseq_sanitize_ifce_preview_parent_choice($_POST, 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id'),
+  );
 
-  $result = gwseq_process_ifce_import_confirm($token, $sections);
+  $result = gwseq_process_ifce_import_confirm($token, $sections, $parent_choices);
   if ($result['notice'] !== null) gwseq_set_ifce_import_notice($result['notice']);
   wp_safe_redirect($result['redirect']);
   exit;
@@ -445,6 +471,63 @@ function gwseq_render_ifce_import_upload_form($error = '') {
       <p><?php submit_button(__('Analyser le PDF', 'gws-core'), 'primary', 'submit', false); ?></p>
     </form>
     <p><a href="<?php echo esc_url(admin_url('post-new.php?post_type=' . GWSEQ_CPT_CHEVAL)); ?>"><?php esc_html_e('Ou créer une fiche manuellement', 'gws-core'); ?></a></p>
+  </div>
+  <?php
+}
+
+/**
+ * Bloc de décision Père OU Mère sur l'écran de prévisualisation IFCE (§3 de la demande,
+ * "rattacher Père/Mère à des chevaux GWS pendant l'import") — UNIQUEMENT pour ce parent DIRECT,
+ * jamais les générations suivantes (qui restent gérées par l'arbre externe importé, ou par le
+ * pedigree propre du cheval GWS lié une fois la relation créée — voir
+ * gwseq_ifce_map_import()/includes/ifce-import-mapper.php). $branch est le nœud {name, race,
+ * race_autre, annee_naissance, ...} déjà produit par le parseur (jamais modifié ici, purement une
+ * décision sur la DESTINATION de cette donnée) ; $mode_key/$horse_id_key sont les noms de champs
+ * `$_POST` lus par gwseq_sanitize_ifce_preview_parent_choice(). Les trois blocs (aucun JavaScript
+ * requis, formulaire toujours fonctionnel sans script) restent simultanément visibles — même
+ * convention de repli que gwseq_render_cheval_parent_fields() (saisie manuelle du pedigree,
+ * includes/cheval-pedigree.php) : le serveur reste seul autoritaire sur le choix réellement soumis.
+ */
+function gwseq_render_ifce_preview_parent_choice($role, $branch, $label, $mode_key, $horse_id_key, $child_annee_naissance) {
+  if (empty($branch)) return; // rien de détecté pour ce parent : aucun choix à proposer (§ absence de donnée = absence d'affichage)
+  $race_label = gwseq_cheval_race_label($branch['race'] ?? '', $branch['race_autre'] ?? '') ?: __('race non détectée', 'gws-core');
+  $annee = $branch['annee_naissance'] ?? '';
+  $detected_summary = trim($branch['name'] . ' — ' . $race_label . ($annee !== '' ? ' — ' . $annee : ''));
+  ?>
+  <div data-gwseq-ifce-parent-choice="<?php echo esc_attr($role); ?>" style="margin: 0.75em 0; padding: 0.75em; border: 1px solid #dcdcde;">
+    <p><strong><?php echo esc_html($label); ?></strong> <?php echo esc_html(sprintf(/* translators: %s: nom — race — année détectés pour ce parent */ __('détecté : %s', 'gws-core'), $detected_summary)); ?></p>
+    <p>
+      <label>
+        <input type="radio" name="<?php echo esc_attr($mode_key); ?>" value="external" checked>
+        <?php esc_html_e('Importer comme ascendant externe', 'gws-core'); ?>
+      </label><br>
+      <label>
+        <input type="radio" name="<?php echo esc_attr($mode_key); ?>" value="gws">
+        <?php esc_html_e('Lier à un cheval déjà enregistré', 'gws-core'); ?>
+      </label><br>
+      <label>
+        <input type="radio" name="<?php echo esc_attr($mode_key); ?>" value="skip">
+        <?php esc_html_e('Ne pas importer ce parent', 'gws-core'); ?>
+      </label>
+    </p>
+    <p>
+      <select name="<?php echo esc_attr($horse_id_key); ?>">
+        <option value="0"><?php esc_html_e('— Choisir un cheval —', 'gws-core'); ?></option>
+        <?php foreach (gwseq_cheval_parent_candidates(0) as $candidate) :
+          // Même règle métier que la saisie manuelle du pedigree (sexe, année), réutilisée SANS LA
+          // DUPLIQUER — voir gwseq_ifce_preview_parent_candidate_rejection_reason() ci-dessus
+          // (includes/cheval-pedigree.php) pour la raison exacte de son existence à ce stade
+          // (la fiche important n'existe pas encore, donc aucune lecture en base possible ici) ;
+          // candidats visibles mais désactivés, jamais retirés de la liste.
+          $rejection_reason = gwseq_ifce_preview_parent_candidate_rejection_reason($role, $candidate->ID, $child_annee_naissance);
+          $option_label = get_the_title($candidate);
+          if ($rejection_reason !== '') $option_label .= ' — ' . gwseq_horse_parent_rejection_reason_label($rejection_reason);
+        ?>
+          <option value="<?php echo esc_attr($candidate->ID); ?>" <?php disabled($rejection_reason !== ''); ?>><?php echo esc_html($option_label); ?></option>
+        <?php endforeach; ?>
+      </select>
+      <span class="description"><?php esc_html_e('Utilisé uniquement si « Lier à un cheval déjà enregistré » est sélectionné ci-dessus, et si « Importer le pedigree » reste coché plus bas.', 'gws-core'); ?></span>
+    </p>
   </div>
   <?php
 }
@@ -520,7 +603,15 @@ function gwseq_render_ifce_import_preview($token, $parsed) {
       <p><label><input type="checkbox" name="gwseq_ifce_import_identity" value="1" checked> <?php esc_html_e('Importer l’identité', 'gws-core'); ?></label></p>
       <p><label><input type="checkbox" name="gwseq_ifce_import_indices" value="1" checked> <?php esc_html_e('Importer les indices', 'gws-core'); ?></label></p>
       <p><label><input type="checkbox" name="gwseq_ifce_import_pedigree" value="1" checked> <?php esc_html_e('Importer le pedigree', 'gws-core'); ?></label></p>
-      <?php submit_button(__('Valider l’import', 'gws-core')); ?>
+      <?php
+      // Choix Père/Mère GWS (§3 de la demande) — UNIQUEMENT les deux parents directs, jamais les 12
+      // ascendants suivants (périmètre volontairement limité, un choix par génération rendrait
+      // l'écran de prévisualisation beaucoup trop lourd). Sans effet si "Importer le pedigree"
+      // ci-dessus reste décoché (voir gwseq_ifce_map_import()).
+      gwseq_render_ifce_preview_parent_choice('father', $pedigree['father'], __('Père', 'gws-core'), 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id', $identity['annee_naissance']);
+      gwseq_render_ifce_preview_parent_choice('mother', $pedigree['mother'], __('Mère', 'gws-core'), 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id', $identity['annee_naissance']);
+      submit_button(__('Valider l’import', 'gws-core'));
+      ?>
     </form>
     <p><a href="<?php echo esc_url(gwseq_ifce_import_page_url()); ?>"><?php esc_html_e('Annuler', 'gws-core'); ?></a></p>
   </div>

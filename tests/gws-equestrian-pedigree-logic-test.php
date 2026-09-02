@@ -76,6 +76,7 @@ function esc_url($value) { return $value; }
 function absint($value) { return abs((int) $value); }
 function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
+function esc_js($value) { return addslashes((string) $value); }
 function sanitize_html_class($value) { return preg_replace('/[^A-Za-z0-9_-]/', '', (string) $value); }
 function selected($a, $b) { return $a == $b ? ' selected' : ''; }
 function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
@@ -514,6 +515,26 @@ gws_test_assert($tree['race'] === '', 'Ascendant externe : code de race inconnu 
 // --- "Autre" avec précision libre, même mécanisme que la fiche Cheval ---
 $tree = gwseq_sanitize_external_ancestor_tree(array('name' => 'Kannan', 'race' => 'autre', 'race_autre' => 'Camargue'), 3);
 gws_test_assert($tree['race'] === 'autre' && $tree['race_autre'] === 'Camargue', 'Ascendant externe : "Autre" avec précision libre conservé');
+
+// --- CORRECTIF RUNTIME (bug "Préciser réapparaît avec une race canonique", §1 de la demande) : même
+// correctif que l'identité du cheval (cheval-fields.php), pour un ascendant externe — voir
+// gwseq_sanitize_race_referentiel_autre() (race-referentiel.php) ---
+$tree = gwseq_sanitize_external_ancestor_tree(array('name' => 'Kannan', 'race' => 'kwpn', 'race_autre' => 'Kannan'), 3);
+gws_test_assert($tree['race'] === 'KWPN' && $tree['race_autre'] === '', 'Correctif runtime "Préciser" (ascendant externe) : une race canonique soumise avec un texte "Autre" resté dans le formulaire ne conserve JAMAIS ce texte — race_autre forcé à vide');
+
+// --- Même correctif, côté RENDU pour un ascendant externe (auto-guérison à l’affichage) ---
+ob_start();
+gwseq_render_race_referentiel_field(array(
+  'field_name' => '_gwseq_pere_externe_test[race]',
+  'autre_field_name' => '_gwseq_pere_externe_test[race_autre]',
+  'input_id' => 'gwseq-race-search-pere-test-precis',
+  'current_code' => 'KWPN',
+  'current_autre' => 'Kannan',
+));
+$ancestor_race_field_html_stale = ob_get_clean();
+gws_test_assert(strpos($ancestor_race_field_html_stale, 'class="regular-text gwseq-race-field__autre" data-gwseq-race-field-name="_gwseq_pere_externe_test[race_autre]" value=""') !== false, 'Correctif runtime "Préciser" (rendu, ascendant externe) : le champ "Préciser" du composant de recherche est bien VIDÉ à l’affichage malgré une donnée "race_autre" déjà en base');
+gws_test_assert(strpos($ancestor_race_field_html_stale, 'class="regular-text gwseq-race-field__fallback-autre" name="_gwseq_pere_externe_test[race_autre]" value=""') !== false, 'Correctif runtime "Préciser" (rendu, ascendant externe, <select> de secours §6) : le champ "Préciser" du <select> de secours est également bien VIDÉ à l’affichage malgré une donnée "race_autre" déjà en base');
+gws_test_assert(preg_match('/gwseq-race-field__fallback-autre-wrap" id="[^"]*" style="display:none;"/', $ancestor_race_field_html_stale) === 1, 'Correctif runtime "Préciser" (rendu, ascendant externe, <select> de secours §6) : le bloc "Préciser" du <select> de secours reste bien masqué pour une race canonique');
 
 // --- Ascendant externe possédant deux parents externes ---
 $tree = gwseq_sanitize_external_ancestor_tree(array(

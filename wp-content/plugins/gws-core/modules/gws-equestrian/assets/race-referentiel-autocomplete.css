@@ -63,7 +63,11 @@
   max-width: 100%;
 }
 
-.gwseq-race-field__fallback-autre {
+.gwseq-race-field__fallback-autre-wrap {
   display: block;
   margin-top: 6px;
+}
+
+.gwseq-race-field__fallback-autre {
+  display: block;
 }

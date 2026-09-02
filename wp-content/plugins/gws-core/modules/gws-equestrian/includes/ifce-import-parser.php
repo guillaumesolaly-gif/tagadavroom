@@ -466,6 +466,42 @@ function gwseq_ifce_parse_pedigree_entry_line($line) {
 }
 
 /**
+ * Détecte une ligne de CONTINUATION VISUELLE d'un ascendant dont le libellé complet a débordé sur
+ * la ligne suivante — CORRECTIF RUNTIME (recette sur ASB CONQUISTADOR et CORNET OBOLENSKY, deux PDF
+ * réels distincts présentant EXACTEMENT le même motif, jamais traité comme un cas isolé) :
+ * jusqu'ici, seule une ligne composée UNIQUEMENT d'une année à 4 chiffres ("1984") était reconnue
+ * comme continuation. Un cas réel supplémentaire, rencontré identiquement sur les deux documents,
+ * ne l'était pas : "CORRADO I Alias SAN PATRIGNANO CORRADO" suivi, sur la ligne SUIVANTE, de
+ * "(DEU) HOLST 1985" — le marqueur pays, le code de stud-book ET l'année ont débordé ENSEMBLE sur
+ * une seconde ligne. Cette ligne "(DEU) HOLST 1985", non reconnue comme continuation, était alors
+ * analysée comme un ASCENDANT DISTINCT à part entière ("HOLST 1985" une fois le marqueur pays
+ * retiré, `gwseq_ifce_parse_name_studbook_year()` ne trouvant aucun nom exploitable devant le code
+ * renvoyait tel quel le texte complet comme un nom fantôme) — un ascendant FANTÔME qui décalait
+ * ensuite d'UN RANG la position généalogique de tous les ascendants suivants dans la file
+ * (`$queue` de `gwseq_ifce_build_ancestor_subtree()`), la mère réelle de la branche héritant à tort
+ * du rôle de père, etc.
+ *
+ * Une ligne de continuation de ce type ne porte JAMAIS de nom propre : elle se réduit entièrement à
+ * un marqueur pays optionnel entre parenthèses, un code de stud-book optionnel (majuscules), et une
+ * année optionnelle — au moins un de ces trois éléments doit être présent (une ligne vide n'arrive
+ * jamais ici, déjà filtrée en amont). Un nom d'ascendant réel n'a structurellement jamais cette
+ * forme (voir gwseq_ifce_parse_pedigree_entry_line() : un nom réel précède toujours son éventuel
+ * code, jamais l'inverse sur sa propre ligne) — même risque assumé, et de la même façon, que le cas
+ * déjà accepté de l'année isolée : un ascendant dont le nom serait UNIQUEMENT un code de stud-book
+ * ou une année ne peut structurellement pas exister pour un cheval réel.
+ */
+function gwseq_ifce_looks_like_pedigree_continuation_line($line) {
+  $line = trim((string) $line);
+  if ($line === '') return false;
+  if (preg_match('/^\d{4}$/', $line)) return true;
+  $roman_numerals = 'I|II|III|IV|V|VI|VII|VIII|IX|X';
+  return (bool) preg_match(
+    '/^(?:\([A-Za-z]{2,3}\)\s*)?(?!(?:' . $roman_numerals . ')$)([A-Za-z]{2,6})?\s*(\d{4})?$/u',
+    $line
+  ) && preg_match('/[A-Za-z()]/', $line);
+}
+
+/**
  * Extraction du pedigree (§6) — voir la convention de lecture documentée en tête de fichier.
  * Retourne {father, mother, count} : 'count' est le nombre d'ascendants reconnus (utilisé tel quel
  * par la prévisualisation, §9 : "Pedigree : 14 ascendants détectés"), 'father'/'mother' les arbres
@@ -504,12 +540,13 @@ function gwseq_ifce_parse_pedigree_from_lines($lines) {
     $raw_lines[] = $line;
   }
 
-  // Une ligne composée uniquement d'une année à 4 chiffres est la continuation visuelle de la ligne
-  // précédente (ascendant dont le libellé complet a débordé sur deux lignes — rencontré sur le vrai
-  // document, voir la convention de lecture), jamais un ascendant distinct.
+  // Une ligne qui se réduit entièrement à un marqueur pays/code de stud-book/année (ex. "1984" seul,
+  // ou "(DEU) HOLST 1985" — correctif runtime, voir gwseq_ifce_looks_like_pedigree_continuation_line()
+  // ci-dessus) est la continuation visuelle de la ligne précédente (ascendant dont le libellé complet
+  // a débordé sur deux lignes), jamais un ascendant distinct.
   $merged_lines = array();
   foreach ($raw_lines as $line) {
-    if (preg_match('/^\d{4}$/', $line) && !empty($merged_lines)) {
+    if (gwseq_ifce_looks_like_pedigree_continuation_line($line) && !empty($merged_lines)) {
       $merged_lines[count($merged_lines) - 1] .= ' ' . $line;
     } else {
       $merged_lines[] = $line;

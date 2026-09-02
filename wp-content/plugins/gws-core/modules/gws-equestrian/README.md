@@ -951,6 +951,38 @@ s'affiche désormais en lignes explicitement étiquetées (Race / Stud-book, Sex
 de naissance) plutôt qu'en un résumé unique concaténé par des virgules, où un « non détectée » isolé
 ne permettait pas de savoir à quelle donnée il se rapportait.
 
+#### Correctifs post-recette 0.14.5 — pedigree IFCE, bug "Préciser" persistant, rattachement Père/Mère GWS
+
+**A — Reconstruction incorrecte de certains pedigrees IFCE.** Deux VRAIS documents distincts (Asb
+Conquistador, Cornet Obolensky) présentaient EXACTEMENT le même motif : `CORRADO I Alias SAN
+PATRIGNANO CORRADO` suivi, sur la ligne suivante, de `(DEU) HOLST 1985` — pays, stud-book et année
+débordés ensemble sur une seconde ligne. Seule une ligne composée uniquement d'une année isolée
+était jusqu'ici reconnue comme continuation ; cette ligne ne l'était pas et devenait un ASCENDANT
+FANTÔME ("HOLST 1985"), décalant d'un rang tous les ascendants suivants. Corrigé par
+`gwseq_ifce_looks_like_pedigree_continuation_line()` (`ifce-import-parser.php`), qui reconnaît
+désormais toute ligne réduite à un marqueur pays/stud-book/année comme une continuation. Détecter
+« 14 ascendants » ne suffit pas — un parser peut trouver le bon nombre en les plaçant aux mauvaises
+positions — de nouveaux tests vérifient l'arbre RÉEL (nom, alias, race, année, position, père,
+mère) contre les deux vrais PDF.
+
+**B — Bug "Préciser" persistant.** Une race canonique correctement sélectionnée pouvait réafficher
+un texte "Préciser" non vide après certaines sauvegardes. Double cause : le composant de recherche
+ne vide jamais son propre champ "Autre" en resélectionnant une race canonique (le texte libre reste
+soumis) ; le `<select>` de secours (0.14.3) n'avait quant à lui AUCUNE condition de visibilité sur
+son propre bloc "Préciser". `gwseq_sanitize_race_referentiel_autre($race, $raw_autre)`
+(`race-referentiel.php`, fonction UNIQUE réutilisée par identité et pedigree) force désormais une
+chaîne vide dès que `$race` n'est pas "autre" ; `gwseq_render_race_referentiel_field()` masque aussi
+le bloc du `<select>` de secours (attribut `onchange` en JavaScript pur, indépendant du script
+principal) et auto-guérit à l'affichage une donnée déjà enregistrée avant ce correctif.
+
+**C — Rattacher Père/Mère à des chevaux GWS pendant l'import IFCE (évolution).** L'écran de
+prévisualisation propose désormais, pour les deux parents DIRECTS uniquement, un choix entre
+"Importer comme ascendant externe" (répli par défaut), "Lier à un cheval déjà enregistré" et "Ne pas
+importer ce parent". `gwseq_ifce_map_import()` relaie ce choix vers `gwseq_set_horse_parent()`
+(MÊME fonction que la saisie manuelle du pedigree, jamais dupliquée), en traitant Père puis Mère
+dans cet ordre — ce qui suffit à appliquer le contrôle "même cheval jamais père ET mère" sans aucun
+code de validation supplémentaire. Sans effet si "Importer le pedigree" reste décoché.
+
 #### Correctif runtime 0.14.4 — cause exacte de l'échec d'initialisation : un `<ul>` ne peut être placé dans un `<p>`
 
 Recette du filet de sécurité 0.14.3 : le `<select>` de secours s'affichait bien (garantie tenue),
