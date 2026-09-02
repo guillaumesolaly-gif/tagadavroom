@@ -410,27 +410,32 @@ function gwseq_render_membre_contact_box($post) {
   <p>
     <label for="gwseq-membre-whatsapp"><strong><?php esc_html_e('WhatsApp', 'gws-core'); ?></strong></label><br>
     <input type="text" class="regular-text" id="gwseq-membre-whatsapp" name="_gwseq_membre_whatsapp" value="<?php echo esc_attr($contact['whatsapp']); ?>">
-    <br><span class="description"><?php esc_html_e('Peut être différent du téléphone principal.', 'gws-core'); ?></span>
+    <br><span class="description"><?php esc_html_e('Peut être différent du téléphone principal.', 'gws-core'); ?> <?php esc_html_e('Format international recommandé, ex. +33 6 12 34 56 78', 'gws-core'); ?></span>
   </p>
   <p>
     <label for="gwseq-membre-instagram"><strong><?php esc_html_e('Instagram', 'gws-core'); ?></strong></label><br>
-    <input type="url" class="widefat" id="gwseq-membre-instagram" name="_gwseq_membre_instagram" value="<?php echo esc_attr($contact['instagram']); ?>">
+    <input type="url" class="widefat" id="gwseq-membre-instagram" name="_gwseq_membre_instagram" value="<?php echo esc_attr($contact['instagram']); ?>" placeholder="https://www.instagram.com/votrecompte/">
+    <br><span class="description"><?php esc_html_e('Saisissez l\'URL complète, avec https://', 'gws-core'); ?></span>
   </p>
   <p>
     <label for="gwseq-membre-facebook"><strong><?php esc_html_e('Facebook', 'gws-core'); ?></strong></label><br>
-    <input type="url" class="widefat" id="gwseq-membre-facebook" name="_gwseq_membre_facebook" value="<?php echo esc_attr($contact['facebook']); ?>">
+    <input type="url" class="widefat" id="gwseq-membre-facebook" name="_gwseq_membre_facebook" value="<?php echo esc_attr($contact['facebook']); ?>" placeholder="https://www.facebook.com/votrepage/">
+    <br><span class="description"><?php esc_html_e('Saisissez l\'URL complète, avec https://', 'gws-core'); ?></span>
   </p>
   <p>
     <label for="gwseq-membre-linkedin"><strong><?php esc_html_e('LinkedIn', 'gws-core'); ?></strong></label><br>
-    <input type="url" class="widefat" id="gwseq-membre-linkedin" name="_gwseq_membre_linkedin" value="<?php echo esc_attr($contact['linkedin']); ?>">
+    <input type="url" class="widefat" id="gwseq-membre-linkedin" name="_gwseq_membre_linkedin" value="<?php echo esc_attr($contact['linkedin']); ?>" placeholder="https://www.linkedin.com/in/votreprofil/">
+    <br><span class="description"><?php esc_html_e('Saisissez l\'URL complète, avec https://', 'gws-core'); ?></span>
   </p>
   <p>
     <label for="gwseq-membre-tiktok"><strong><?php esc_html_e('TikTok', 'gws-core'); ?></strong></label><br>
-    <input type="url" class="widefat" id="gwseq-membre-tiktok" name="_gwseq_membre_tiktok" value="<?php echo esc_attr($contact['tiktok']); ?>">
+    <input type="url" class="widefat" id="gwseq-membre-tiktok" name="_gwseq_membre_tiktok" value="<?php echo esc_attr($contact['tiktok']); ?>" placeholder="https://www.tiktok.com/@votrecompte">
+    <br><span class="description"><?php esc_html_e('Saisissez l\'URL complète, avec https://', 'gws-core'); ?></span>
   </p>
   <p>
     <label for="gwseq-membre-site"><strong><?php esc_html_e('Site / lien externe', 'gws-core'); ?></strong></label><br>
-    <input type="url" class="widefat" id="gwseq-membre-site" name="_gwseq_membre_site" value="<?php echo esc_attr($contact['site']); ?>">
+    <input type="url" class="widefat" id="gwseq-membre-site" name="_gwseq_membre_site" value="<?php echo esc_attr($contact['site']); ?>" placeholder="https://www.votresite.fr">
+    <br><span class="description"><?php esc_html_e('Saisissez l\'URL complète, avec https://', 'gws-core'); ?></span>
   </p>
   <?php
 }

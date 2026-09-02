@@ -5,6 +5,47 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.17.1 — Micro-corrections UX post-recette Équipe
+
+Suite à la validation runtime du module Équipe (0.17.0), quatre micro-corrections ciblées avant le
+gel de la V1 — aucune autre évolution fonctionnelle, aucun changement sur Cheval/Prestations/
+Groupes tarifaires hors ce qui suit.
+
+1. **Aide à la saisie des réseaux sociaux/URL** (`includes/membre-fields.php`) : la recette a
+   révélé qu'une saisie comme `www.google.com` (sans `https://`) n'était pas conservée — le champ
+   HTML `type="url"` refuse nativement, côté navigateur, une valeur sans schéma reconnu avant même
+   la soumission du formulaire. Aucune logique de stockage/sanitation modifiée (toujours
+   `esc_url_raw()` via `gws_core_field_sanitize('url', ...)`, aucune reconstruction automatique
+   d'URL à partir de `@compte`/`www...`) : uniquement des `placeholder` explicites (Instagram,
+   Facebook, LinkedIn, TikTok, Site) et une aide "Saisissez l'URL complète, avec https://" sous
+   chacun des cinq champs.
+2. **WhatsApp** : aide "Format international recommandé, ex. +33 6 12 34 56 78" ajoutée sous le
+   champ existant — aucun sélecteur de pays, aucune bibliothèque téléphonique, aucune normalisation
+   ajoutée.
+3. **Recherche dans Équipe** (`includes/post-types.php`) : le bouton de recherche de
+   `Équipe → Tous les membres` affichait le libellé générique WordPress "Rechercher des articles"
+   (`search_items` n'est jamais dérivé automatiquement de `name`/`singular_name` par WordPress).
+   Corrigé via le libellé natif du CPT (`'search_items' => 'Rechercher des membres'`), jamais un
+   remplacement visuel. La même anomalie, vérifiée par la même occasion, existait aussi sur
+   Chevaux, Prestations et Groupes tarifaires — corrigée pour les quatre : "Rechercher un cheval",
+   "Rechercher une prestation", "Rechercher un groupe tarifaire", "Rechercher des membres".
+4. **Suppression de "Modification rapide" (Quick Edit)** (`includes/admin-ui.php`) sur les listes
+   d'administration des quatre objets métier GWS Equestrian (Chevaux, Membres, Prestations,
+   Groupes tarifaires) : l'édition passe désormais toujours par la fiche complète. Ciblé
+   uniquement sur ces quatre post types via le filtre natif `post_row_actions`
+   (`gwseq_remove_quick_edit_row_action()`) — Quick Edit reste pleinement disponible pour les
+   Articles/Pages et tout autre post type, aucune désactivation globale. Les actions "Voir"/
+   "Aperçu" existantes n'ont pas été modifiées dans ce lot (voir le CR de livraison pour l'état des
+   lieux constaté : absentes pour Groupe tarifaire, non public ; présentes pour Cheval/Prestation/
+   Membre, pointant vers l'URL front du post type — aucun gabarit dédié n'existe encore, rendu via
+   le gabarit générique du thème, `single.php`).
+
+**Tests** : nouvelles assertions dans `tests/gws-equestrian-foundations-test.php` (libellés
+`search_items` des quatre post types, retrait de Quick Edit vérifié pour les quatre ET son
+maintien pour un post type non concerné) et `tests/gws-equestrian-membre-logic-test.php`
+(placeholders et aides affichés, non-régression de la sanitation URL). Intégralité des suites
+existantes revérifiée, aucune régression.
+
 ## 0.17.0 — Module Équipe (nouvel objet métier Membre)
 
 Nouvel objet métier, indépendant de Cheval : **Équipe**, pour gérer les personnes qu'une structure

@@ -528,6 +528,38 @@ foreach (array('_gwseq_membre_telephone', '_gwseq_membre_email', '_gwseq_membre_
 gws_test_assert(strpos($contact_html, 'type="email"') !== false, 'Rendu Contact : le champ E-mail utilise bien type="email"');
 gws_test_assert(substr_count($contact_html, 'type="url"') === 5, 'Rendu Contact : les cinq champs URL (Instagram/Facebook/LinkedIn/TikTok/Site) utilisent bien type="url"');
 
+// --- Micro-corrections UX post-recette : aide à la saisie des réseaux sociaux/URL et de WhatsApp
+// (recette runtime ayant révélé qu'une saisie "www.google.com" sans https:// n'était pas conservée
+// — aucun changement de la logique de stockage/sanitation, uniquement du texte d'aide) ---
+$expected_url_placeholders = array(
+  '_gwseq_membre_instagram' => 'https://www.instagram.com/votrecompte/',
+  '_gwseq_membre_facebook' => 'https://www.facebook.com/votrepage/',
+  '_gwseq_membre_linkedin' => 'https://www.linkedin.com/in/votreprofil/',
+  '_gwseq_membre_tiktok' => 'https://www.tiktok.com/@votrecompte',
+  '_gwseq_membre_site' => 'https://www.votresite.fr',
+);
+foreach ($expected_url_placeholders as $field_name => $expected_placeholder) {
+  gws_test_assert(
+    strpos($contact_html, 'placeholder="' . $expected_placeholder . '"') !== false,
+    "Aide à la saisie : $field_name affiche le placeholder explicite \"$expected_placeholder\""
+  );
+}
+gws_test_assert(
+  substr_count($contact_html, esc_html('Saisissez l\'URL complète, avec https://')) === 5,
+  'Aide à la saisie : les cinq champs URL affichent tous l\'aide "Saisissez l\'URL complète, avec https://"'
+);
+gws_test_assert(
+  strpos($contact_html, 'Format international recommandé, ex. +33 6 12 34 56 78') !== false,
+  'Aide à la saisie : WhatsApp affiche l\'aide "Format international recommandé, ex. +33 6 12 34 56 78"'
+);
+// Aucun changement de la logique de stockage/sanitation : la même fonction de sanitation pure
+// reste seule autorité, revérifiée plus haut dans ce fichier (Contact : URL Instagram/.../
+// téléphone international non détruit).
+gws_test_assert(
+  gwseq_sanitize_membre_contact_input(array('_gwseq_membre_instagram' => 'www.instagram.com/votrecompte'))['instagram'] === 'www.instagram.com/votrecompte',
+  'Non-régression : la sanitation ne reconstruit jamais automatiquement une URL à partir de www./@compte (aide visuelle uniquement, aucune logique ajoutée)'
+);
+
 // =====================================================================================
 // Éditeur par blocs désactivé, titre natif masqué (§8)
 // =====================================================================================

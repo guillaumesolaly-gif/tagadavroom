@@ -192,6 +192,43 @@ gws_test_assert(
   'Membre : sous-menu "Ajouter un membre" (§1 : "Équipe → Ajouter un membre")'
 );
 
+// --- Libellé de recherche métier explicite sur chaque CPT (micro-correction post-recette Équipe) :
+// sans lui, WordPress replie sur le défaut générique "Rechercher des articles" (search_items n'est
+// jamais dérivé automatiquement de 'name'/'singular_name') ---
+$expected_search_items = array(
+  GWSEQ_CPT_PRESTATION => 'Rechercher une prestation',
+  GWSEQ_CPT_GROUPE => 'Rechercher un groupe tarifaire',
+  GWSEQ_CPT_CHEVAL => 'Rechercher un cheval',
+  GWSEQ_CPT_MEMBRE => 'Rechercher des membres',
+);
+foreach ($expected_search_items as $slug => $expected_label) {
+  gws_test_assert(
+    ($post_types[$slug]['labels']['search_items'] ?? null) === $expected_label,
+    "Post type '$slug' : libellé de recherche natif explicite \"$expected_label\" (jamais le défaut générique \"Rechercher des articles\")"
+  );
+}
+
+// --- Action de ligne "Modification rapide" (Quick Edit) retirée UNIQUEMENT sur les quatre objets
+// métier GWS Equestrian, jamais globalement (micro-correction post-recette Équipe) ---
+foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE) as $slug) {
+  $native_actions = array('edit' => '<a>Modifier</a>', 'inline hide-if-no-js' => '<button>Modification rapide</button>', 'trash' => '<a>Corbeille</a>');
+  $filtered = gwseq_remove_quick_edit_row_action($native_actions, (object) array('post_type' => $slug));
+  gws_test_assert(
+    !array_key_exists('inline hide-if-no-js', $filtered),
+    "Post type '$slug' : action de ligne \"Modification rapide\" bien retirée"
+  );
+  gws_test_assert(
+    array_key_exists('edit', $filtered) && array_key_exists('trash', $filtered),
+    "Post type '$slug' : les autres actions de ligne (Modifier, Corbeille) restent intactes"
+  );
+}
+$native_actions_other = array('edit' => '<a>Modifier</a>', 'inline hide-if-no-js' => '<button>Modification rapide</button>');
+$filtered_other = gwseq_remove_quick_edit_row_action($native_actions_other, (object) array('post_type' => 'post'));
+gws_test_assert(
+  array_key_exists('inline hide-if-no-js', $filtered_other),
+  'Quick Edit : jamais désactivé globalement — un Article (post) conserve son action "Modification rapide"'
+);
+
 // --- Étape 3 : Ordre d'affichage natif (page-attributes) sur Prestation et Groupe, Description
 // courte native (excerpt) sur Groupe uniquement ---
 foreach (array(GWSEQ_CPT_PRESTATION => 'Prestation', GWSEQ_CPT_GROUPE => 'Groupe tarifaire') as $slug => $label) {

@@ -1,5 +1,17 @@
 # Changelog — GWS Starter
 
+## 1.20.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Micro-corrections UX post-recette Équipe (GWS Equestrian 0.17.1).** Placeholders et aides de
+  saisie sur les champs réseaux sociaux/URL et WhatsApp de la fiche Membre (aucun changement de la
+  logique de stockage/sanitation). Libellé de recherche natif "Rechercher des membres" (et, la même
+  anomalie ayant été vérifiée sur les autres CPT du module, "Rechercher un cheval"/"Rechercher une
+  prestation"/"Rechercher un groupe tarifaire") à la place du défaut générique WordPress
+  "Rechercher des articles". Action de ligne "Modification rapide" retirée sur les quatre objets
+  métier GWS Equestrian (Chevaux, Membres, Prestations, Groupes tarifaires) uniquement — Quick
+  Edit reste disponible partout ailleurs. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.17.1) pour le détail complet.
+
 ## 1.20.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Module Équipe, nouvel objet métier Membre (GWS Equestrian 0.17.0).** Nouveau post type

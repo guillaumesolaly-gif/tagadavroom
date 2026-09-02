@@ -2,7 +2,7 @@
 /**
  * Petits aménagements d'administration partagés par Prestation, Groupe tarifaire, Cheval et Membre
  * (module Équipe) — vocabulaire métier plutôt que jargon WordPress (voir §24 de la demande), sans
- * construire de mécanisme générique : deux fonctions ciblées, appelées explicitement pour chaque
+ * construire de mécanisme générique : des fonctions ciblées, appelées explicitement pour chaque
  * post type concerné.
  */
 
@@ -49,3 +49,23 @@ function gwseq_admin_default_order_by_menu_order($query) {
   }
 }
 add_action('pre_get_posts', 'gwseq_admin_default_order_by_menu_order');
+
+/**
+ * Retire l'action de ligne "Modification rapide" (Quick Edit) des listes d'administration des
+ * quatre objets métier GWS Equestrian (micro-correction post-recette Équipe) : ces fiches sont
+ * suffisamment structurées (meta boxes dédiées, titre parfois auto-dérivé pour Membre) pour que
+ * l'édition doive toujours passer par la fiche complète — jamais par le formulaire minimal et
+ * générique de Quick Edit, qui ignore de toute façon ces champs métier. CIBLÉ UNIQUEMENT sur ces
+ * quatre post types via le filtre natif `post_row_actions` (jamais une désactivation globale de
+ * Quick Edit dans WordPress, qui resterait pleinement disponible pour les Articles/Pages et tout
+ * autre post type). La clé 'inline hide-if-no-js' est l'identifiant natif WordPress de cette action
+ * précise (voir `WP_Posts_List_Table::handle_row_actions()`) — seule cette entrée est retirée,
+ * aucune autre action de ligne (Modifier, Corbeille, Voir/Aperçu...) n'est touchée.
+ */
+function gwseq_remove_quick_edit_row_action($actions, $post) {
+  if (in_array($post->post_type, array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE), true)) {
+    unset($actions['inline hide-if-no-js']);
+  }
+  return $actions;
+}
+add_filter('post_row_actions', 'gwseq_remove_quick_edit_row_action', 10, 2);

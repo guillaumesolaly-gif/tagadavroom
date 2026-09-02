@@ -44,6 +44,9 @@ function gwseq_register_post_types() {
       'edit_item' => __('Modifier la prestation', 'gws-core'),
       'all_items' => __('Prestations', 'gws-core'),
       'not_found' => __('Aucune prestation trouvée', 'gws-core'),
+      // Sans ce libellé explicite, WordPress replie sur le défaut générique "Rechercher des
+      // articles" (search_items n'est jamais dérivé automatiquement de 'name' — voir CHANGELOG.md).
+      'search_items' => __('Rechercher une prestation', 'gws-core'),
     ),
     'public' => true,
     'has_archive' => true,
@@ -61,6 +64,7 @@ function gwseq_register_post_types() {
       'edit_item' => __('Modifier le groupe tarifaire', 'gws-core'),
       'all_items' => __('Groupes tarifaires', 'gws-core'),
       'not_found' => __('Aucun groupe tarifaire trouvé', 'gws-core'),
+      'search_items' => __('Rechercher un groupe tarifaire', 'gws-core'),
     ),
     'public' => false,
     'publicly_queryable' => false,
@@ -83,6 +87,7 @@ function gwseq_register_post_types() {
       'edit_item' => __('Modifier la fiche cheval', 'gws-core'),
       'all_items' => __('Chevaux', 'gws-core'),
       'not_found' => __('Aucun cheval trouvé', 'gws-core'),
+      'search_items' => __('Rechercher un cheval', 'gws-core'),
       'featured_image' => __('Photo principale', 'gws-core'),
       'set_featured_image' => __('Définir la photo principale', 'gws-core'),
       'remove_featured_image' => __('Supprimer la photo principale', 'gws-core'),
@@ -104,6 +109,10 @@ function gwseq_register_post_types() {
       'edit_item' => __('Modifier le membre', 'gws-core'),
       'all_items' => __('Tous les membres', 'gws-core'),
       'not_found' => __('Aucun membre trouvé', 'gws-core'),
+      // Sans ce libellé explicite, WordPress replie sur défaut générique "Rechercher des
+      // articles" (search_items n'est PAS dérivé automatiquement de 'name' — correctif runtime,
+      // voir CHANGELOG.md).
+      'search_items' => __('Rechercher des membres', 'gws-core'),
       'featured_image' => __('Photo', 'gws-core'),
       'set_featured_image' => __('Définir la photo', 'gws-core'),
       'remove_featured_image' => __('Supprimer la photo', 'gws-core'),
