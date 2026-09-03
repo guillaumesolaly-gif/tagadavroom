@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.21.0 — module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : à définir par le prochain lot.
+## État actuel : GWS Equestrian 0.22.0 — Partager un cheval (écran BO mobile-first, WhatsApp/SMS/Copier, Accroche commerciale, Open Graph de la fiche Cheval) développé et testé, en attente de recette runtime réelle avant le prochain lot (lien privé, PDF ou sélections). Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime complète de Partager un cheval — aucune autre évolution engagée avant celle-ci.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -613,6 +613,64 @@ onglets) :
 28. Repasser en revue les points 1 à 20 ci-dessus dans la nouvelle interface à onglets : confirmer
     l'absence de toute régression sur pedigree, Production, filtres parents, indices, galerie,
     vidéos, contenus éditoriaux, Global Horse ID et données commerciales.
+
+## Partager un cheval (0.22.0)
+
+Fonctionnalité centrale : un professionnel renseigne son cheval une seule fois dans GWS, puis peut
+transmettre immédiatement les bonnes informations à un client par WhatsApp, SMS/Messages ou copie —
+sans CRM, sans emailing, sans IA, sans historique. GWS prépare le contenu puis ouvre l'application
+choisie ou copie le texte ; il n'envoie jamais rien lui-même.
+
+**Principe fondamental** : aucune invention. Une information absente d'une fiche cheval n'apparaît
+jamais dans le partage — pas de fallback généré, pas de qualité/potentiel/niveau sportif inventé.
+
+**Nouveau champ Cheval** : Accroche commerciale (`includes/cheval-editorial.php`), une ou deux
+phrases courtes, distincte de la Présentation/Description longue — même mécanisme
+d'enregistrement/lecture déjà en place pour les champs éditoriaux, aucune duplication.
+
+**Architecture** (`includes/cheval-share.php`, fonctions métier pures, indépendantes de wp-admin) :
+
+```
+Cheval (meta déjà existantes)
+  -> gwseq_get_horse_shareable_data()   [QUOI est partageable, libellé déjà composé]
+  -> sélection utilisateur              [écran BO, éphémère — jamais enregistrée]
+  -> gwseq_build_horse_share_message()  [COMMENT ça devient un message, plain-text]
+  -> WhatsApp / SMS / Copier            [consomment le MÊME texte, jamais reconstruit par canal]
+```
+
+Aucune logique métier dupliquée : âge, race/stud-book, indices sportifs, pedigree, prix, vidéos —
+tous des helpers déjà existants du module, simplement composés en lignes commercialement lisibles
+("Jument Selle Français — 7 ans", "Par UNTOUCHABLE × KANNAN" — Père × Père de la mère, "1,68 m •
+ISO 135" — un seul indice mis en avant, priorité ISO > ICC > IDR).
+
+**Règle prix/statut** : le prix n'est proposable au partage que si le statut commercial est "À
+vendre" ou "Réservé", jamais pour "Non proposé" ni "Vendu" — quel que soit le prix techniquement
+enregistré — et jamais présélectionné par défaut.
+
+**Confidentialité** : le lien vers la fiche complète n'est jamais proposé pour un cheval non
+publiquement visible (brouillon, protégé par mot de passe). Le futur module "Lien privé" répondra
+à ce besoin séparément.
+
+**Écran BO** `Chevaux → Partager` (`includes/cheval-share-admin.php` +
+`assets/cheval-share-admin.{js,css}`), mobile-first, accessible aussi depuis chaque fiche cheval
+(action de ligne + boîte latérale, même écran). Recherche légère scopée aux chevaux accessibles à
+l'utilisateur (capacités `edit_posts`/`edit_post` natives, aucune capacité inventée) ; les données
+complètes ne sont chargées qu'une fois un cheval choisi. Aperçu temps réel composé côté serveur via
+AJAX, WhatsApp (`https://wa.me/?text=`), SMS/Messages (`sms:?body=`) et Copier consomment tous les
+trois le texte déjà affiché dans l'aperçu.
+
+**Open Graph** de la fiche Cheval (`og:title`/`og:description`/`og:image`+dimensions/`og:url`),
+émis uniquement si aucun plugin SEO tiers n'est actif (aucun second système SEO/canonical/schema
+créé). Image : une dérivée WordPress adaptée, jamais l'original. Le prix n'apparaît jamais dans
+l'Open Graph.
+
+**Aucune persistance** : ni CPT, ni table, ni historique, ni destinataire, ni statut d'envoi — un
+partage est entièrement éphémère.
+
+Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
+`tests/gws-equestrian-cheval-share-admin-test.php` et
+`tests/gws-equestrian-cheval-share-runtime-test.js` pour la couverture dédiée, et le `CHANGELOG.md`
+de ce dossier (0.22.0) pour le détail complet, y compris les limites connues de cette V1.
 
 ## Mises en avant (Pop-in / Sticky bar) — retiré (0.21.0)
 

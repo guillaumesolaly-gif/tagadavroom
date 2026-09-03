@@ -207,9 +207,12 @@ gws_test_assert(
 // portée sans dupliquer un second filtre
 // =====================================================================================
 
+// Compte les occurrences du callback précis de retrait de Quick Edit (jamais le nombre TOTAL de
+// filtres `post_row_actions` du module — le lot « Partager un cheval » y ajoute légitimement son
+// propre filtre, pour une action de ligne totalement différente, voir includes/cheval-share-admin.php).
 gws_test_assert(
-  !isset($GLOBALS['__gwseq_test_filters']['post_row_actions']) || count(array_unique($GLOBALS['__gwseq_test_filters']['post_row_actions'])) === 1,
-  'Modification rapide : un SEUL filtre `post_row_actions` est enregistré (includes/actualites.php ne redéfinit jamais son propre filtre — la fonction générique déjà existante d\'includes/admin-ui.php est réutilisée telle quelle)'
+  !isset($GLOBALS['__gwseq_test_filters']['post_row_actions']) || count(array_keys($GLOBALS['__gwseq_test_filters']['post_row_actions'], 'gwseq_remove_quick_edit_row_action', true)) === 1,
+  'Modification rapide : le filtre `post_row_actions` de retrait de Quick Edit n\'est enregistré qu\'UNE SEULE fois (includes/actualites.php ne redéfinit jamais son propre filtre — la fonction générique déjà existante d\'includes/admin-ui.php est réutilisée telle quelle)'
 );
 $native_row_actions = array('edit' => '<a>Modifier</a>', 'inline hide-if-no-js' => '<button>Modification rapide</button>', 'trash' => '<a>Corbeille</a>');
 $filtered_post = gwseq_remove_quick_edit_row_action($native_row_actions, (object) array('post_type' => 'post'));

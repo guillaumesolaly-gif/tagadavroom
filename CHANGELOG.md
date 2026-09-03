@@ -1,5 +1,19 @@
 # Changelog — GWS Starter
 
+## 1.25.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Partager un cheval (GWS Equestrian 0.22.0).** Nouvel écran métier mobile-first `Chevaux →
+  Partager` (accessible aussi depuis chaque fiche cheval) permettant de préparer, à partir des
+  seules données déjà renseignées, un message commercial prêt à envoyer par WhatsApp, SMS/Messages
+  ou à copier — GWS n'envoie jamais rien lui-même (aucun serveur SMS, aucune API WhatsApp/Meta,
+  aucune persistance). Nouveau champ Cheval "Accroche commerciale", couche métier réutilisable
+  (`gwseq_get_horse_shareable_data()`/`gwseq_build_horse_share_message()`) pour les futures
+  évolutions annoncées (lien privé, PDF, sélections), règle stricte entre statut commercial et
+  affichage du prix, aperçu temps réel composé serveur, et Open Graph de la fiche Cheval
+  (og:title/description/image, jamais le prix). Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.22.0) pour le détail
+  complet.
+
 ## 1.24.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Retrait du module Mises en avant (GWS Equestrian 0.21.0) — décision produit, pas une

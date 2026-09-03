@@ -46,6 +46,7 @@ if (!defined('ABSPATH')) exit;
  */
 function gwseq_cheval_editorial_field_map() {
   return array(
+    'accroche_commerciale' => '_gwseq_accroche_commerciale',
     'presentation' => '_gwseq_presentation',
     'points_forts' => '_gwseq_points_forts',
     'potentiel' => '_gwseq_potentiel',
@@ -124,6 +125,12 @@ function gwseq_get_cheval_editorial($cheval_id) {
  */
 function gwseq_cheval_editorial_presentation_field_labels() {
   return array(
+    // Champ distinct de la Présentation / Description ci-dessous (§3 du lot Partage) : une
+    // accroche COURTE, pensée pour être réutilisée telle quelle sur un support commercial (partage
+    // WhatsApp/SMS, futur PDF, sélection, catalogue) — jamais un simple synonyme de la présentation
+    // longue. Ni obligatoire, ni pourvue d'un quelconque contenu de repli généré : un champ vide
+    // reste vide partout où cette donnée est réutilisée (voir includes/cheval-share.php).
+    'accroche_commerciale' => array(__('Accroche commerciale', 'gws-core'), __('Une ou deux phrases courtes pour présenter ce cheval lors d’un partage ou sur un support commercial.', 'gws-core')),
     'presentation' => array(__('Présentation / Description', 'gws-core'), __('Présentation générale du cheval.', 'gws-core')),
     'points_forts' => array(__('Points forts', 'gws-core'), __('Qualités ou caractéristiques que vous souhaitez mettre en avant.', 'gws-core')),
     'potentiel' => array(__('Potentiel', 'gws-core'), __('Potentiel sportif, commercial ou d’élevage selon le contexte.', 'gws-core')),
@@ -148,10 +155,13 @@ function gwseq_render_cheval_presentation_box($post) {
   <p class="description"><?php esc_html_e('Tous ces champs sont facultatifs : ne renseignez que ce qui est pertinent pour ce cheval.', 'gws-core'); ?></p>
   <?php foreach (gwseq_cheval_editorial_presentation_field_labels() as $field_key => list($label, $help)) :
     $meta_key = gwseq_cheval_editorial_field_map()[$field_key];
+    // Accroche commerciale (§3 du lot Partage) : une ou deux phrases, jamais un pavé de texte — un
+    // champ visuellement plus court le rappelle sans imposer de limite de caractères arbitraire.
+    $rows = $field_key === 'accroche_commerciale' ? 2 : 4;
   ?>
     <p>
       <label for="gwseq-cheval-<?php echo esc_attr($field_key); ?>"><strong><?php echo esc_html($label); ?></strong></label><br>
-      <textarea class="widefat" rows="4" id="gwseq-cheval-<?php echo esc_attr($field_key); ?>" name="<?php echo esc_attr($meta_key); ?>"><?php echo esc_textarea($editorial[$field_key]); ?></textarea>
+      <textarea class="widefat" rows="<?php echo esc_attr($rows); ?>" id="gwseq-cheval-<?php echo esc_attr($field_key); ?>" name="<?php echo esc_attr($meta_key); ?>"><?php echo esc_textarea($editorial[$field_key]); ?></textarea>
       <span class="description"><?php echo esc_html($help); ?></span>
     </p>
   <?php endforeach; ?>

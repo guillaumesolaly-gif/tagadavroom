@@ -91,7 +91,9 @@ $pedigree_resolver_code_only = gws_test_strip_php_comments($pedigree_resolver_so
 // =====================================================================================
 
 $all_fields = gwseq_cheval_editorial_field_map();
-gws_test_assert(count($all_fields) === 9, 'Modèle : les 9 champs éditoriaux attendus (8 de présentation + Ostéo-articulaire) sont bien déclarés');
+// 10 depuis l'ajout de l'Accroche commerciale (lot « Partager un cheval », §3) : 9 champs de
+// présentation (dont la nouvelle Accroche) + Ostéo-articulaire.
+gws_test_assert(count($all_fields) === 10, 'Modèle : les 10 champs éditoriaux attendus (9 de présentation, dont l’Accroche commerciale + Ostéo-articulaire) sont bien déclarés');
 
 // --- Chaque champ peut être enregistré seul, les autres restant vides ---
 foreach ($all_fields as $field_key => $meta_key) {
@@ -196,7 +198,7 @@ foreach (array('veterinaire', 'traitement', 'ordonnance', 'radio', 'historique_s
   });
   gws_test_assert(empty($matching_keys), "Ostéo-articulaire : aucun champ structuré de dossier vétérinaire (\"$forbidden_concept\") n’existe dans le modèle de données — texte libre uniquement, conformément au périmètre volontairement restreint");
 }
-gws_test_assert(count($editorial_meta_keys) === 9, 'Ostéo-articulaire : le modèle de données éditorial compte exactement 9 champs déclarés, aucun ajout non demandé (dossier vétérinaire, etc.)');
+gws_test_assert(count($editorial_meta_keys) === 10, 'Ostéo-articulaire : le modèle de données éditorial compte exactement 10 champs déclarés (Accroche commerciale incluse), aucun ajout non demandé (dossier vétérinaire, etc.)');
 
 // =====================================================================================
 // Persistance et compatibilité (§13 de la demande)
@@ -233,7 +235,7 @@ gws_test_assert(in_array('gwseq-cheval-infos-complementaires', $GLOBALS['__gwseq
 ob_start();
 gwseq_render_cheval_presentation_box($post_stub);
 $presentation_box_html = ob_get_clean();
-foreach (array('_gwseq_presentation', '_gwseq_points_forts', '_gwseq_potentiel', '_gwseq_resultats', '_gwseq_origines_commentaire', '_gwseq_commentaire_production', '_gwseq_conditions_vente', '_gwseq_conseils_croisement') as $meta_key) {
+foreach (array('_gwseq_accroche_commerciale', '_gwseq_presentation', '_gwseq_points_forts', '_gwseq_potentiel', '_gwseq_resultats', '_gwseq_origines_commentaire', '_gwseq_commentaire_production', '_gwseq_conditions_vente', '_gwseq_conseils_croisement') as $meta_key) {
   gws_test_assert(strpos($presentation_box_html, 'name="' . $meta_key . '"') !== false, "Rendu admin : le champ $meta_key est réellement rendu dans la meta box Présentation");
 }
 gws_test_assert(strpos($presentation_box_html, 'name="_gwseq_osteo_articulaire"') === false, 'Rendu admin : Ostéo-articulaire n’est PAS rendu dans la meta box Présentation (rendu séparément, voir §9)');

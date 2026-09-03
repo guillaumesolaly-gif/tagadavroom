@@ -29,13 +29,17 @@ node tests/gws-equestrian-race-referentiel-autocomplete-runtime-test.js
 php tests/gws-equestrian-cheval-labels-test.php
 php tests/gws-equestrian-membre-logic-test.php
 php tests/gws-equestrian-actualites-logic-test.php
+php tests/gws-equestrian-cheval-share-logic-test.php
+php tests/gws-equestrian-cheval-share-admin-test.php
+node tests/gws-equestrian-cheval-share-runtime-test.js
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
 un processus PHP séparé — il peut aussi être lancé seul.)
 
-**`gws-equestrian-cheval-admin-tabs-runtime-test.js`** et
-**`gws-equestrian-race-referentiel-autocomplete-runtime-test.js`** sont les SEULS fichiers de ce
+**`gws-equestrian-cheval-admin-tabs-runtime-test.js`**,
+**`gws-equestrian-race-referentiel-autocomplete-runtime-test.js`** et
+**`gws-equestrian-cheval-share-runtime-test.js`** sont les SEULS fichiers de ce
 dossier qui ne s'exécutent pas via `php` : ils nécessitent `node` (aucune dépendance npm, aucun
 `package.json` — des scripts Node autonomes, DOM minimal fait main via le module `vm`). Contrairement
 aux autres fichiers, qui ne peuvent que scanner le TEXTE SOURCE d'un script JavaScript (présence de
@@ -939,3 +943,48 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   "Mises en avant" (vérifiées par retrait/restauration). Intégralité de la suite restante
   (18 fichiers PHP + 2 suites JS runtime) ré-exécutée après ce retrait : aucune régression sur
   Cheval, Prestations, Équipe, Actualités, Groupes tarifaires.
+- **Partager un cheval (0.22.0)** : deux nouveaux fichiers PHP et un nouveau fichier d'exécution
+  réelle Node.
+  - `gws-equestrian-cheval-share-logic-test.php` : Accroche commerciale (enregistrement/lecture,
+    multiligne préservée, HTML retiré à la sanitation, n'altère jamais Présentation/Description,
+    absente par défaut sans fallback) ; `gwseq_get_horse_shareable_data()` — identité (vocabulaire
+    commercial "Jument"/"Étalon"/"Hongre", combinaisons partielles sexe/race/âge), origines (Père ×
+    Père de la mère résolus via le VRAI pedigree resolver, noms en majuscules, cycle/référence
+    cassée jamais exposés), taille + un seul indice sportif mis en avant (priorité ISO > ICC >
+    IDR), règle prix/statut (les quatre statuts, prix jamais présélectionné), vidéos (aucune/une/
+    plusieurs, avec/sans titre, présélection des deux premières sans jamais limiter la sélection),
+    lien de fiche public/non public (brouillon ET protégé par mot de passe, chacun vérifié) ;
+    `gwseq_build_horse_share_message()` (bloc identité compact, accroche en paragraphe séparé,
+    lignes vidéo, lien de fiche en fin de message, message personnel en tête, sélection/URL
+    invalide ignorée sans erreur) ; Open Graph (description = identité + origines + accroche
+    jamais le prix, troncature propre, image = dérivée `medium_large` avec dimensions, rien émis
+    hors page singulière/cheval non public/plugin SEO tiers détecté). Trois mécanismes critiques
+    vérifiés par retrait/restauration (règle prix/statut, visibilité mot de passe).
+  - `gws-equestrian-cheval-share-admin-test.php` : menu (capacité `edit_posts`, rattaché au sous-menu
+    de Chevaux, jamais un menu top-level séparé), action de ligne "Partager" (ajoutée pour un
+    cheval, jamais pour un autre post type, lien vers le même écran que la boîte latérale), boîte
+    latérale (bouton, garde-fou auto-draft), les trois points d'entrée AJAX avec leur sécurité
+    (nonce, capacité générale ET capacité spécifique à une fiche précise — un auteur sans
+    `edit_others_posts` ne peut ni lister ni charger les chevaux d'un autre auteur, WP_Query
+    minimal fidèle à la restriction réelle), sanitation de la sélection (clé porteuse de HTML
+    neutralisée, index non numérique ignoré, message personnel sanitisé), et la preuve que la
+    composition du message relit TOUJOURS l'état réel en base au moment de la requête plutôt qu'un
+    contenu que le client aurait pu soumettre. Un mécanisme critique vérifié par
+    retrait/restauration (capacité spécifique à la fiche sur l'AJAX de données complètes).
+  - `gws-equestrian-cheval-share-runtime-test.js` (19 assertions, exécution RÉELLE via `node`) :
+    écran de composition rendu avec les bonnes présélections (identité cochée, prix décoché,
+    fiche cochée), aperçu initial et mis à jour en fonction des cases cochées/décochées
+    (événements avec BULLING, le script écoutant au niveau du conteneur englobant), message
+    personnel répercuté en tête de l'aperçu, et surtout : WhatsApp/SMS/Copier consomment tous les
+    trois EXACTEMENT le même texte déjà affiché dans l'aperçu (vérifié par retrait/restauration —
+    faire consommer à WhatsApp un texte différent de l'aperçu fait échouer l'assertion comme
+    attendu), encodage URL correct des retours à la ligne/espaces/accents.
+
+  Intégralité des suites existantes (21 fichiers PHP + 3 suites JS runtime) ré-exécutée après ce
+  lot : aucune régression. Deux tests existants mis à jour pour refléter des changements légitimes
+  du module (jamais pour masquer une régression) : le compte de champs éditoriaux
+  (`gws-equestrian-cheval-editorial-logic-test.php`, 9 -> 10 avec l'Accroche commerciale) et la
+  vérification de non-duplication du filtre `post_row_actions`
+  (`gws-equestrian-actualites-logic-test.php`, désormais ciblée sur le callback précis de retrait
+  de Quick Edit plutôt que sur le nombre total de filtres `post_row_actions` du module, qui
+  augmente légitimement avec la nouvelle action de ligne "Partager").
