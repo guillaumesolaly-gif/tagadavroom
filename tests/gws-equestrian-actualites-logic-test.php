@@ -211,12 +211,6 @@ gws_test_assert(
   !isset($GLOBALS['__gwseq_test_filters']['post_row_actions']) || count(array_unique($GLOBALS['__gwseq_test_filters']['post_row_actions'])) === 1,
   'Modification rapide : un SEUL filtre `post_row_actions` est enregistré (includes/actualites.php ne redéfinit jamais son propre filtre — la fonction générique déjà existante d\'includes/admin-ui.php est réutilisée telle quelle)'
 );
-$admin_ui_source = file_get_contents($module_dir . 'includes/admin-ui.php');
-gws_test_assert(
-  preg_match("/array\\(GWSEQ_CPT_PRESTATION,\\s*GWSEQ_CPT_GROUPE,\\s*GWSEQ_CPT_CHEVAL,\\s*GWSEQ_CPT_MEMBRE,\\s*'post'\\)/", $admin_ui_source) === 1,
-  'Modification rapide : `post` a bien été ajouté à la liste des post types ciblés par gwseq_remove_quick_edit_row_action() dans includes/admin-ui.php'
-);
-
 $native_row_actions = array('edit' => '<a>Modifier</a>', 'inline hide-if-no-js' => '<button>Modification rapide</button>', 'trash' => '<a>Corbeille</a>');
 $filtered_post = gwseq_remove_quick_edit_row_action($native_row_actions, (object) array('post_type' => 'post'));
 gws_test_assert(!array_key_exists('inline hide-if-no-js', $filtered_post), 'Modification rapide : bien retirée pour `post` (Actualités)');
@@ -293,7 +287,7 @@ gws_test_assert(
 // =====================================================================================
 
 $post_types = $GLOBALS['__gwseq_test_post_types'];
-gws_test_assert(count($post_types) === 4, 'Non-régression : toujours exactement quatre post types métier GWS enregistrés (Prestation, Groupe, Cheval, Membre)');
+gws_test_assert(count($post_types) === 6, 'Non-régression : toujours exactement six post types métier GWS enregistrés (Prestation, Groupe, Cheval, Membre, Pop-in, Sticky bar)');
 foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE) as $expected) {
   gws_test_assert(array_key_exists($expected, $post_types), "Non-régression : post type '$expected' toujours enregistré");
 }

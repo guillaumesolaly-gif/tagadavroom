@@ -1,5 +1,20 @@
 # Changelog — GWS Starter
 
+## 1.23.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Mises en avant : Pop-in et Sticky bar (GWS Equestrian 0.20.0).** Deux nouveaux objets métier
+  BO non publics (`gwseq_popin`/`gwseq_sticky_bar`), regroupés sous une seule entrée de menu
+  "Mises en avant" (sous-menus "Pop-ins"/"Sticky bars"), sans Gutenberg. Rendu FRONT réel cette
+  fois (contrairement à Actualités) : Pop-in avec déclenchement Immédiat/Délai/Scroll/Intention de
+  sortie (desktop uniquement, aucun fallback mobile automatique) et fréquence À chaque visite/Une
+  fois par session/Une fois tous les X jours (sessionStorage/localStorage, sans identifiant ni
+  tracking) ; Sticky bar Haut/Bas avec fermeture facultative. Diffusion commune : statut propre
+  (distinct du statut natif WordPress), période avec fuseau du site, ciblage sur Pages/Chevaux/
+  Prestations/Actualités (clé composite post_type + ID, jamais un ID ambigu), priorité par
+  `menu_order` en cas de campagnes concurrentes du même type. Aperçu BO temps réel partageant EXACTEMENT
+  la même fonction de rendu PHP que le front (aucune divergence possible). Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.20.0) pour le détail complet.
+
 ## 1.22.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Actualités : cadrage de l'éditeur par blocs (GWS Equestrian 0.19.0).** Gutenberg reste

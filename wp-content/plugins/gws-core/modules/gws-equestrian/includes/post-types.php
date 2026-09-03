@@ -125,5 +125,72 @@ function gwseq_register_post_types() {
     'supports' => array('title', 'thumbnail', 'page-attributes'),
     'rewrite' => array('slug' => 'equipe'),
   ));
+
+  /**
+   * Mises en avant (Pop-in / Sticky bar) : DEUX post types techniquement distincts, réunis sous
+   * UNE SEULE entrée de menu d'administration ("Mises en avant") pour ne jamais multiplier les
+   * menus principaux du futur BO — jamais un troisième objet WordPress ni un menu personnalisé
+   * dupliqué. Technique 100% native : `gwseq_popin` porte le menu principal (son propre
+   * `show_in_menu => true`, avec `labels->name` = "Mises en avant" — donc le libellé affiché en
+   * haut du menu — et `labels->all_items` = "Pop-ins", le premier sous-menu, automatiquement ajouté
+   * par WordPress pour tout post type avec sa propre entrée de menu). `gwseq_sticky_bar` s'y
+   * rattache en second sous-menu via `show_in_menu => 'edit.php?post_type=gwseq_popin'` (le slug
+   * exact du menu déjà créé par `gwseq_popin` — mécanisme natif `_add_post_type_submenus()`),
+   * `labels->all_items` = "Sticky bars". Chaque post type garde son écran de liste natif et
+   * indépendant (`edit.php?post_type=...`), aucune fusion de données.
+   *
+   * Ni public (jamais une page/URL front autonome : ces campagnes sont des overlays affichés PAR-
+   * DESSUS d'autres contenus, jamais des fiches consultables en elles-mêmes — même logique déjà
+   * appliquée à Groupe tarifaire), ni Gutenberg (`gwseq_disable_block_editor_for_popin()`/
+   * `..._sticky_bar()`, voir includes/popin-fields.php / includes/sticky-bar-fields.php : fiche
+   * structurée, jamais un page builder). `page-attributes` fournit l'ordre natif (`menu_order`),
+   * réutilisé comme mécanisme de priorité en cas de campagnes concurrentes (voir
+   * includes/campagnes-front.php) — jamais un second champ "Priorité" inventé. `title` = "Nom
+   * interne", jamais affiché publiquement (post type non public).
+   */
+  register_post_type(GWSEQ_CPT_POPIN, array(
+    'labels' => array(
+      'name' => __('Mises en avant', 'gws-core'),
+      'singular_name' => __('Pop-in', 'gws-core'),
+      'add_new_item' => __('Ajouter une pop-in', 'gws-core'),
+      'edit_item' => __('Modifier la pop-in', 'gws-core'),
+      'all_items' => __('Pop-ins', 'gws-core'),
+      'not_found' => __('Aucune pop-in trouvée', 'gws-core'),
+      'search_items' => __('Rechercher une pop-in', 'gws-core'),
+    ),
+    'public' => false,
+    'publicly_queryable' => false,
+    'has_archive' => false,
+    'exclude_from_search' => true,
+    'show_in_nav_menus' => false,
+    'show_ui' => true,
+    'show_in_menu' => true,
+    'show_in_rest' => false,
+    'menu_icon' => 'dashicons-megaphone',
+    'supports' => array('title', 'page-attributes'),
+    'rewrite' => false,
+  ));
+
+  register_post_type(GWSEQ_CPT_STICKY_BAR, array(
+    'labels' => array(
+      'name' => __('Sticky bars', 'gws-core'),
+      'singular_name' => __('Sticky bar', 'gws-core'),
+      'add_new_item' => __('Ajouter une sticky bar', 'gws-core'),
+      'edit_item' => __('Modifier la sticky bar', 'gws-core'),
+      'all_items' => __('Sticky bars', 'gws-core'),
+      'not_found' => __('Aucune sticky bar trouvée', 'gws-core'),
+      'search_items' => __('Rechercher une sticky bar', 'gws-core'),
+    ),
+    'public' => false,
+    'publicly_queryable' => false,
+    'has_archive' => false,
+    'exclude_from_search' => true,
+    'show_in_nav_menus' => false,
+    'show_ui' => true,
+    'show_in_menu' => 'edit.php?post_type=' . GWSEQ_CPT_POPIN,
+    'show_in_rest' => false,
+    'supports' => array('title', 'page-attributes'),
+    'rewrite' => false,
+  ));
 }
 add_action('init', 'gwseq_register_post_types');

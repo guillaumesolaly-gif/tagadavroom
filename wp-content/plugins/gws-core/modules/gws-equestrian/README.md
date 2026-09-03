@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Actualités — cadrage de l'éditeur par blocs, GWS Equestrian 0.19.0 — filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime (voir `CHANGELOG.md` de ce dossier). Duplication d'un cheval retirée de la roadmap V1. Bloc Actualités (V1 + cadrage Gutenberg) en attente de validation runtime manuelle. Architecture Pop-in/Sticky bar en cours de revue (voir le CR de livraison), développement non engagé. Prochaine étape : validation Pop-in/Sticky bar puis rendu web.
+## État actuel : Mises en avant — Pop-in et Sticky bar, GWS Equestrian 0.20.0 — développés, testés (couverture PHP + exécution réelle Node) et livrés, en attente de recette runtime manuelle complète avant toute nouvelle évolution. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime (voir `CHANGELOG.md` de ce dossier). Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime complète Pop-in/Sticky bar — aucune autre évolution engagée avant celle-ci.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -613,6 +613,73 @@ onglets) :
 28. Repasser en revue les points 1 à 20 ci-dessus dans la nouvelle interface à onglets : confirmer
     l'absence de toute régression sur pedigree, Production, filtres parents, indices, galerie,
     vidéos, contenus éditoriaux, Global Horse ID et données commerciales.
+
+## Mises en avant : Pop-in et Sticky bar (0.20.0)
+
+Deux nouveaux objets métier BO, avec — contrairement à Actualités — un vrai rendu FRONT (seule
+façon de valider réellement déclenchement/fréquence/fermeture).
+
+**Post types** (`includes/post-types.php`) : `gwseq_popin` et `gwseq_sticky_bar`, tous deux
+`public => false` (même précédent que Groupe tarifaire — pas de "Voir"/Aperçu natif), sans
+Gutenberg, regroupés sous UNE SEULE entrée de menu top-level "Mises en avant" (sous-menus
+"Pop-ins"/"Sticky bars") — obtenu nativement sans `add_menu_page()` : le CPT Pop-in porte
+`labels->name = 'Mises en avant'` (nom de son propre menu auto-généré par WordPress) et
+`labels->all_items = 'Pop-ins'` (son premier sous-menu) ; le CPT Sticky bar pointe
+`show_in_menu` vers `edit.php?post_type=gwseq_popin`, ce qui déclenche le mécanisme natif
+`_add_post_type_submenus()` pour l'attacher comme second sous-menu du même menu top-level.
+
+**Mutualisation** (`includes/campagnes-shared.php`) : délibérément bornée à ce qui est réellement
+commun — style (site/personnalisé) et couleurs, CTA, texte enrichi minimal (`wp_kses` + éditeur
+TinyMCE "teeny" scopé), dates/fuseau (`wp_timezone()`, stockage UTC), statut de diffusion (distinct
+du statut natif WordPress), ciblage, fenêtre de dates, rendus de formulaire communs (Diffusion,
+sélecteur de ciblage, panneau d'aperçu), garde de sécurité de l'aperçu AJAX. Aucune classe
+abstraite, aucun moteur de campagne générique : Pop-in (`includes/popin-fields.php`) et Sticky bar
+(`includes/sticky-bar-fields.php`) restent deux objets métier simples avec leur propre logique de
+déclenchement/apparence/rendu.
+
+**Pop-in** : Contenu (Titre, Texte enrichi minimal, Image facultative, CTA facultatif), Apparence
+(Style du site/Personnaliser — couleurs + image de fond FACULTATIVE, distincte de l'image de
+contenu ; Taille Compacte/Standard/Large ; toujours centrée), Déclenchement (Immédiatement/Après
+X secondes/Après X % de scroll/À l'intention de sortie), Fréquence (À chaque visite/Une fois par
+session/Une fois tous les X jours). TOUJOURS fermable (croix, Échap, piège à focus, restauration
+du focus).
+
+**Intention de sortie — desktop uniquement, sans fallback mobile.** Détection via
+`matchMedia('(hover: hover) and (pointer: fine)')`, jamais de sniffing de user-agent : sur un
+terminal sans survol, le déclencheur ne s'active simplement jamais (aide explicite en BO invitant
+à utiliser délai/scroll pour cibler le mobile) — choix explicitement validé, annulant une
+proposition initiale de repli automatique 60 s/50 % de scroll sur mobile.
+
+**Sticky bar** : plus simple — pas de Déclenchement (affichage immédiat si éligible), pas
+d'image. Contenu (Texte court en texte SIMPLE, CTA facultatif), Apparence (couleurs uniquement,
+PAS d'image de fond ; Position Haut/Bas ; fermeture FACULTATIVE via une case à cocher —
+contrairement à la Pop-in toujours fermable).
+
+**Diffusion commune** : Statut (Active/Inactive), Période (fuseau du site, stockage UTC), Ciblage
+à quatre modes (Tout le site/Page d'accueil uniquement via `is_front_page()`/Certains
+contenus/Tout le site sauf certains contenus) couvrant Pages, Chevaux, Prestations ET Actualités —
+chaque cible stockée en clé composite `post_type:post_id` (jamais un ID ambigu entre post types),
+avec revalidation systématique contre une usurpation de post_type. Priorité par `menu_order`
+croissant en cas de campagnes concurrentes du même type (au plus une Pop-in ET une Sticky bar par
+page, qui peuvent en revanche cohabiter) — jamais un second champ "Priorité".
+
+**Aperçu et front, source de rendu unique** : `gwseq_render_popin_markup()`/
+`gwseq_render_sticky_bar_markup()`, fonctions PHP pures, appelées IDENTIQUEMENT par l'aperçu BO
+(`admin-ajax.php`, `assets/campagnes-admin.js`, debounce 350 ms) et par le rendu front
+(`includes/campagnes-front.php`, hook `wp_footer`, éligibilité évaluée avant tout enqueue —
+aucun chargement systématique). Fréquence entièrement côté client
+(`assets/campagnes-front.js`) : `sessionStorage`/`localStorage`, aucun identifiant ni tracking.
+
+**Styles du thème** : mode "Style du site" → variables déjà exposées par le thème GWS
+(`--color-bg`, `--color-text`, `--color-primary`, `--color-primary-contrast`) ; mode personnalisé
+→ propriétés dédiées au composant (`--gws-popin-bg`, `--gws-sticky-bg`, etc.) avec repli vers les
+jetons du thème puis une valeur de secours codée en dur en tout dernier recours.
+
+Voir `tests/gws-equestrian-campagnes-shared-test.php`, `tests/gws-equestrian-popin-logic-test.php`,
+`tests/gws-equestrian-sticky-bar-logic-test.php`, `tests/gws-equestrian-campagnes-front-test.php`
+et `tests/gws-equestrian-campagnes-front-runtime-test.js` pour la couverture dédiée, et le
+`CHANGELOG.md` de ce dossier (0.20.0) pour le détail complet, y compris un bug réel détecté et
+corrigé pendant l'écriture des tests d'intégration front.
 
 ## Actualités : cadrage de l'éditeur par blocs (0.19.0)
 

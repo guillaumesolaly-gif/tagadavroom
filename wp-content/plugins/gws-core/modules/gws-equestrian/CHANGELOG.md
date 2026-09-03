@@ -5,6 +5,129 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.20.0 — Mises en avant : Pop-in et Sticky bar
+
+Nouveau lot « Actualités cadrées + Mises en avant ». La partie Actualités (0.19.0, allowlist
+Gutenberg) est conservée à l'identique. Ce lot ajoute deux nouveaux objets métier BO, avec rendu
+front RÉEL cette fois (contrairement à Actualités) : impossible de valider autrement le
+fonctionnement de déclenchement/fréquence/fermeture d'une Pop-in ou d'une Sticky bar.
+
+**Architecture BO** : deux nouveaux post types non publics, `gwseq_popin` et `gwseq_sticky_bar`
+(`includes/post-types.php`), regroupés sous UNE SEULE entrée de menu top-level "Mises en avant"
+avec deux sous-menus "Pop-ins"/"Sticky bars" — obtenu nativement, sans aucun `add_menu_page()`
+custom : le CPT Pop-in porte `labels->name = 'Mises en avant'` (nom de son propre menu
+auto-généré) et `labels->all_items = 'Pop-ins'` (son premier sous-menu automatique) ; le CPT
+Sticky bar pointe `show_in_menu` vers le slug exact du menu du premier CPT
+(`edit.php?post_type=gwseq_popin`), ce qui déclenche le mécanisme natif
+`_add_post_type_submenus()` de WordPress pour l'attacher comme second sous-menu. Ni l'un ni
+l'autre n'utilise Gutenberg (fiches structurées en meta boxes, à l'image de Membre/Groupe
+tarifaire) ; nom interne = titre natif, jamais affiché publiquement (post types `public => false`,
+même précédent que Groupe tarifaire — pas de "Voir"/Aperçu natif).
+
+**Mutualisation ciblée** (`includes/campagnes-shared.php`, nouveau fichier — AUCUNE classe
+abstraite, aucun moteur de campagne générique, aucun schema builder : seulement ce qui est
+réellement commun aux deux objets) : mode de style (Style du site/Personnaliser) et sa
+sanitation, couleurs (`sanitize_hex_color()`), CTA (Libellé + URL, guidage identique à Équipe),
+texte enrichi minimal (`wp_kses` restreint + éditeur TinyMCE "teeny" scopé par un indicateur
+global pour ne jamais affecter d'autres usages natifs du mode teeny dans wp-admin), dates/fuseau
+(`wp_timezone()`, stockage en UTC, jamais de calcul naïf sur le fuseau serveur), statut de
+diffusion (Active/Inactive — délibérément DISTINCT du statut natif WordPress : une fiche peut être
+"Publiée" mais "Inactive"), ciblage (voir plus bas), fonction de fenêtre de dates, rendus de
+formulaire communs (section Diffusion, sélecteur de ciblage, panneau d'aperçu), et le garde-fou de
+sécurité de l'aperçu AJAX. Tout le reste (déclenchement, fréquence, taille, position, images, CTA
+spécifique) vit dans le fichier propre à chaque objet.
+
+**Pop-in** (`includes/popin-fields.php`) : Contenu (Titre, Texte enrichi minimal, Image
+facultative, CTA facultatif), Apparence (Style du site par défaut ou Personnaliser — couleurs
+fond/texte/CTA/CTA-texte + image de fond FACULTATIVE, explicitement DISTINCTE de l'image de
+contenu ; Taille Compacte/Standard/Large ; toujours centrée, jamais de police/marges/CSS/position
+libre exposés), Déclenchement (Immédiatement / Après X secondes / Après X % de scroll / À
+l'intention de sortie — bornes serveur sur X, mode invalide replié sur "Immédiatement"),
+Fréquence (À chaque visite / Une fois par session / Une fois tous les X jours). La Pop-in est
+TOUJOURS fermable (aucune option de blocage) : croix accessible, Échap, gestion de focus (piège à
+focus + restauration du focus au déclencheur d'origine à la fermeture).
+
+**Intention de sortie — desktop uniquement, AUCUN fallback mobile automatique.** Détection via
+`matchMedia('(hover: hover) and (pointer: fine)')` (jamais de sniffing de user-agent) : sur un
+terminal sans survol, le déclencheur ne s'active tout simplement jamais, et une aide explicite
+("L'intention de sortie est disponible uniquement sur ordinateur. Pour cibler également les
+visiteurs mobiles, utilisez plutôt le délai ou le scroll.") est affichée en BO. Ceci ANNULE la
+proposition initiale d'un repli automatique 60 s/50 % de scroll sur mobile, explicitement rejetée
+lors de la validation de l'architecture.
+
+**Sticky bar** (`includes/sticky-bar-fields.php`) : objet distinct, volontairement plus simple —
+pas de section Déclenchement (une Sticky bar éligible s'affiche immédiatement), pas d'image
+(ni de contenu ni de fond), pas de fréquence configurable en base (seule la fermeture, si activée,
+est mémorisée côté client). Contenu (Texte court en texte SIMPLE, jamais enrichi — Libellé/URL
+CTA facultatif), Apparence (Style du site/Personnaliser — couleurs uniquement, PAS d'image de
+fond ; Position Haut/Bas ; case "L'utilisateur peut fermer la barre" — fermeture donc
+CONDITIONNELLE, contrairement à la Pop-in qui est toujours fermable).
+
+**Diffusion commune** (Pop-in et Sticky bar) : Statut (Active/Inactive), Période (début/fin
+facultatifs, fuseau du site), Ciblage à quatre modes — Tout le site / Page d'accueil uniquement
+(toujours via `is_front_page()`, jamais un ID de page particulier) / Certains contenus / Tout le
+site sauf certains contenus. Le ciblage couvre Pages, Chevaux, Prestations ET Actualités (jamais
+limité aux Pages) : chaque cible est stockée comme une clé composite `post_type:post_id`
+(`gwseq_encode_campagne_cible()`/`gwseq_decode_campagne_cible()`), jamais un simple tableau d'ID
+ambigu entre post types. La sanitation revalide systématiquement que l'ID soumis correspond bien
+au post_type déclaré (protection contre une usurpation de post_type) et rejette tout post type
+hors de la liste autorisée.
+
+**Conflits/priorité** : au plus une Pop-in ET au plus une Sticky bar par page (une Pop-in et une
+Sticky bar PEUVENT en revanche cohabiter). Plusieurs campagnes du même type éligibles ?
+`menu_order` croissant (réutilisation du système d'ordre déjà existant, natif via
+`page-attributes`) — jamais un second champ "Priorité".
+
+**Aperçu temps réel BO** (§J) : source de rendu UNIQUE et partagée entre l'aperçu BO et le front —
+`gwseq_render_popin_markup($config, $extra_attrs)`/`gwseq_render_sticky_bar_markup($config,
+$extra_attrs)`, fonctions PHP pures (aucun accès BDD). L'aperçu passe par `admin-ajax.php` (nonce
+dédié) : état de formulaire → mêmes sanitizers que la sauvegarde → même fonction de rendu → HTML
+renvoyé et injecté dans le panneau d'aperçu (`assets/campagnes-admin.js`, debounce 350 ms,
+coalescence des requêtes en vol). Bascule Ordinateur/Mobile qui ne change QUE la largeur de
+l'aperçu — une seule configuration responsive existe.
+
+**Styles du thème** (§K) : en mode "Style du site", les composants utilisent directement les
+variables déjà exposées par le thème GWS (`--color-bg`, `--color-text`, `--color-primary`,
+`--color-primary-contrast`) avec repli raisonnable. En mode personnalisé, des propriétés
+spécifiques au composant (`--gws-popin-bg`, `--gws-sticky-bg`, etc.) sont injectées directement
+sur son conteneur, avec repli vers les jetons du thème puis une valeur de secours codée en dur en
+tout dernier recours — jamais une couleur client codée en dur en position primaire.
+
+**Rendu front** (§L, `includes/campagnes-front.php`, nouveau fichier) : contrairement à
+Actualités, un vrai rendu front est nécessaire ici. Éligibilité évaluée entièrement AVANT tout
+enqueue de script/style (statut + fenêtre de dates + ciblage) — aucun chargement systématique sur
+toutes les pages, aucun balisage produit "au cas où" pour une campagne non éligible. Rendu via
+`wp_footer`, utilisant les MÊMES fonctions de rendu que l'aperçu BO — aucune divergence possible.
+
+**Fréquence** (§F, `assets/campagnes-front.js`, nouveau fichier) : entièrement côté client, sans
+identifiant ni tracking. Une clé par Pop-in basée sur son ID : `sessionStorage` pour "session",
+`localStorage` avec horodatage comparé à `Date.now()` pour "X jours", rien pour "à chaque visite".
+La marque est posée AU MOMENT DE L'AFFICHAGE (pas à la fermeture) : fermer la Pop-in ne fait que
+masquer un élément déjà marqué "montré", ce qui satisfait naturellement "fermer compte comme une
+exposition" sans logique séparée.
+
+**Tests** : quatre nouveaux fichiers PHP (`gws-equestrian-campagnes-shared-test.php`,
+`gws-equestrian-popin-logic-test.php`, `gws-equestrian-sticky-bar-logic-test.php`,
+`gws-equestrian-campagnes-front-test.php`) et un nouveau fichier d'exécution réelle Node
+(`gws-equestrian-campagnes-front-runtime-test.js`, contrairement au reste de la suite PHP qui ne
+peut que scanner du texte source, celui-ci exécute réellement `assets/campagnes-front.js` contre
+un DOM minimal fait main — fréquence session/X jours, intention de sortie desktop vs absence sur
+mobile, piège à focus, restauration du focus, fermeture Sticky bar). Non-régression complète sur
+les CPT/écrans existants (Cheval, Prestations, Équipe, Actualités, Groupes tarifaires). Un bug
+réel a été détecté et corrigé pendant l'écriture des tests d'intégration front (voir
+`includes/campagnes-front.php`) : `gwseq_campagne_choisir_eligible()` transmettait le tableau de
+diffusion brut (clés `ciblage_mode`/`ciblage_cibles`) à `gwseq_campagne_page_est_ciblee()`, qui
+attend des clés `mode`/`cibles` — ce qui aurait provoqué une erreur fatale PHP en front sur toute
+campagne ciblée en mode "Certains contenus"/"Tout sauf certains contenus". Corrigé par
+construction explicite du tableau de ciblage attendu avant l'appel ; revert-and-verify confirmé
+(voir tests). Deux autres mécanismes critiques (priorité par `menu_order`, garde desktop-only de
+l'intention de sortie) ont également été validés par revert-and-verify.
+
+**Limites connues (V1)** : pas de ciblage sur Équipe, archives, catégories/taxonomies, résultats
+de recherche, URL par expression régulière, ni de règles avancées combinées — volontairement hors
+périmètre de ce lot. Pas de branding BO multi-thème (réutilisation directe des jetons CSS déjà
+exposés par le thème GWS actif).
+
 ## 0.19.0 — Actualités : cadrage de l'éditeur par blocs (Gutenberg)
 
 Le bloc Actualités V1 (0.18.0) fonctionne et a été validé en runtime — il n'a pas été reconstruit.

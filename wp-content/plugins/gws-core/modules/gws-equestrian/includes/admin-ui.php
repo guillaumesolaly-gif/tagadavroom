@@ -1,9 +1,9 @@
 <?php
 /**
- * Petits aménagements d'administration partagés par Prestation, Groupe tarifaire, Cheval et Membre
- * (module Équipe) — vocabulaire métier plutôt que jargon WordPress (voir §24 de la demande), sans
- * construire de mécanisme générique : des fonctions ciblées, appelées explicitement pour chaque
- * post type concerné.
+ * Petits aménagements d'administration partagés par Prestation, Groupe tarifaire, Cheval, Membre
+ * (module Équipe), Pop-in et Sticky bar (module Mises en avant) — vocabulaire métier plutôt que
+ * jargon WordPress (voir §24 de la demande), sans construire de mécanisme générique : des
+ * fonctions ciblées, appelées explicitement pour chaque post type concerné.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -33,6 +33,12 @@ add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, function () {
 add_action('add_meta_boxes_' . GWSEQ_CPT_MEMBRE, function () {
   gwseq_rename_order_meta_box(GWSEQ_CPT_MEMBRE);
 });
+add_action('add_meta_boxes_' . GWSEQ_CPT_POPIN, function () {
+  gwseq_rename_order_meta_box(GWSEQ_CPT_POPIN);
+});
+add_action('add_meta_boxes_' . GWSEQ_CPT_STICKY_BAR, function () {
+  gwseq_rename_order_meta_box(GWSEQ_CPT_STICKY_BAR);
+});
 
 /**
  * Écran d'administration des Prestations et des Groupes tarifaires triés par ordre d'affichage
@@ -42,7 +48,7 @@ add_action('add_meta_boxes_' . GWSEQ_CPT_MEMBRE, function () {
  */
 function gwseq_admin_default_order_by_menu_order($query) {
   if (!is_admin() || !$query->is_main_query()) return;
-  if (!in_array($query->get('post_type'), array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE), true)) return;
+  if (!in_array($query->get('post_type'), array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, GWSEQ_CPT_POPIN, GWSEQ_CPT_STICKY_BAR), true)) return;
   if (!$query->get('orderby')) {
     $query->set('orderby', 'menu_order title');
     $query->set('order', 'ASC');
@@ -68,7 +74,7 @@ function gwseq_remove_quick_edit_row_action($actions, $post) {
   // 'post' (natif, présenté comme "Actualités" — voir includes/actualites.php) est ajouté ici
   // volontairement à côté des quatre post types métier GWS, jamais comme une nouvelle constante
   // GWSEQ_CPT_* : ce n'est pas un post type inventé par le module.
-  if (in_array($post->post_type, array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, 'post'), true)) {
+  if (in_array($post->post_type, array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, GWSEQ_CPT_POPIN, GWSEQ_CPT_STICKY_BAR, 'post'), true)) {
     unset($actions['inline hide-if-no-js']);
   }
   return $actions;

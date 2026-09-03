@@ -1,0 +1,51 @@
+/**
+ * Écran d'édition d'une Pop-in ou d'une Sticky bar — mise en forme du panneau d'aperçu et des
+ * sélecteurs d'image, chargée uniquement sur ces deux écrans (voir includes/popin-fields.php /
+ * includes/sticky-bar-fields.php). Le panneau d'aperçu réutilise volontairement
+ * assets/campagnes-front.css (chargé séparément, jamais réécrit ici) : seule sa présentation DANS
+ * la colonne latérale de l'admin (largeur simulée, cadre visible) est propre à ce fichier.
+ */
+
+.gwseq-campagne-preview__toggle .button[aria-pressed="true"] {
+  background: #2271b1;
+  color: #fff;
+  border-color: #2271b1;
+}
+.gwseq-campagne-preview__viewport {
+  border: 1px solid #dcdcde;
+  margin-top: 8px;
+  overflow: hidden;
+  position: relative;
+  min-height: 140px;
+  background: #f0f0f1;
+  padding: 8px;
+  box-sizing: border-box;
+}
+.gwseq-campagne-preview__viewport[data-gwseq-preview-viewport="mobile"] {
+  width: 375px;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+/* Dans l'aperçu BO, le composant réel (fixe/superposé sur le front) est affiché EN LIGNE dans son
+ * cadre — la même feuille de style front reste la seule source de vérité visuelle, uniquement son
+ * positionnement structurel est neutralisé ici pour tenir dans le panneau. */
+.gwseq-campagne-preview__viewport .gwseq-popin,
+.gwseq-campagne-preview__viewport .gwseq-sticky-bar {
+  position: static;
+  display: flex;
+  inset: auto;
+}
+.gwseq-campagne-preview__viewport .gwseq-popin::before {
+  content: none;
+}
+
+.gwseq-campagne-image-picker__preview {
+  max-width: 120px;
+  max-height: 120px;
+  display: block;
+  margin-bottom: 6px;
+}
+.gwseq-color-field {
+  width: 100px;
+}
