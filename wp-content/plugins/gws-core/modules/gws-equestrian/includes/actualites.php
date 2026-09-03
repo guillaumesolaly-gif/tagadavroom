@@ -12,7 +12,7 @@
  * dans son état par défaut WordPress avant ce lot (voir le CR de livraison pour le détail de cet
  * audit).
  *
- * QUATRE MÉCANISMES NATIFS DISTINCTS, JAMAIS UNE RÉÉCRITURE DE L'ENREGISTREMENT DE `post`/
+ * CINQ MÉCANISMES NATIFS DISTINCTS, JAMAIS UNE RÉÉCRITURE DE L'ENREGISTREMENT DE `post`/
  * `post_tag` (impossible d'appeler `register_post_type()`/`register_taxonomy()` une seconde fois
  * sur des identifiants déjà enregistrés par WordPress core sans conflit) :
  *
@@ -41,6 +41,23 @@
  *    Quick Edit ni un second filtre dupliqué — voir §8 de la demande (« si une fonction générique
  *    déjà existante doit proprement prendre en charge post, conserver son comportement actuel et
  *    couvrir la non-régression »).
+ * 5. `allowed_block_types_all` (filtre natif de l'éditeur par blocs, introduit précisément pour
+ *    restreindre la palette de blocs d'un contexte d'édition donné — jamais un patch de Gutenberg
+ *    lui-même) : limite les blocs insérables sur l'écran d'édition d'une Actualité à une allowlist
+ *    volontairement restreinte (voir plus bas). Scopé via `$context->post->post_type === 'post'` —
+ *    absent pour tout autre contexte (Pages, widgets par blocs, éditeur de site) qui retombent tous
+ *    sur `$allowed_block_types` REÇU EN ENTRÉE, inchangé, jamais recalculé ni un `true`/`false`
+ *    générique qui écraserait un éventuel filtre tiers déjà appliqué avant celui-ci.
+ *
+ * AUDIT DES BLOCS (préalable à #5, comme demandé) : aucun filtre `allowed_block_types`/
+ * `allowed_block_types_all` n'existait avant ce lot (ni dans gws-core, ni dans gws-starter) —
+ * l'éditeur par blocs tournait donc avec la palette complète de WordPress core, plus le seul bloc
+ * personnalisé du thème (`gws/resource-link`, `wp-content/themes/gws-starter/inc/blocks.php`,
+ * un lien de ressource avec icône — jamais utilisé par une Actualité existante, aucun contenu en
+ * base ne le référence). Aucun bloc "technique invisible" n'est nécessaire au bon fonctionnement de
+ * l'éditeur dans ce contexte (site sans contenu hérité, sans blocs réutilisables, sans widgets par
+ * blocs déjà construits avec des blocs qui seraient exclus) : l'allowlist ci-dessous peut donc être
+ * stricte sans filet de compatibilité supplémentaire.
  *
  * PORTÉE ASSUMÉE DE #2 (masquage des Étiquettes) — signalée avant tout sur-développement, comme
  * demandé : `post_tag` est une taxonomie UNIQUE, partagée par tout le site et attachée uniquement à
@@ -126,3 +143,52 @@ function gwseq_remove_actualites_comments_support() {
   remove_post_type_support('post', 'trackbacks');
 }
 add_action('init', 'gwseq_remove_actualites_comments_support');
+
+/* -------------------------------------------------------------------------------------------
+ * Cadrage de l'éditeur par blocs (bloc "Actualités : cadrer Gutenberg") : conserver Gutenberg
+ * techniquement — la demande explique explicitement pourquoi ce n'est PAS un retour à l'éditeur
+ * classique comme pour Prestation/Cheval (`gwseq_disable_block_editor_for_*()`) — mais transformer
+ * l'édition en expérience éditoriale simple et cadrée, sans outils de mise en page avancée
+ * susceptibles de casser la cohérence graphique du site.
+ * ----------------------------------------------------------------------------------------- */
+
+/**
+ * Allowlist volontairement restreinte (voir l'audit dans le docblock de ce fichier) : exactement
+ * la liste proposée dans la demande (§A), sous leurs noms de bloc CORE réels — `core/list-item`
+ * est un bloc interne obligatoire du bloc Liste depuis son passage en v2 (chaque élément de liste
+ * EST un bloc), jamais un choix éditorial supplémentaire exposé à l'utilisateur ; `core/buttons`
+ * est de la même façon le conteneur obligatoire d'un bouton isolé. Aucun bloc de mise en page
+ * avancée (colonnes, groupe, couverture, HTML personnalisé, code, widgets, éléments de
+ * thème/site...) n'y figure — jamais une liste de blocs à EXCLURE (qui devrait être tenue à jour à
+ * chaque nouveau bloc core ajouté par une future version de WordPress), toujours une liste de
+ * blocs à INCLURE (sûre par défaut : un futur bloc core inconnu n'apparaît jamais tant qu'il n'a
+ * pas été explicitement ajouté ici).
+ */
+function gwseq_actualites_allowed_blocks() {
+  return array(
+    'core/paragraph',
+    'core/heading',
+    'core/list',
+    'core/list-item',
+    'core/image',
+    'core/gallery',
+    'core/buttons',
+    'core/button',
+    'core/video',
+    'core/embed',
+  );
+}
+
+/**
+ * Scopé UNIQUEMENT à l'écran d'édition d'une Actualité (`$context->post->post_type === 'post'`) —
+ * absent de tout autre contexte (Pages, widgets par blocs, éditeur de site), qui reçoivent
+ * `$allowed_block_types` INCHANGÉ, jamais recalculé : la palette complète de Gutenberg reste
+ * disponible pour les Pages, exactement comme demandé.
+ */
+function gwseq_restrict_actualites_blocks($allowed_block_types, $context) {
+  if (!isset($context->post) || !$context->post || $context->post->post_type !== 'post') {
+    return $allowed_block_types;
+  }
+  return gwseq_actualites_allowed_blocks();
+}
+add_filter('allowed_block_types_all', 'gwseq_restrict_actualites_blocks', 10, 2);

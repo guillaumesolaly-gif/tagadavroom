@@ -1,5 +1,15 @@
 # Changelog — GWS Starter
 
+## 1.22.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Actualités : cadrage de l'éditeur par blocs (GWS Equestrian 0.19.0).** Gutenberg reste
+  l'éditeur des Actualités, mais sa palette de blocs est désormais restreinte (via le filtre natif
+  `allowed_block_types_all`) à Paragraphe, Titre, Liste, Image, Galerie, Bouton, Vidéo et
+  intégration vidéo sûre — la mise en page avancée (colonnes, groupes, couverture, HTML
+  personnalisé...) reste l'affaire du thème, jamais de l'utilisateur. Scopé strictement à `post` :
+  aucun effet sur l'éditeur des Pages ni sur aucun autre post type. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.19.0) pour le détail complet.
+
 ## 1.21.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Bloc Actualités + filtre Prestations par Groupe tarifaire (GWS Equestrian 0.18.0).**

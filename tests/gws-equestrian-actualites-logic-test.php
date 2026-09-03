@@ -237,6 +237,49 @@ gws_test_assert(
 );
 
 // =====================================================================================
+// Cadrage de l'éditeur par blocs (bloc "Actualités : cadrer Gutenberg")
+// =====================================================================================
+
+gws_test_assert(
+  isset($GLOBALS['__gwseq_test_filters']['allowed_block_types_all']) && in_array('gwseq_restrict_actualites_blocks', $GLOBALS['__gwseq_test_filters']['allowed_block_types_all'], true),
+  'Gutenberg : la restriction est appliquée via le filtre NATIF `allowed_block_types_all`, jamais un patch de l\'éditeur'
+);
+
+$allowed = gwseq_actualites_allowed_blocks();
+$expected_allowed = array('core/paragraph', 'core/heading', 'core/list', 'core/list-item', 'core/image', 'core/gallery', 'core/buttons', 'core/button', 'core/video', 'core/embed');
+gws_test_assert($allowed === $expected_allowed, 'Gutenberg : allowlist exacte (Paragraphe, Titre, Liste [+ son bloc interne obligatoire list-item], Image, Galerie, Bouton [+ son conteneur obligatoire buttons], Vidéo, intégration vidéo sûre)');
+foreach (array('core/columns', 'core/column', 'core/group', 'core/cover', 'core/html', 'core/code', 'core/freeform', 'core/legacy-widget', 'core/widget-area', 'core/template-part', 'core/site-title', 'core/navigation', 'core/shortcode') as $forbidden) {
+  gws_test_assert(!in_array($forbidden, $allowed, true), "Gutenberg : le bloc de mise en page avancée/technique \"$forbidden\" est bien exclu de l'allowlist Actualités");
+}
+
+// --- Scopé UNIQUEMENT à `post` (Actualités) : Pages et tout autre contexte (widgets par blocs,
+// éditeur de site — reconnaissable ici par l'absence de $context->post) reçoivent la liste REÇUE
+// EN ENTRÉE inchangée, jamais recalculée ni un true/false générique qui écraserait un filtre tiers
+// déjà appliqué avant celui-ci ---
+$true_wide_open = true; // ex. : un thème/plugin tiers a déjà autorisé tous les blocs
+gws_test_assert(
+  gwseq_restrict_actualites_blocks($true_wide_open, (object) array('post' => (object) array('post_type' => 'post'))) === $expected_allowed,
+  'Gutenberg : une Actualité reçoit bien l\'allowlist restreinte'
+);
+gws_test_assert(
+  gwseq_restrict_actualites_blocks($true_wide_open, (object) array('post' => (object) array('post_type' => 'page'))) === true,
+  'Gutenberg : une Page n\'est jamais affectée — palette complète (valeur reçue en entrée) préservée telle quelle'
+);
+gws_test_assert(
+  gwseq_restrict_actualites_blocks($true_wide_open, (object) array('post' => (object) array('post_type' => GWSEQ_CPT_CHEVAL))) === true,
+  'Gutenberg : aucune régression croisée sur un autre post type GWS (ex. Cheval)'
+);
+gws_test_assert(
+  gwseq_restrict_actualites_blocks($true_wide_open, (object) array('post' => null)) === true,
+  'Gutenberg : un contexte sans post (ex. widgets par blocs, éditeur de site) n\'est jamais affecté'
+);
+$null_context_without_post_property = (object) array();
+gws_test_assert(
+  gwseq_restrict_actualites_blocks($true_wide_open, $null_context_without_post_property) === true,
+  'Gutenberg : un contexte dépourvu même de la propriété `post` (robustesse) n\'est jamais affecté'
+);
+
+// =====================================================================================
 // Front (§7) : aucun rendu front développé dans ce lot
 // =====================================================================================
 

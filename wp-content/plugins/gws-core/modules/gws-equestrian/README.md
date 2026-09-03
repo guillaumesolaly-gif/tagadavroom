@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : Bloc Actualités + filtre Prestations par Groupe tarifaire, GWS Equestrian 0.18.0 — Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime (voir `CHANGELOG.md` de ce dossier). Duplication d'un cheval retirée de la roadmap V1. Bloc Actualités en attente de validation runtime manuelle. Prochaine étape : rendu web (chevaux, équipe, actualités).
+## État actuel : Actualités — cadrage de l'éditeur par blocs, GWS Equestrian 0.19.0 — filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime (voir `CHANGELOG.md` de ce dossier). Duplication d'un cheval retirée de la roadmap V1. Bloc Actualités (V1 + cadrage Gutenberg) en attente de validation runtime manuelle. Architecture Pop-in/Sticky bar en cours de revue (voir le CR de livraison), développement non engagé. Prochaine étape : validation Pop-in/Sticky bar puis rendu web.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -613,6 +613,20 @@ onglets) :
 28. Repasser en revue les points 1 à 20 ci-dessus dans la nouvelle interface à onglets : confirmer
     l'absence de toute régression sur pedigree, Production, filtres parents, indices, galerie,
     vidéos, contenus éditoriaux, Global Horse ID et données commerciales.
+
+## Actualités : cadrage de l'éditeur par blocs (0.19.0)
+
+Le bloc Actualités V1 (0.18.0) fonctionne et a été validé en runtime — non reconstruit. Gutenberg
+reste techniquement l'éditeur, mais sa palette de blocs est restreinte via le filtre natif
+`allowed_block_types_all` (prévu par WordPress pour ce cas d'usage), scopé à
+`$context->post->post_type === 'post'` : toute Page ou autre contexte reçoit la valeur d'entrée
+inchangée, jamais recalculée. Allowlist (`gwseq_actualites_allowed_blocks()`) : Paragraphe, Titre,
+Liste (+ `core/list-item`, obligatoire), Image, Galerie, Bouton (+ `core/buttons`, obligatoire),
+Vidéo, intégration vidéo sûre (`core/embed`) — toujours une liste à INCLURE, jamais à EXCLURE, donc
+sûre par défaut face à un futur bloc core inconnu. Audit préalable : aucun filtre de ce type
+n'existait avant ce lot ; le seul bloc personnalisé du thème (`gws/resource-link`) n'est utilisé
+par aucune Actualité existante. Voir `tests/gws-equestrian-actualites-logic-test.php` pour la
+couverture dédiée.
 
 ## Bloc Actualités + filtre Prestations par Groupe tarifaire (0.18.0)
 

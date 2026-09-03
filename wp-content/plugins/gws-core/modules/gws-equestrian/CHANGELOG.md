@@ -5,6 +5,43 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.19.0 — Actualités : cadrage de l'éditeur par blocs (Gutenberg)
+
+Le bloc Actualités V1 (0.18.0) fonctionne et a été validé en runtime — il n'a pas été reconstruit.
+Gutenberg reste techniquement l'éditeur des Actualités, mais sa palette de blocs est désormais
+volontairement restreinte à une expérience éditoriale simple et cadrée, adaptée à une cible
+d'utilisateurs quasiment débutants en informatique : la mise en page avancée (colonnes, groupes,
+couverture, HTML personnalisé...) reste l'affaire du thème/GWS, jamais de l'utilisateur.
+
+**Audit préalable** : aucun filtre `allowed_block_types`/`allowed_block_types_all` n'existait avant
+ce lot (ni dans `gws-core`, ni dans `gws-starter`) — la palette complète de blocs core était donc
+disponible, plus le seul bloc personnalisé du thème (`gws/resource-link`, jamais utilisé par une
+Actualité existante). Aucun bloc "technique invisible" n'est nécessaire au bon fonctionnement de
+l'éditeur dans ce contexte (site sans contenu hérité ni blocs réutilisables).
+
+**Mécanisme retenu** (`includes/actualites.php`) : le filtre natif `allowed_block_types_all`
+(prévu par WordPress précisément pour restreindre la palette de blocs d'un contexte d'édition
+donné), scopé à `$context->post->post_type === 'post'` — tout autre contexte (Pages, widgets par
+blocs, éditeur de site) reçoit la valeur `$allowed_block_types` REÇUE EN ENTRÉE, inchangée, jamais
+recalculée. Allowlist (toujours une liste à INCLURE, jamais à EXCLURE — sûre par défaut, un futur
+bloc core inconnu n'apparaît jamais tant qu'il n'a pas été explicitement ajouté) : Paragraphe,
+Titre, Liste (+ `core/list-item`, son bloc interne obligatoire depuis le passage en v2 — jamais un
+choix éditorial supplémentaire), Image, Galerie, Bouton (+ `core/buttons`, son conteneur
+obligatoire), Vidéo, intégration vidéo sûre (`core/embed`, qui couvre les intégrations YouTube/
+Vimeo — de simples variations du même bloc, jamais un second bloc à ajouter séparément).
+
+Déjà validé et conservé à l'identique dans ce lot : titre, contenu, image mise en avant, extrait,
+catégorie, auteur, brouillon/publication/planification, tags masqués, commentaires désactivés,
+Quick Edit supprimé. Aucun rendu front développé.
+
+**Tests** (`tests/gws-equestrian-actualites-logic-test.php`, 20 nouvelles assertions) : allowlist
+exacte, exclusion explicite des blocs de mise en page avancée/techniques (colonnes, groupe,
+couverture, HTML, code, classique, widgets hérités, éléments de thème/site, shortcode), scope
+strictement limité à `post` (une Page, un autre post type GWS, un contexte sans post ou dépourvu de
+la propriété `post` reçoivent tous la valeur d'entrée inchangée). Vérifié par retrait/restauration.
+Intégralité des suites existantes (19 fichiers PHP + 2 suites JS runtime) revérifiée, aucune
+régression.
+
 ## 0.18.0 — Bloc Actualités (adaptation de `post`) + filtre Prestations par Groupe tarifaire
 
 **Audit préalable** (avant toute modification) : aucune personnalisation existante de `post` n'a
