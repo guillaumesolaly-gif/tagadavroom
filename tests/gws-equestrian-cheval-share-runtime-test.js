@@ -69,12 +69,28 @@ class FakeElement {
   }
   focus() {}
   select() {}
+  // Supporte les sélecteurs simples ET COMPOSÉS suffisants pour ce script : "#id",
+  // "tag.classe1.classe2", ".classe1.classe2", "[attr]", ou toute combinaison des trois (jamais de
+  // combinateurs de descendance — un seul niveau, comme partout ailleurs dans ce fichier).
   _matchesSimple(sel) {
     if (sel[0] === '#') return this.id === sel.slice(1);
-    if (sel[0] === '.') return (this.className || '').split(/\s+/).indexOf(sel.slice(1)) !== -1;
-    const attrMatch = sel.match(/^\[([a-z0-9-]+)\]$/);
-    if (attrMatch) return this.getAttribute(attrMatch[1]) !== null;
-    return this.tagName === sel;
+    const attrMatch = sel.match(/\[([a-z0-9-]+)\]$/);
+    let rest = sel;
+    if (attrMatch) {
+      if (this.getAttribute(attrMatch[1]) === null) return false;
+      rest = sel.slice(0, sel.length - attrMatch[0].length);
+    }
+    if (rest === '') return true;
+    const parts = rest.split('.').filter(Boolean);
+    const hasTag = rest[0] !== '.';
+    const tag = hasTag ? parts[0] : null;
+    const classes = hasTag ? parts.slice(1) : parts;
+    if (tag && this.tagName !== tag) return false;
+    const ownClasses = (this.className || '').split(/\s+/);
+    for (let i = 0; i < classes.length; i++) {
+      if (ownClasses.indexOf(classes[i]) === -1) return false;
+    }
+    return true;
   }
   querySelectorAll(sel) {
     const out = [];
@@ -128,33 +144,56 @@ const FIXTURE_SHAREABLE = {
   fiche_default_checked: true,
 };
 
-function fakeServerResponse(formData) {
+const FIXTURE_SHAREABLE_NO_PHOTO = {
+  id: 11,
+  nom: 'Poulain Sans Photo',
+  nom_affiche: 'POULAIN SANS PHOTO',
+  photo_url: '',
+  items: {},
+  videos: [],
+  fiche_url: '',
+  fiche_default_checked: false,
+};
+
+// Réplique délibérément SIMPLIFIÉE de la composition (déjà testée exhaustivement côté PHP) — sert
+// uniquement à vérifier que le CLIENT transmet/consomme correctement la sélection et les réponses,
+// jamais à revalider la logique de composition elle-même.
+function composeFakeMessage(formData) {
+  const items = formValues(formData, 'selection[items][]');
+  const videos = formValues(formData, 'selection[videos][]');
+  const fiche = formValue(formData, 'selection[fiche]');
+  const personal = formValue(formData, 'selection[message_personnel]') || '';
+  let lines = [FIXTURE_SHAREABLE.nom_affiche];
+  items.forEach((key) => { if (FIXTURE_SHAREABLE.items[key]) lines.push(FIXTURE_SHAREABLE.items[key].label); });
+  let message = (personal ? personal + '\n\n' : '') + lines.join('\n');
+  videos.forEach((index) => {
+    const video = FIXTURE_SHAREABLE.videos.filter((v) => String(v.index) === String(index))[0];
+    if (video) message += '\n' + video.label + ' : ' + video.url;
+  });
+  if (fiche) message += '\n' + FIXTURE_SHAREABLE.fiche_url;
+  return message;
+}
+
+function fakeServerResponse(formData, sandboxState) {
   const action = formValue(formData, 'action');
   if (action === 'gwseq_partager_get_cheval') {
-    return { success: true, data: { cheval: FIXTURE_SHAREABLE } };
+    const chevalId = formValue(formData, 'cheval_id');
+    const cheval = chevalId === String(FIXTURE_SHAREABLE_NO_PHOTO.id) ? FIXTURE_SHAREABLE_NO_PHOTO : FIXTURE_SHAREABLE;
+    return { success: true, data: { cheval: cheval } };
   }
   if (action === 'gwseq_partager_build_message') {
-    const items = formValues(formData, 'selection[items][]');
-    const videos = formValues(formData, 'selection[videos][]');
-    const fiche = formValue(formData, 'selection[fiche]');
-    const personal = formValue(formData, 'selection[message_personnel]') || '';
-    let lines = [FIXTURE_SHAREABLE.nom_affiche];
-    items.forEach((key) => { if (FIXTURE_SHAREABLE.items[key]) lines.push(FIXTURE_SHAREABLE.items[key].label); });
-    let message = (personal ? personal + '\n\n' : '') + lines.join('\n');
-    videos.forEach((index) => {
-      const video = FIXTURE_SHAREABLE.videos.filter((v) => String(v.index) === String(index))[0];
-      if (video) message += '\n' + video.label + ' : ' + video.url;
-    });
-    if (fiche) message += '\n' + FIXTURE_SHAREABLE.fiche_url;
-    return { success: true, data: { message: message } };
+    sandboxState.buildMessageCalls.push(formData);
+    return { success: true, data: { message: composeFakeMessage(formData) } };
   }
   if (action === 'gwseq_partager_search_cheval') {
-    return { success: true, data: { resultats: [] } };
+    sandboxState.searchCalls.push(formData);
+    return { success: true, data: { resultats: sandboxState.searchResults } };
   }
   return { success: false };
 }
 
-function buildSandbox() {
+function buildSandbox(options) {
+  options = options || {};
   const root = new FakeElement('div');
   root.id = 'gwseq-partager-app';
 
@@ -167,17 +206,42 @@ function buildSandbox() {
 
   const openedUrls = [];
   const clipboardWrites = [];
+  const state = {
+    searchCalls: [],
+    buildMessageCalls: [],
+    searchResults: options.searchResults || [],
+    // File d'attente de délais à USAGE UNIQUE pour les appels build_message successifs (permet de
+    // reproduire un ordre d'arrivée réseau réaliste — ex. une réponse plus ANCIENNE arrivant après
+    // une réponse plus RÉCENTE — pour vérifier le correctif de séquencement, voir plus bas).
+    buildMessageDelayQueue: [],
+  };
   const fakeWindow = {
     gwseqPartager: {
       ajaxUrl: 'https://example.test/wp-admin/admin-ajax.php',
       nonce: 'test-nonce',
-      recents: [],
+      recents: options.recents || [],
+      filters: options.filters || {
+        sexe: { female: 'Jument', male: 'Étalon', gelding: 'Hongre' },
+        statut: { not_offered: 'Non proposé', for_sale: 'À vendre', reserved: 'Réservé', sold: 'Vendu' },
+        categories: { chevaux_de_sport: 'Chevaux de sport', poulains: 'Poulains' },
+        anneeMin: 1900,
+        anneeMax: 2027,
+      },
       i18n: {},
     },
     FormData: FakeFormData,
-    fetch(url, options) {
-      const json = fakeServerResponse(options.body);
-      return Promise.resolve({ json: () => Promise.resolve(json) });
+    fetch(url, requestOptions) {
+      const action = formValue(requestOptions.body, 'action');
+      const delay = action === 'gwseq_partager_build_message' && state.buildMessageDelayQueue.length
+        ? state.buildMessageDelayQueue.shift()
+        : 0;
+      return new Promise((resolve) => {
+        const respond = () => {
+          const json = fakeServerResponse(requestOptions.body, state);
+          resolve({ json: () => Promise.resolve(json) });
+        };
+        if (delay > 0) setTimeout(respond, delay); else respond();
+      });
     },
     open(url) { openedUrls.push(url); },
     location: { href: '' },
@@ -191,7 +255,7 @@ function buildSandbox() {
     Promise: Promise,
   };
 
-  return { root, fakeDocument, fakeWindow, documentListeners, openedUrls, clipboardWrites };
+  return { root, fakeDocument, fakeWindow, documentListeners, openedUrls, clipboardWrites, state };
 }
 
 function runScript(sandboxParts) {
@@ -285,6 +349,128 @@ async function run() {
   ok('Encodage : les retours à la ligne deviennent %0A', encoded.indexOf('%0A') !== -1);
   ok('Encodage : les espaces deviennent %20', encoded.indexOf('%20') !== -1);
   ok('Encodage : les caractères accentués sont bien encodés (jamais laissés bruts dans l’URL)', encoded.indexOf('Français') === -1 && encoded.indexOf('Fran%C3%A7ais') !== -1);
+
+  // =====================================================================================
+  // CORRECTIF DE RECETTE — le prix (ou toute autre information) apparaissait dans l'aperçu alors
+  // que sa case était décochée. CAUSE RACINE : une réponse AJAX plus ANCIENNE arrivant après une
+  // réponse plus RÉCENTE écrasait silencieusement l'aperçu à jour. Reproduit ici un ordre
+  // d'arrivée réseau réaliste (la première requête, plus lente, répond APRÈS la seconde, plus
+  // rapide) et vérifie que la réponse obsolète est bien IGNORÉE, jamais appliquée.
+  // =====================================================================================
+
+  const parts3 = buildSandbox();
+  parts3.root.setAttribute('data-gwseq-preselected-id', '10');
+  runScript(parts3);
+  await wait(20); // chargement de la fiche + premier aperçu (déjà couvert plus haut)
+
+  const composeRoot3 = parts3.root;
+  const previewNode3 = composeRoot3.querySelector('.gwseq-partager-preview__text');
+  const identiteCheckbox3 = composeRoot3.querySelectorAll('[data-item-key]').filter((c) => c.getAttribute('data-item-key') === 'identite')[0];
+  const prixCheckbox3 = composeRoot3.querySelectorAll('[data-item-key]').filter((c) => c.getAttribute('data-item-key') === 'prix')[0];
+
+  // Requête n°1 (déclenchée par la décoche ci-dessous) : délibérément LENTE (500ms).
+  parts3.state.buildMessageDelayQueue.push(500);
+  identiteCheckbox3.checked = false;
+  identiteCheckbox3.dispatchEvent({ type: 'change' });
+  await wait(400); // laisse le débounce (350ms) déclencher la requête n°1, qui reste en vol (lente)
+
+  // Requête n°2 (déclenchée par la coche ci-dessous) : délibérément RAPIDE (aucun délai) — doit
+  // répondre et s'afficher AVANT que la requête n°1 (lente, toujours en vol) ne résolve enfin.
+  prixCheckbox3.checked = true;
+  prixCheckbox3.dispatchEvent({ type: 'change' });
+  await wait(400); // débounce (350ms) + résolution quasi immédiate de la requête n°2
+
+  ok('Correctif prix : la réponse la plus RÉCENTE (prix coché, identité décochée) s’affiche bien', previewNode3.textContent.indexOf('25 000') !== -1 && previewNode3.textContent.indexOf('Jument Selle Français') === -1);
+
+  await wait(300); // laisse la requête n°1 (lente) enfin résoudre, en arrivant APRÈS la n°2
+
+  ok('Correctif prix : la réponse n°1, plus ANCIENNE mais arrivée EN DERNIER, n’écrase PAS l’aperçu à jour (cause racine corrigée, pas un simple masquage visuel)', previewNode3.textContent.indexOf('25 000') !== -1 && previewNode3.textContent.indexOf('Jument Selle Français') === -1);
+  // 3 appels au total : le premier au chargement de l'écran (déjà couvert plus haut), puis un par
+  // case cochée/décochée dans ce scénario — vérifie que le test exerce réellement la course
+  // attendue plutôt que, par exemple, un débounce qui aurait fusionné les deux changements.
+  ok('Correctif prix : les trois requêtes ont bien eu lieu (chargement + les deux changements de case), aucune perdue silencieusement', parts3.state.buildMessageCalls.length === 3);
+
+  // --- WhatsApp/SMS/Copier restent cohérents avec CET aperçu final, y compris après la course ---
+  const finalPreviewText = previewNode3.textContent;
+  const buttons3 = composeRoot3.querySelectorAll('.gwseq-partager-action');
+  buttons3.filter((b) => b.className.indexOf('gwseq-partager-action--whatsapp') !== -1)[0].dispatchEvent({ type: 'click' });
+  ok('Correctif prix : WhatsApp consomme bien l’aperçu final correct, pas une version obsolète', parts3.openedUrls[parts3.openedUrls.length - 1] === 'https://wa.me/?text=' + encodeURIComponent(finalPreviewText));
+
+  // =====================================================================================
+  // Vignette de remplacement neutre quand un cheval n'a pas de photo (correctif de recette §2)
+  // =====================================================================================
+
+  const partsPlaceholder = buildSandbox({
+    recents: [
+      { id: 20, nom: 'Cheval Avec Photo', photo_url: 'https://example.test/photo-20.jpg', sous_titre: '', statut: '' },
+      { id: 21, nom: 'Cheval Sans Photo', photo_url: '', sous_titre: '', statut: '' },
+    ],
+  });
+  runScript(partsPlaceholder);
+
+  const resultRows = partsPlaceholder.root.querySelectorAll('.gwseq-partager-result');
+  const rowWithPhoto = resultRows[0];
+  const rowWithoutPhoto = resultRows[1];
+  ok('Vignette : un cheval AVEC photo affiche bien une balise <img> avec son URL réelle', rowWithPhoto.querySelector('img.gwseq-partager-result__photo') !== null);
+  ok('Vignette : un cheval SANS photo n’affiche JAMAIS de <img> avec un src vide (jamais d’icône "image cassée")', rowWithoutPhoto.querySelector('img') === null);
+  const placeholderNode = rowWithoutPhoto.querySelector('.gwseq-media-placeholder');
+  ok('Vignette : un placeholder neutre réutilisable (classe partagée gwseq-media-placeholder) est affiché à la place', placeholderNode !== null);
+  ok('Vignette : le placeholder utilise le même dashicon que le menu "Chevaux" (dashicons-pets), cohérent avec GWS Equestrian', placeholderNode.querySelector('.dashicons-pets') !== null);
+  ok('Vignette : élément purement visuel, masqué aux technologies d’assistance (aria-hidden)', placeholderNode.getAttribute('aria-hidden') === 'true');
+
+  const partsNoPhotoCompose = buildSandbox();
+  partsNoPhotoCompose.root.setAttribute('data-gwseq-preselected-id', '11');
+  runScript(partsNoPhotoCompose);
+  await wait(20);
+  const horsePhotoPlaceholder = partsNoPhotoCompose.root.querySelector('.gwseq-partager-horse__photo.gwseq-media-placeholder');
+  ok('Vignette : la même règle s’applique à l’en-tête de l’écran de composition (cheval choisi sans photo)', horsePhotoPlaceholder !== null);
+
+  // =====================================================================================
+  // Filtres métier de la recherche (correctif de recette §3-5) : cumulatifs, sans bouton
+  // "Appliquer" (filtrage dynamique), avec réinitialisation.
+  // =====================================================================================
+
+  const partsFilters = buildSandbox();
+  runScript(partsFilters);
+  await wait(20); // le rendu initial déclenche déjà un premier appel avec des filtres vides
+
+  const filtersRoot = partsFilters.root;
+  const sexeSelect = filtersRoot.querySelector('#gwseq-partager-filter-sexe');
+  const statutSelect = filtersRoot.querySelector('#gwseq-partager-filter-statut');
+  const categorieSelect = filtersRoot.querySelector('#gwseq-partager-filter-categorie');
+  ok('Filtres : le sélecteur Sexe propose bien les options du référentiel Cheval existant (vocabulaire commercial de cet écran)', sexeSelect !== null && sexeSelect.children.some((o) => o.value === 'female' && o.textContent === 'Jument'));
+  ok('Filtres : le sélecteur Statut commercial utilise exactement les valeurs internes existantes', statutSelect !== null && statutSelect.children.some((o) => o.value === 'for_sale'));
+  ok('Filtres : le sélecteur Catégorie propose les catégories réellement configurées (aucune nouvelle catégorie créée)', categorieSelect !== null && categorieSelect.children.some((o) => o.value === 'chevaux_de_sport' && o.textContent === 'Chevaux de sport'));
+
+  sexeSelect.value = 'female';
+  statutSelect.value = 'for_sale';
+  categorieSelect.value = 'chevaux_de_sport';
+  const yearInputs = filtersRoot.querySelectorAll('.gwseq-partager-filter__annee-input');
+  yearInputs[0].value = '2018';
+  yearInputs[1].value = '2021';
+  const searchInput = filtersRoot.querySelector('.gwseq-partager-search__input');
+  searchInput.value = 'jument';
+
+  filtersRoot.querySelector('.gwseq-partager-filters').dispatchEvent({ type: 'change' });
+  await wait(400);
+
+  const lastSearchCall = partsFilters.state.searchCalls[partsFilters.state.searchCalls.length - 1];
+  ok('Filtres : la recherche texte ET les filtres sont bien transmis ENSEMBLE dans le même appel (cumulatifs, §4)', formValue(lastSearchCall, 's') === 'jument');
+  ok('Filtres : sexe transmis', formValue(lastSearchCall, 'filters[sexe]') === 'female');
+  ok('Filtres : statut commercial transmis', formValue(lastSearchCall, 'filters[statut]') === 'for_sale');
+  ok('Filtres : catégorie transmise', formValue(lastSearchCall, 'filters[categorie]') === 'chevaux_de_sport');
+  ok('Filtres : plage d’année de naissance transmise (De/à)', formValue(lastSearchCall, 'filters[annee_min]') === '2018' && formValue(lastSearchCall, 'filters[annee_max]') === '2021');
+
+  const resetButton = filtersRoot.querySelector('.gwseq-partager-filters__reset');
+  ok('Filtres : action "Réinitialiser les filtres" présente', resetButton !== null);
+  resetButton.dispatchEvent({ type: 'click' });
+  await wait(20);
+
+  ok('Réinitialisation : le champ de recherche texte est bien vidé', searchInput.value === '');
+  ok('Réinitialisation : tous les sélecteurs reviennent sur "Tous"/"Toutes les catégories"', sexeSelect.value === '' && statutSelect.value === '' && categorieSelect.value === '');
+  ok('Réinitialisation : la plage d’année est bien vidée', yearInputs[0].value === '' && yearInputs[1].value === '');
+  const searchCallAfterReset = partsFilters.state.searchCalls[partsFilters.state.searchCalls.length - 1];
+  ok('Réinitialisation : une nouvelle recherche est bien relancée immédiatement, sans aucun filtre actif', formValue(searchCallAfterReset, 's') === '' && formValue(searchCallAfterReset, 'filters[sexe]') === '' && formValue(searchCallAfterReset, 'filters[categorie]') === '');
 
   if (failureCount > 0) {
     console.log('\n' + failureCount + ' assertion(s) EN ÉCHEC sur ' + assertionCount + '.');

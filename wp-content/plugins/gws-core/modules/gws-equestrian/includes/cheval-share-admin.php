@@ -95,13 +95,141 @@ function gwseq_horse_share_query_chevaux($args) {
   return $query->posts;
 }
 
-function gwseq_horse_share_recent_chevaux() {
-  $ids = gwseq_horse_share_query_chevaux(array(
-    'posts_per_page' => GWSEQ_HORSE_SHARE_RECENT_LIMIT,
-    'orderby' => 'modified',
-    'order' => 'DESC',
+/**
+ * Filtres métier de l'écran de sélection (correctif de recette §3-4) — VOLONTAIREMENT limités à
+ * quatre critères déjà structurés et existants (sexe, statut commercial, plage d'année de
+ * naissance, catégorie de cheval), jamais un nouveau référentiel : réutilise exactement
+ * `gwseq_cheval_sexe_options()`/`gwseq_cheval_statut_commercial_options()`
+ * (includes/cheval-fields.php) et la taxonomie `GWSEQ_TAX_CATEGORIE_CHEVAL` déjà en place. Pas de
+ * filtre sur prix/taille/race/indices/pedigree/labels/propriétaire/éleveur dans cette V1 (§4 :
+ * "éviter de transformer cet écran en moteur de recherche complexe").
+ *
+ * §7 de la demande — préparation du futur usage multi-chevaux, SANS le développer : cette
+ * sanitation et la transformation en arguments de requête ci-dessous
+ * (gwseq_horse_share_filters_to_query_args()) sont volontairement DÉCOUPLÉES de tout point d'entrée
+ * AJAX précis. `gwseq_horse_share_search_chevaux()`, plus bas, est LA source de résultats unique
+ * (recherche + filtres), réutilisable telle quelle par un futur écran de sélection multiple sans
+ * réécrire la moindre logique de filtrage — seule l'interface de sélection (case à cocher multiple
+ * au lieu d'un bouton "Partager" par ligne) resterait à ajouter le moment venu.
+ */
+function gwseq_sanitize_horse_share_filters($raw) {
+  $raw = is_array($raw) ? $raw : array();
+
+  $sexe = isset($raw['sexe']) ? sanitize_key(wp_unslash($raw['sexe'])) : '';
+  if ($sexe !== '' && !array_key_exists($sexe, gwseq_cheval_sexe_options())) $sexe = '';
+
+  $statut = isset($raw['statut']) ? sanitize_key(wp_unslash($raw['statut'])) : '';
+  if ($statut !== '' && !array_key_exists($statut, gwseq_cheval_statut_commercial_options())) $statut = '';
+
+  // Bornes réutilisées telles quelles de cheval-fields.php — jamais une seconde limite inventée
+  // pour ce filtre. Des bornes inversées (min > max) sont simplement échangées, jamais une erreur.
+  $borne_max = gwseq_cheval_annee_naissance_max();
+  $annee_min = (isset($raw['annee_min']) && is_numeric($raw['annee_min'])) ? (int) $raw['annee_min'] : 0;
+  $annee_max = (isset($raw['annee_max']) && is_numeric($raw['annee_max'])) ? (int) $raw['annee_max'] : 0;
+  if ($annee_min && ($annee_min < GWSEQ_CHEVAL_ANNEE_MIN || $annee_min > $borne_max)) $annee_min = 0;
+  if ($annee_max && ($annee_max < GWSEQ_CHEVAL_ANNEE_MIN || $annee_max > $borne_max)) $annee_max = 0;
+  if ($annee_min && $annee_max && $annee_min > $annee_max) {
+    $swap = $annee_min; $annee_min = $annee_max; $annee_max = $swap;
+  }
+
+  // Un slug qui ne correspond à AUCUNE catégorie réellement configurée est ignoré (jamais une
+  // erreur ni une catégorie fabriquée à la volée) — voir §3 : "ne pas créer de nouvelles catégories
+  // automatiquement".
+  $categorie = isset($raw['categorie']) ? sanitize_title(wp_unslash($raw['categorie'])) : '';
+  if ($categorie !== '' && !term_exists($categorie, GWSEQ_TAX_CATEGORIE_CHEVAL)) $categorie = '';
+
+  return array(
+    'sexe' => $sexe,
+    'statut' => $statut,
+    'annee_min' => $annee_min,
+    'annee_max' => $annee_max,
+    'categorie' => $categorie,
+  );
+}
+
+/**
+ * Transforme des filtres déjà sanitisés en arguments WP_Query cumulables (§4 : "tous les filtres
+ * doivent être cumulatifs") — jamais une reconstruction de requête ad hoc dans chaque appelant.
+ */
+function gwseq_horse_share_filters_to_query_args($filters) {
+  $filters = wp_parse_args(is_array($filters) ? $filters : array(), array(
+    'sexe' => '', 'statut' => '', 'annee_min' => 0, 'annee_max' => 0, 'categorie' => '',
   ));
+  $args = array();
+
+  $meta_query = array();
+  if ($filters['sexe'] !== '') $meta_query[] = array('key' => '_gwseq_sexe', 'value' => $filters['sexe']);
+  if ($filters['statut'] !== '') $meta_query[] = array('key' => '_gwseq_statut_commercial', 'value' => $filters['statut']);
+  if ($filters['annee_min'] && $filters['annee_max']) {
+    $meta_query[] = array('key' => '_gwseq_annee_naissance', 'value' => array($filters['annee_min'], $filters['annee_max']), 'compare' => 'BETWEEN', 'type' => 'NUMERIC');
+  } elseif ($filters['annee_min']) {
+    $meta_query[] = array('key' => '_gwseq_annee_naissance', 'value' => $filters['annee_min'], 'compare' => '>=', 'type' => 'NUMERIC');
+  } elseif ($filters['annee_max']) {
+    $meta_query[] = array('key' => '_gwseq_annee_naissance', 'value' => $filters['annee_max'], 'compare' => '<=', 'type' => 'NUMERIC');
+  }
+  if ($meta_query) {
+    if (count($meta_query) > 1) $meta_query['relation'] = 'AND';
+    $args['meta_query'] = $meta_query;
+  }
+
+  if ($filters['categorie'] !== '') {
+    $args['tax_query'] = array(array('taxonomy' => GWSEQ_TAX_CATEGORIE_CHEVAL, 'field' => 'slug', 'terms' => $filters['categorie']));
+  }
+
+  return $args;
+}
+
+/**
+ * Source de résultats UNIQUE (recherche texte + filtres, §7) : une requête vide sans filtre renvoie
+ * les chevaux accessibles les plus récemment modifiés (jamais un écran de résultats vide au premier
+ * affichage) ; sinon, recherche/filtres cumulés, toujours limités et scopés (§21/§27).
+ */
+function gwseq_horse_share_search_chevaux($search = '', $filters = array()) {
+  $args = array('posts_per_page' => GWSEQ_HORSE_SHARE_SEARCH_LIMIT);
+  if ($search !== '') {
+    $args['s'] = $search;
+  } else {
+    $args['posts_per_page'] = GWSEQ_HORSE_SHARE_RECENT_LIMIT;
+    $args['orderby'] = 'modified';
+    $args['order'] = 'DESC';
+  }
+  $args = array_merge($args, gwseq_horse_share_filters_to_query_args($filters));
+
+  $ids = gwseq_horse_share_query_chevaux($args);
   return array_map('gwseq_horse_share_lightweight_row', $ids);
+}
+
+function gwseq_horse_share_recent_chevaux() {
+  return gwseq_horse_share_search_chevaux();
+}
+
+/**
+ * Libellés du filtre Sexe (correctif de recette §3) — vocabulaire commercial déjà retenu pour CET
+ * écran (gwseq_horse_share_sexe_commercial_label(), includes/cheval-share.php : "Jument"/"Étalon"/
+ * "Hongre"), pour rester cohérent avec le reste de la page — jamais un second référentiel : les clés
+ * techniques restent exactement celles de gwseq_cheval_sexe_options().
+ */
+function gwseq_horse_share_sexe_filter_options() {
+  $options = array();
+  foreach (array_keys(gwseq_cheval_sexe_options()) as $sexe) {
+    $options[$sexe] = gwseq_horse_share_sexe_commercial_label($sexe);
+  }
+  return $options;
+}
+
+/**
+ * Catégories RÉELLEMENT configurées sur le site (§3 : "ne pas créer de nouvelles catégories
+ * automatiquement") — même appel que le filtre déjà existant de la liste native
+ * (gwseq_render_cheval_admin_list_filters(), includes/cheval-fields.php), jamais une seconde
+ * énumération codée en dur.
+ */
+function gwseq_horse_share_categorie_filter_options() {
+  $terms = get_terms(array('taxonomy' => GWSEQ_TAX_CATEGORIE_CHEVAL, 'hide_empty' => false));
+  $options = array();
+  foreach ((is_array($terms) ? $terms : array()) as $term) {
+    $options[$term->slug] = $term->name;
+  }
+  return $options;
 }
 
 /* -------------------------------------------------------------------------------------------
@@ -133,23 +261,18 @@ function gwseq_horse_share_ajax_check_general() {
 }
 
 /**
- * Recherche (§27) : nom du cheval en priorité (recherche native WordPress, `s`), résultats limités,
- * scopée aux chevaux auxquels l'utilisateur a accès. Une requête vide renvoie la liste "récents"
- * plutôt qu'une liste vide — évite un écran de résultats vide au premier affichage.
+ * Recherche (§27, filtres §3-4) : nom du cheval en priorité (recherche native WordPress, `s`),
+ * combinable avec les quatre filtres métier (sexe/statut/année/catégorie, cumulatifs), résultats
+ * limités, scopés aux chevaux auxquels l'utilisateur a accès. Une requête vide sans filtre renvoie
+ * la liste "récents" plutôt qu'une liste vide — évite un écran de résultats vide au premier
+ * affichage.
  */
 function gwseq_ajax_partager_search_cheval() {
   gwseq_horse_share_ajax_check_general();
 
   $search = isset($_POST['s']) ? sanitize_text_field(wp_unslash($_POST['s'])) : '';
-  if ($search === '') {
-    wp_send_json_success(array('resultats' => gwseq_horse_share_recent_chevaux()));
-  }
-
-  $ids = gwseq_horse_share_query_chevaux(array(
-    'posts_per_page' => GWSEQ_HORSE_SHARE_SEARCH_LIMIT,
-    's' => $search,
-  ));
-  wp_send_json_success(array('resultats' => array_map('gwseq_horse_share_lightweight_row', $ids)));
+  $filters = gwseq_sanitize_horse_share_filters($_POST['filters'] ?? array());
+  wp_send_json_success(array('resultats' => gwseq_horse_share_search_chevaux($search, $filters)));
 }
 add_action('wp_ajax_gwseq_partager_search_cheval', 'gwseq_ajax_partager_search_cheval');
 
@@ -258,12 +381,20 @@ function gwseq_enqueue_horse_share_admin_assets($hook) {
   $screen = function_exists('get_current_screen') ? get_current_screen() : null;
   if (!$screen || strpos($screen->id, gwseq_horse_share_menu_slug()) === false) return;
 
-  wp_enqueue_style('gwseq-cheval-share-admin', GWSEQ_MODULE_URL . 'assets/cheval-share-admin.css', array(), GWSEQ_MODULE_VERSION);
+  wp_enqueue_style('gwseq-media-placeholder', GWSEQ_MODULE_URL . 'assets/gws-media-placeholder.css', array(), GWSEQ_MODULE_VERSION);
+  wp_enqueue_style('gwseq-cheval-share-admin', GWSEQ_MODULE_URL . 'assets/cheval-share-admin.css', array('gwseq-media-placeholder'), GWSEQ_MODULE_VERSION);
   wp_enqueue_script('gwseq-cheval-share-admin', GWSEQ_MODULE_URL . 'assets/cheval-share-admin.js', array(), GWSEQ_MODULE_VERSION, true);
   wp_localize_script('gwseq-cheval-share-admin', 'gwseqPartager', array(
     'ajaxUrl' => admin_url('admin-ajax.php'),
     'nonce' => wp_create_nonce(GWSEQ_HORSE_SHARE_NONCE_ACTION),
     'recents' => gwseq_horse_share_recent_chevaux(),
+    'filters' => array(
+      'sexe' => gwseq_horse_share_sexe_filter_options(),
+      'statut' => gwseq_cheval_statut_commercial_options(),
+      'categories' => gwseq_horse_share_categorie_filter_options(),
+      'anneeMin' => GWSEQ_CHEVAL_ANNEE_MIN,
+      'anneeMax' => gwseq_cheval_annee_naissance_max(),
+    ),
     'i18n' => array(
       'searchPlaceholder' => __('Rechercher un cheval...', 'gws-core'),
       'noResults' => __('Aucun cheval trouvé.', 'gws-core'),
@@ -280,6 +411,12 @@ function gwseq_enqueue_horse_share_admin_assets($hook) {
       'copy' => __('Copier', 'gws-core'),
       'copied' => __('Message copié', 'gws-core'),
       'loading' => __('Chargement…', 'gws-core'),
+      'allSexe' => __('Tous', 'gws-core'),
+      'allStatut' => __('Tous', 'gws-core'),
+      'allCategories' => __('Toutes les catégories', 'gws-core'),
+      'yearFrom' => __('De', 'gws-core'),
+      'yearTo' => __('à', 'gws-core'),
+      'resetFilters' => __('Réinitialiser les filtres', 'gws-core'),
     ),
   ));
 }

@@ -988,3 +988,35 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   (`gws-equestrian-actualites-logic-test.php`, désormais ciblée sur le callback précis de retrait
   de Quick Edit plutôt que sur le nombre total de filtres `post_row_actions` du module, qui
   augmente légitimement avec la nouvelle action de ligne "Partager").
+- **Partager un cheval : correctifs et améliorations de recette (0.23.0)** : couverture étendue
+  dans les trois fichiers existants du lot 0.22.0, sans nouveau fichier.
+  - `gws-equestrian-cheval-share-logic-test.php` : "va-et-vient" (coché → présent, décoché →
+    absent immédiatement) vérifié explicitement pour CHAQUE bloc sélectionnable (prix, identité,
+    origines, taille/indice, accroche, chaque vidéo par index, fiche complète) — pas seulement le
+    prix signalé en recette, conformément à la demande de vérifier l'absence du même problème
+    ailleurs.
+  - `gws-equestrian-cheval-share-admin-test.php` : nouveau test du helper de vignette de
+    remplacement (`gwseq_render_media_placeholder()` — classe partagée, dashicon réutilisé,
+    `aria-hidden`, combinable avec une classe de dimensionnement) ; couverture complète des
+    filtres — sanitation (valeurs hors référentiel ignorées, bornes d'année réutilisées de
+    `cheval-fields.php`, bornes inversées échangées jamais en erreur, catégorie inexistante jamais
+    créée), transformation en arguments de requête (`meta_query`/`tax_query`), cumul réel de
+    quatre filtres + recherche texte via l'AJAX (seul le cheval correspondant à TOUS les critères
+    est retourné), non-fuite de permission avec des filtres actifs, aucune donnée Cheval modifiée
+    par une recherche/un filtrage. `WP_Query` factice étendu avec un `meta_query`
+    (`>=`/`<=`/`BETWEEN`) et un `tax_query` minimal fidèles au nécessaire réel.
+  - `gws-equestrian-cheval-share-runtime-test.js` (23 assertions supplémentaires, 42 au total) :
+    **scénario de la cause racine du bug prioritaire** — reproduit un ordre d'arrivée réseau
+    réaliste (une requête d'aperçu lente déclenchée en premier répond APRÈS une requête plus
+    rapide déclenchée ensuite) et vérifie que la réponse la plus ancienne, arrivée en dernier, est
+    bien ignorée plutôt que d'écraser l'aperçu à jour — vérifié par retrait/restauration (retirer
+    le jeton de requête fait échouer exactement cette assertion) ; vignette de remplacement pour
+    un cheval sans photo (résultats de recherche ET en-tête de l'écran de composition), jamais de
+    `<img>` avec un `src` vide ; filtres (options réellement proposées, transmission cumulée avec
+    la recherche texte, réinitialisation complète). Le DOM factice de ce fichier a été étendu pour
+    supporter les sélecteurs CSS composés (`tag.classe`, `.classe1.classe2`), nécessaires aux
+    nouvelles assertions.
+
+  Quatre mécanismes critiques supplémentaires vérifiés par retrait/restauration (jeton de requête
+  côté JS, validation de catégorie inexistante, restriction de permission avec filtres actifs).
+  Intégralité de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée : aucune régression.

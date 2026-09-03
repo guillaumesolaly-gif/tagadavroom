@@ -5,6 +5,67 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.23.0 — Partager un cheval : correctifs et améliorations de recette
+
+Retour de la première recette runtime de `Chevaux → Partager` (0.22.0) : le principe général
+(sélection → informations → aperçu → WhatsApp/SMS/Copier) est validé ; ce lot corrige un bug
+prioritaire et apporte quatre améliorations demandées, SANS développer le partage multi-chevaux,
+le lien privé, le PDF ni le catalogue (annoncés pour des lots ultérieurs distincts).
+
+**Bug prioritaire corrigé — une information décochée (le prix, notamment) apparaissait quand même
+dans l'aperçu.** Cause racine identifiée : `assets/cheval-share-admin.js`, `refreshPreview()`
+déclenchait un appel AJAX indépendant à chaque frappe/coche, sans jamais annuler ni ignorer les
+précédents — si une réponse plus ANCIENNE arrivait après une réponse plus RÉCENTE (latence réseau
+variable, réaliste hors environnement de test), elle écrasait silencieusement l'aperçu à jour.
+`gwseq_build_horse_share_message()` (PHP) reflétait déjà fidèlement la sélection reçue à chaque
+appel isolé — ce n'était jamais un problème de composition, mais de SÉQUENCEMENT des réponses
+côté client. Corrigé par un jeton de requête strictement croissant : une réponse n'est appliquée
+que si aucune requête plus récente n'a depuis été émise, toute réponse obsolète est ignorée —
+jamais un simple masquage visuel. Vérifié par retrait/restauration (le test dédié échoue
+exactement comme attendu sans le correctif). Même principe vérifié pour TOUS les autres blocs
+sélectionnables (origines, taille/indice, accroche, vidéos, fiche complète), pas seulement le prix.
+
+**Chevaux sans photo — vignette de remplacement neutre réutilisable** (`gwseq_render_media_
+placeholder()`, `includes/admin-ui.php`, classe CSS partagée `gwseq-media-placeholder` dans le
+nouveau fichier `assets/gws-media-placeholder.css`) : réutilise le dashicon déjà choisi comme icône
+de menu de "Chevaux" (`dashicons-pets`) plutôt qu'une nouvelle icône à maintenir. Élément
+d'interface uniquement — aucun média créé, aucune image à la une définie, aucune fiche modifiée.
+`assets/cheval-share-admin.js` reproduit le même balisage minimal (même classe, même dashicon) pour
+ses résultats construits en JavaScript, garantissant une vignette visuellement identique partout.
+Réutilisable tel quel par un futur écran BO ayant le même besoin.
+
+**Filtres métier de l'écran de sélection** (`gwseq_sanitize_horse_share_filters()`/
+`gwseq_horse_share_filters_to_query_args()`/`gwseq_horse_share_search_chevaux()`, `includes/
+cheval-share-admin.php`) : Sexe (vocabulaire commercial déjà retenu pour cet écran), Statut
+commercial, plage d'année de naissance (De/à, bornes réutilisées de `cheval-fields.php`), Catégorie
+de cheval (taxonomie déjà existante, jamais de nouvelle catégorie créée à la volée) — tous les
+quatre cumulables entre eux ET avec la recherche texte, aucun nouveau référentiel créé. Filtrage
+DYNAMIQUE (aucun bouton "Appliquer"), action "Réinitialiser les filtres". Restriction de permission
+(§21, un auteur sans `edit_others_posts` ne voit que ses propres chevaux) vérifiée applicable même
+filtres actifs.
+
+**Préparation du futur usage multi-chevaux, SANS le développer** : `gwseq_horse_share_search_
+chevaux()` est désormais LA source de résultats unique (recherche + filtres), volontairement
+découplée de tout point d'entrée AJAX précis — un futur écran de sélection multiple pourra la
+réutiliser telle quelle, sans réécrire la moindre logique de filtrage ; seule une interface de
+sélection multiple resterait à ajouter le moment venu. Pour cette version : toujours un cheval → un
+bouton "Partager" → un partage individuel, aucune case à cocher multi-sélection.
+
+**Densité de l'écran de composition** (`assets/cheval-share-admin.css`) : les listes "Informations
+à envoyer" et "Vidéos" sont désormais des listes compactes à fines lignes de séparation (plutôt que
+des blocs verticaux très espacés), zones tactiles toujours ≥ 40px, accessibilité inchangée.
+
+**Tests** : couverture étendue dans les trois fichiers existants du lot 0.22.0 — nouvelles
+assertions de "va-et-vient" (coché → présent, décoché → absent immédiatement, sans trace
+résiduelle) pour chaque bloc sélectionnable côté PHP ; nouveau scénario runtime Node reproduisant
+fidèlement un ordre d'arrivée réseau réaliste (réponse lente arrivant après une réponse rapide) et
+vérifiant que le correctif de séquencement l'ignore bien ; couverture complète des filtres
+(sanitation, transformation en requête, cumul réel via l'AJAX, non-fuite de permission, aucune
+donnée Cheval modifiée par une recherche/un filtrage) ; couverture de la vignette de remplacement
+(PHP et JS, y compris l'en-tête de l'écran de composition). Quatre mécanismes critiques
+supplémentaires vérifiés par retrait/restauration. Suite complète (21 fichiers PHP + 3 suites JS
+runtime) ré-exécutée : aucune régression.
+
 ## 0.22.0 — Partager un cheval
 
 Nouveau lot central : le partage commercial d'un cheval déjà renseigné dans GWS, réutilisable

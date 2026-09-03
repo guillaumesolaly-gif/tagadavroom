@@ -71,6 +71,62 @@
   padding: 12px 0;
 }
 
+/* --- Filtres (correctif de recette §3-5) : ligne compacte, contrôles natifs, aucun bouton
+   "Appliquer" — le filtrage est dynamique. Empilés en colonne sur mobile via flex-wrap, sans
+   media query dédiée (chaque contrôle prend toute la largeur disponible en dessous de son
+   flex-basis). --- */
+
+.gwseq-partager-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.gwseq-partager-filter {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.gwseq-partager-filter__select {
+  width: 100%;
+  min-height: 40px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.gwseq-partager-filter--annee {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 100%;
+}
+
+.gwseq-partager-filter__annee-input {
+  width: 80px;
+  min-height: 40px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.gwseq-partager-filter__annee-label {
+  font-size: 13px;
+  color: #646970;
+}
+
+.gwseq-partager-filters__reset {
+  background: none;
+  border: none;
+  color: #2271b1;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px 0;
+  min-height: 40px;
+  flex: 1 1 100%;
+  text-align: left;
+}
+
 /* --- Composition --- */
 
 .gwseq-partager-back {
@@ -121,40 +177,52 @@
 .gwseq-partager-fieldset {
   border: 1px solid #dcdcde;
   border-radius: 4px;
-  padding: 12px 16px 16px;
-  margin: 0 0 20px;
+  padding: 4px 12px;
+  margin: 0 0 16px;
 }
 
 .gwseq-partager-fieldset legend {
   font-weight: 600;
+  font-size: 13px;
+  color: #646970;
   padding: 0 4px;
 }
 
+/* Correctif de recette §6 : liste compacte ("Identité"/"Origines"/... doit se lire comme une
+   liste d'options cohérente, pas comme des blocs verticaux séparés) — aucun espace entre les
+   lignes (le `gap` a été retiré), une fine ligne de séparation en tient lieu ; zone tactile
+   toujours >= 40px de hauteur, alignement centré (jamais de padding superflu au-dessus/en dessous
+   d'un libellé tenant sur une seule ligne). */
 .gwseq-partager-items {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .gwseq-partager-checkbox {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
-  padding: 10px 4px;
-  min-height: 44px;
+  padding: 9px 4px;
+  min-height: 40px;
   cursor: pointer;
+  border-bottom: 1px solid #f0f0f1;
+  box-sizing: border-box;
+}
+
+.gwseq-partager-checkbox:last-child {
+  border-bottom: none;
 }
 
 .gwseq-partager-checkbox input[type="checkbox"] {
   width: 20px;
   height: 20px;
-  margin: 2px 0 0;
+  margin: 0;
   flex-shrink: 0;
 }
 
 .gwseq-partager-checkbox span {
-  font-size: 15px;
-  line-height: 1.4;
+  font-size: 14px;
+  line-height: 1.35;
   white-space: pre-line;
 }
 
@@ -209,5 +277,18 @@
 
   .gwseq-partager-action {
     flex: 1;
+  }
+
+  .gwseq-partager-filter {
+    flex: 0 1 180px;
+  }
+
+  .gwseq-partager-filter--annee {
+    flex: 0 0 auto;
+  }
+
+  .gwseq-partager-filters__reset {
+    flex: 0 0 auto;
+    margin-left: auto;
   }
 }

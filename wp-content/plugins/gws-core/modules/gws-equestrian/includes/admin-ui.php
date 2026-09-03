@@ -74,3 +74,30 @@ function gwseq_remove_quick_edit_row_action($actions, $post) {
   return $actions;
 }
 add_filter('post_row_actions', 'gwseq_remove_quick_edit_row_action', 10, 2);
+
+/**
+ * Vignette de remplacement neutre quand un contenu n'a pas (encore) de photo (lot Partager un
+ * cheval, correctif de recette §2) — une absence de photo est une situation parfaitement légitime,
+ * jamais une erreur : afficher l'icône `<img>` cassée native du navigateur (déclenchée par un
+ * `src=""` ou une URL introuvable) donnait à tort l'impression d'un problème. Réutilise le
+ * dashicon déjà choisi comme icône de menu de Cheval (`dashicons-pets`, voir
+ * includes/post-types.php) — jamais une nouvelle icône/SVG à maintenir séparément, et une
+ * cohérence visuelle immédiate avec le menu "Chevaux" déjà connu de l'utilisateur.
+ *
+ * Élément d'INTERFACE uniquement (§2 : "le fallback est uniquement un élément d'interface") :
+ * ne crée aucun média WordPress, ne définit aucune image à la une, ne modifie aucune fiche —
+ * un pur habillage visuel côté BO, invoqué à chaque fois qu'une URL de photo réelle est absente.
+ *
+ * Réutilisable ailleurs dans le BO (§2) : `gwseq-media-placeholder` (styles dans le fichier
+ * volontairement séparé assets/gws-media-placeholder.css) et le dashicon `dashicons-pets` sont le
+ * point de vérité visuel partagé. Un écran BO rendu côté PHP appelle directement cette fonction ;
+ * assets/cheval-share-admin.js (écran construit entièrement en JavaScript, sans rendu PHP
+ * intermédiaire pour ses résultats de recherche) reproduit le même balisage minimal (une div avec
+ * cette même classe et ce même dashicon) plutôt que de parser une chaîne HTML côté client — un
+ * futur écran BO ayant le même besoin peut appeler cette fonction (rendu PHP) ou reproduire le même
+ * balisage à l'identique (rendu JS), toujours avec la même classe CSS et la même icône.
+ */
+function gwseq_render_media_placeholder($extra_class = '') {
+  $classes = trim('gwseq-media-placeholder ' . $extra_class);
+  return '<div class="' . esc_attr($classes) . '" aria-hidden="true"><span class="dashicons dashicons-pets"></span></div>';
+}

@@ -1,5 +1,18 @@
 # Changelog — GWS Starter
 
+## 1.26.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Partager un cheval : correctifs et améliorations de recette (GWS Equestrian 0.23.0).** Bug
+  prioritaire corrigé (une information décochée, notamment le prix, pouvait encore apparaître dans
+  l'aperçu — cause racine : une réponse AJAX obsolète pouvant écraser l'aperçu à jour côté client,
+  corrigée par un jeton de requête, jamais un simple masquage visuel). Vignette de remplacement
+  neutre et réutilisable pour un cheval sans photo (jamais d'icône "image cassée"). Filtres métier
+  cumulables sur l'écran de sélection (sexe, statut commercial, plage d'année de naissance,
+  catégorie de cheval — réutilisant les référentiels déjà existants), avec réinitialisation et sans
+  bouton "Appliquer". Densité de l'écran de composition améliorée. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.23.0) pour le détail
+  complet.
+
 ## 1.25.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Partager un cheval (GWS Equestrian 0.22.0).** Nouvel écran métier mobile-first `Chevaux →

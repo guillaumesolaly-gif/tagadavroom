@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.22.0 — Partager un cheval (écran BO mobile-first, WhatsApp/SMS/Copier, Accroche commerciale, Open Graph de la fiche Cheval) développé et testé, en attente de recette runtime réelle avant le prochain lot (lien privé, PDF ou sélections). Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime complète de Partager un cheval — aucune autre évolution engagée avant celle-ci.
+## État actuel : GWS Equestrian 0.23.0 — Partager un cheval (0.22.0) corrigé et amélioré après première recette runtime : bug d'aperçu (information décochée apparaissant quand même) corrigé à la cause racine, vignette de remplacement neutre pour un cheval sans photo, filtres métier cumulables (sexe/statut/année/catégorie) sur l'écran de sélection, densité de l'écran de composition améliorée. En attente d'une nouvelle recette runtime sur le même cheval avant de tester les actions WhatsApp/SMS/Copier. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime — aucune autre évolution engagée avant celle-ci.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -666,6 +666,18 @@ l'Open Graph.
 
 **Aucune persistance** : ni CPT, ni table, ni historique, ni destinataire, ni statut d'envoi — un
 partage est entièrement éphémère.
+
+**Correctifs et améliorations de recette (0.23.0)** : le jeton de requête de
+`assets/cheval-share-admin.js` garantit qu'une réponse d'aperçu obsolète n'écrase jamais une
+réponse plus récente (cause racine du bug "information décochée apparaissant quand même").
+Vignette de remplacement neutre et réutilisable (`gwseq_render_media_placeholder()`,
+`includes/admin-ui.php` + `assets/gws-media-placeholder.css`) pour un cheval sans photo — jamais
+d'icône "image cassée". Filtres métier cumulables sur l'écran de sélection (Sexe/Statut
+commercial/Année de naissance/Catégorie, réutilisant les référentiels déjà existants), sans bouton
+"Appliquer" ; `gwseq_horse_share_search_chevaux()` en est la source de résultats unique,
+volontairement découplée pour être réutilisable telle quelle par un futur écran de sélection
+multiple (non développé dans ce lot). Voir `CHANGELOG.md` de ce dossier (0.23.0) pour le détail
+complet.
 
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et

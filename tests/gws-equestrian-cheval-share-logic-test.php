@@ -268,6 +268,47 @@ gws_test_assert(strpos($message_personnel, "Bonjour Pierre, je pensais à cette 
 $message_minimal = gwseq_build_horse_share_message(gwseq_get_horse_shareable_data(20), array('items' => array(), 'videos' => array(), 'fiche' => false));
 gws_test_assert(trim($message_minimal) === 'CHEVAL ANONYME', 'Message : aucune sélection -> seul le nom du cheval demeure (toujours inclus, §14)');
 
+// =====================================================================================
+// Correctif de recette — « le prix apparaît dans l'aperçu alors qu'il n'est pas sélectionné ».
+// La cause racine identifiée était CÔTÉ CLIENT (une réponse AJAX obsolète pouvait écraser
+// l'aperçu à jour, voir assets/cheval-share-admin.js et le test runtime dédié) : ces assertions
+// prouvent ici que gwseq_build_horse_share_message() lui-même, isolément, a TOUJOURS respecté la
+// sélection transmise — le "coché puis décoché" round-trip et les autres blocs sélectionnables,
+// pas seulement le prix.
+// =====================================================================================
+
+$message_prix_toggle_on = gwseq_build_horse_share_message($shareable_10, array('items' => array('prix'), 'videos' => array(), 'fiche' => false));
+gws_test_assert(strpos($message_prix_toggle_on, '25 000') !== false, 'Round-trip prix : sélectionné -> présent dans le message');
+$message_prix_toggle_off = gwseq_build_horse_share_message($shareable_10, array('items' => array(), 'videos' => array(), 'fiche' => false));
+gws_test_assert(strpos($message_prix_toggle_off, '25 000') === false, 'Round-trip prix : re-décoché juste après -> disparaît immédiatement du message, aucune trace résiduelle de la sélection précédente');
+
+// --- Même principe vérifié pour chaque AUTRE bloc sélectionnable (§1 : "vérifier qu'il n'existe
+// pas le même problème avec les autres informations sélectionnables") — jamais présent si non
+// sélectionné, jamais absent si sélectionné, indépendamment des autres blocs. ---
+foreach (array(
+  'identite' => 'Jument Selle Français',
+  'origines' => 'UNTOUCHABLE',
+  'taille_indice' => '1,68 m',
+  'accroche' => 'Jument respectueuse',
+) as $item_key => $expected_fragment) {
+  $with = gwseq_build_horse_share_message($shareable_10, array('items' => array($item_key), 'videos' => array(), 'fiche' => false));
+  gws_test_assert(strpos($with, $expected_fragment) !== false, "Round-trip \"$item_key\" : sélectionné -> présent dans le message");
+  $without = gwseq_build_horse_share_message($shareable_10, array('items' => array(), 'videos' => array(), 'fiche' => false));
+  gws_test_assert(strpos($without, $expected_fragment) === false, "Round-trip \"$item_key\" : non sélectionné -> absent du message, même s'il est disponible pour ce cheval");
+}
+
+// --- Vidéos : même principe (présentes seulement si leur index précis est sélectionné) ---
+$with_video_0 = gwseq_build_horse_share_message($shareable_10, array('items' => array(), 'videos' => array(0), 'fiche' => false));
+gws_test_assert(strpos($with_video_0, 'Allures à 3 ans') !== false, 'Round-trip vidéo : index sélectionné -> présent');
+$without_video_0 = gwseq_build_horse_share_message($shareable_10, array('items' => array(), 'videos' => array(), 'fiche' => false));
+gws_test_assert(strpos($without_video_0, 'Allures à 3 ans') === false, 'Round-trip vidéo : index non sélectionné -> absent, même s\'il est disponible pour ce cheval');
+
+// --- Fiche complète : même principe ---
+$with_fiche = gwseq_build_horse_share_message($shareable_10, array('items' => array(), 'videos' => array(), 'fiche' => true));
+gws_test_assert(strpos($with_fiche, $shareable_10['fiche_url']) !== false, 'Round-trip fiche complète : sélectionnée -> lien présent');
+$without_fiche = gwseq_build_horse_share_message($shareable_10, array('items' => array(), 'videos' => array(), 'fiche' => false));
+gws_test_assert(strpos($without_fiche, $shareable_10['fiche_url']) === false, 'Round-trip fiche complète : non sélectionnée -> lien absent');
+
 $message_no_selection_but_content = gwseq_build_horse_share_message($shareable_10, array('items' => array('inexistant'), 'videos' => array(999), 'fiche' => true));
 gws_test_assert(strpos($message_no_selection_but_content, 'Fiche complète') !== false, 'Message : une clé d’item ou un index de vidéo invalide est simplement ignoré, jamais une erreur');
 

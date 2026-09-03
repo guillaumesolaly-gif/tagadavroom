@@ -69,18 +69,37 @@
     return node;
   }
 
+  /**
+   * Photo réelle si elle existe, sinon une vignette de remplacement neutre (correctif de recette
+   * §2) — jamais un `<img>` avec un `src` vide ou introuvable (icône "image cassée" du navigateur,
+   * trompeuse pour une absence de photo parfaitement légitime). Même classe CSS
+   * (`gwseq-media-placeholder`, assets/gws-media-placeholder.css) et même dashicon
+   * (`dashicons-pets`, déjà l'icône de menu de "Chevaux") que gwseq_render_media_placeholder()
+   * (includes/admin-ui.php) — reproduit ici en DOM plutôt qu'en chaîne HTML analysée côté client,
+   * mais visuellement identique partout où l'un ou l'autre est utilisé dans le BO. Élément
+   * purement visuel : ne crée jamais de média, ne modifie jamais la fiche cheval.
+   */
+  function renderHorsePhoto(url, sizeClassName) {
+    if (url) {
+      var img = document.createElement('img');
+      img.className = sizeClassName;
+      img.alt = '';
+      img.src = url;
+      return img;
+    }
+    var placeholder = el('div', sizeClassName + ' gwseq-media-placeholder');
+    placeholder.setAttribute('aria-hidden', 'true');
+    placeholder.appendChild(el('span', 'dashicons dashicons-pets'));
+    return placeholder;
+  }
+
   /* -------------------------------------------------------------------------------------------
    * Écran de recherche.
    * ----------------------------------------------------------------------------------------- */
 
   function renderResultRow(row, onShare) {
     var li = el('li', 'gwseq-partager-result');
-
-    var photo = document.createElement('img');
-    photo.className = 'gwseq-partager-result__photo';
-    photo.alt = '';
-    photo.src = row.photo_url || '';
-    li.appendChild(photo);
+    li.appendChild(renderHorsePhoto(row.photo_url, 'gwseq-partager-result__photo'));
 
     var info = el('div', 'gwseq-partager-result__info');
     info.appendChild(el('strong', 'gwseq-partager-result__nom', row.nom));
@@ -93,6 +112,36 @@
     li.appendChild(button);
 
     return li;
+  }
+
+  /**
+   * Filtres métier (§3-5 du correctif de recette) : sélecteurs natifs (Sexe/Statut commercial/
+   * Catégorie), déjà compacts et tactiles sans code supplémentaire, plus deux petits champs
+   * numériques pour la plage d'année de naissance. Filtrage DYNAMIQUE (aucun bouton "Appliquer",
+   * §5 — l'implémentation la plus simple et robuste) : chaque changement redéclenche la même
+   * recherche debouncée que le texte libre, les deux étant nativement cumulables côté serveur.
+   */
+  function buildSelect(idSuffix, labelText, allLabel, options) {
+    var wrapperEl = el('div', 'gwseq-partager-filter');
+    var labelEl = el('label', 'screen-reader-text', labelText);
+    labelEl.setAttribute('for', 'gwseq-partager-filter-' + idSuffix);
+    wrapperEl.appendChild(labelEl);
+
+    var select = document.createElement('select');
+    select.id = 'gwseq-partager-filter-' + idSuffix;
+    select.className = 'gwseq-partager-filter__select';
+    var allOption = document.createElement('option');
+    allOption.value = '';
+    allOption.textContent = allLabel;
+    select.appendChild(allOption);
+    Object.keys(options || {}).forEach(function (value) {
+      var option = document.createElement('option');
+      option.value = value;
+      option.textContent = options[value];
+      select.appendChild(option);
+    });
+    wrapperEl.appendChild(select);
+    return { wrapper: wrapperEl, select: select };
   }
 
   function initSearchScreen(root, onShare) {
@@ -109,6 +158,44 @@
     input.className = 'gwseq-partager-search__input';
     input.placeholder = t('searchPlaceholder', 'Rechercher un cheval...');
     wrapper.appendChild(input);
+
+    // --- Filtres ---
+    var filtersConfig = config.filters || {};
+    var filtersRow = el('div', 'gwseq-partager-filters');
+
+    var sexeFilter = buildSelect('sexe', t('allSexe', 'Sexe'), t('allSexe', 'Tous'), filtersConfig.sexe);
+    filtersRow.appendChild(sexeFilter.wrapper);
+
+    var statutFilter = buildSelect('statut', t('allStatut', 'Statut'), t('allStatut', 'Tous'), filtersConfig.statut);
+    filtersRow.appendChild(statutFilter.wrapper);
+
+    var categorieFilter = buildSelect('categorie', t('allCategories', 'Catégorie'), t('allCategories', 'Toutes les catégories'), filtersConfig.categories);
+    filtersRow.appendChild(categorieFilter.wrapper);
+
+    var yearWrapper = el('div', 'gwseq-partager-filter gwseq-partager-filter--annee');
+    yearWrapper.appendChild(el('span', 'gwseq-partager-filter__annee-label', t('yearFrom', 'De')));
+    var yearMinInput = document.createElement('input');
+    yearMinInput.type = 'number';
+    yearMinInput.className = 'gwseq-partager-filter__annee-input';
+    yearMinInput.setAttribute('aria-label', t('yearFrom', 'De'));
+    if (filtersConfig.anneeMin) yearMinInput.min = filtersConfig.anneeMin;
+    if (filtersConfig.anneeMax) yearMinInput.max = filtersConfig.anneeMax;
+    yearWrapper.appendChild(yearMinInput);
+    yearWrapper.appendChild(el('span', 'gwseq-partager-filter__annee-label', t('yearTo', 'à')));
+    var yearMaxInput = document.createElement('input');
+    yearMaxInput.type = 'number';
+    yearMaxInput.className = 'gwseq-partager-filter__annee-input';
+    yearMaxInput.setAttribute('aria-label', t('yearTo', 'à'));
+    if (filtersConfig.anneeMin) yearMaxInput.min = filtersConfig.anneeMin;
+    if (filtersConfig.anneeMax) yearMaxInput.max = filtersConfig.anneeMax;
+    yearWrapper.appendChild(yearMaxInput);
+    filtersRow.appendChild(yearWrapper);
+
+    var resetButton = el('button', 'gwseq-partager-filters__reset', t('resetFilters', 'Réinitialiser les filtres'));
+    resetButton.type = 'button';
+    filtersRow.appendChild(resetButton);
+
+    wrapper.appendChild(filtersRow);
 
     var resultsList = el('ul', 'gwseq-partager-results');
     resultsList.setAttribute('aria-live', 'polite');
@@ -127,13 +214,42 @@
 
     renderResults(config.recents || []);
 
-    var search = debounce(function () {
-      ajaxPost('gwseq_partager_search_cheval', { s: input.value }).then(function (json) {
+    // Même correctif de séquencement que l'aperçu du message (voir initComposeScreen()) : une
+    // réponse de recherche plus ANCIENNE ne doit jamais écraser une réponse plus RÉCENTE si le
+    // réseau les fait arriver dans le désordre.
+    var searchRequestId = 0;
+
+    function runSearch() {
+      var requestId = ++searchRequestId;
+      ajaxPost('gwseq_partager_search_cheval', {
+        s: input.value,
+        filters: {
+          sexe: sexeFilter.select.value,
+          statut: statutFilter.select.value,
+          categorie: categorieFilter.select.value,
+          annee_min: yearMinInput.value,
+          annee_max: yearMaxInput.value,
+        },
+      }).then(function (json) {
+        if (requestId !== searchRequestId) return;
         if (json && json.success) renderResults(json.data.resultats || []);
       });
-    }, SEARCH_DEBOUNCE_MS);
+    }
+
+    var search = debounce(runSearch, SEARCH_DEBOUNCE_MS);
 
     input.addEventListener('input', search);
+    filtersRow.addEventListener('change', search);
+
+    resetButton.addEventListener('click', function () {
+      input.value = '';
+      sexeFilter.select.value = '';
+      statutFilter.select.value = '';
+      categorieFilter.select.value = '';
+      yearMinInput.value = '';
+      yearMaxInput.value = '';
+      runSearch();
+    });
   }
 
   /* -------------------------------------------------------------------------------------------
@@ -171,11 +287,7 @@
     wrapper.appendChild(backButton);
 
     var horseHeader = el('div', 'gwseq-partager-horse');
-    var photo = document.createElement('img');
-    photo.className = 'gwseq-partager-horse__photo';
-    photo.alt = '';
-    photo.src = shareable.photo_url || '';
-    horseHeader.appendChild(photo);
+    horseHeader.appendChild(renderHorsePhoto(shareable.photo_url, 'gwseq-partager-horse__photo'));
     horseHeader.appendChild(el('strong', 'gwseq-partager-horse__nom', shareable.nom_affiche || shareable.nom));
     wrapper.appendChild(horseHeader);
 
@@ -279,9 +391,22 @@
 
     var currentMessage = '';
 
+    // CORRECTIF (recette : le prix apparaissait dans l'aperçu alors que sa case était décochée) —
+    // CAUSE RACINE : chaque frappe/coche déclenchait un nouvel appel AJAX indépendant, sans jamais
+    // annuler ni ignorer les précédents. Si une réponse plus ANCIENNE arrivait après une réponse
+    // plus RÉCENTE (latence réseau variable, tout à fait réaliste hors environnement de test), elle
+    // écrasait silencieusement l'aperçu à jour avec un texte reflétant une sélection déjà dépassée —
+    // jamais une erreur de construction du message côté serveur (gwseq_build_horse_share_message()
+    // reflète toujours fidèlement la sélection qui lui est transmise), un problème de SÉQUENCEMENT
+    // des réponses. Un jeton de requête strictement croissant garantit qu'une réponse n'est jamais
+    // appliquée si une requête plus récente a depuis été émise — jamais un simple masquage visuel.
+    var previewRequestId = 0;
+
     function refreshPreview() {
+      var requestId = ++previewRequestId;
       previewText.textContent = t('loading', 'Chargement…');
       ajaxPost('gwseq_partager_build_message', { cheval_id: chevalId, selection: currentSelection(wrapper) }).then(function (json) {
+        if (requestId !== previewRequestId) return; // réponse obsolète, une requête plus récente est déjà en cours
         if (json && json.success) {
           currentMessage = json.data.message || '';
           previewText.textContent = currentMessage;

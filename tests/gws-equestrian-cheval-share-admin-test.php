@@ -26,6 +26,7 @@ function sanitize_textarea_field($value) {
   return trim(strip_tags($value));
 }
 function sanitize_key($value) { return preg_replace('/[^a-z0-9_\-]/', '', strtolower((string) $value)); }
+function sanitize_title($value) { return trim(preg_replace('/[^a-z0-9_\-]+/', '-', strtolower((string) $value)), '-'); }
 function esc_url_raw($value) { $value = trim((string) $value); return $value === '' ? '' : $value; }
 function esc_url($value) { return $value; }
 function absint($value) { return abs((int) $value); }
@@ -44,6 +45,19 @@ function wp_json_encode($data, $options = 0, $depth = 512) { return json_encode(
 function remove_accents($text) { return strtr((string) $text, array('é' => 'e', 'è' => 'e', 'à' => 'a')); }
 function wp_parse_url($url, $component = -1) { return parse_url($url, $component); }
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
+
+const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
+$GLOBALS['__gwseq_test_all_terms'] = array();
+function gws_test_make_term($slug, $name) {
+  $GLOBALS['__gwseq_test_all_terms'][] = (object) array('slug' => $slug, 'name' => $name, 'taxonomy' => GWSEQ_TAX_CATEGORIE_CHEVAL);
+}
+function get_terms($args = array()) { return $GLOBALS['__gwseq_test_all_terms']; }
+function term_exists($term, $taxonomy = '') {
+  foreach ($GLOBALS['__gwseq_test_all_terms'] as $t) {
+    if ($t->slug === $term && ($taxonomy === '' || $t->taxonomy === $taxonomy)) return array('term_id' => $t->slug, 'term_taxonomy_id' => $t->slug);
+  }
+  return null;
+}
 function wp_die($message = '') { throw new Gws_Test_Wp_Die_Exception(is_string($message) ? $message : ''); }
 class Gws_Test_Wp_Die_Exception extends Exception {}
 
@@ -143,6 +157,43 @@ function wp_create_nonce($action) { return 'nonce-' . $action; }
 // --- WP_Query minimal, fidèle au strict nécessaire de gwseq_horse_share_query_chevaux() :
 // post_type/post_status('any' = tout sauf corbeille/auto-draft)/author/s (recherche substring sur
 // le titre)/posts_per_page/fields('ids') ---
+// --- meta_query minimal, avec support "compare"/"type" (correctif de recette §3-4 : plage d'année
+// de naissance) — même principe que gws-equestrian-pedigree-logic-test.php, étendu ici avec
+// >= / <= / BETWEEN, jamais interprété comme du SQL réel. ---
+function gws_test_meta_query_matches($post_id, $clause) {
+  if (isset($clause['key'])) {
+    $value = get_post_meta($post_id, $clause['key'], true);
+    if ($value === '') return false;
+    $numeric = ($clause['type'] ?? '') === 'NUMERIC';
+    $compare = $clause['compare'] ?? '=';
+    $v = $numeric ? (float) $value : $value;
+    if ($compare === 'BETWEEN') return $v >= $clause['value'][0] && $v <= $clause['value'][1];
+    if ($compare === '>=') return $v >= $clause['value'];
+    if ($compare === '<=') return $v <= $clause['value'];
+    return (string) $value === (string) $clause['value'];
+  }
+  $relation = strtoupper($clause['relation'] ?? 'AND');
+  $subclauses = array_filter($clause, function ($k) { return is_int($k); }, ARRAY_FILTER_USE_KEY);
+  foreach ($subclauses as $sub) {
+    $match = gws_test_meta_query_matches($post_id, $sub);
+    if ($relation === 'OR' && $match) return true;
+    if ($relation === 'AND' && !$match) return false;
+  }
+  return $relation === 'AND';
+}
+
+// --- Catégorie de cheval : association post <-> terme, minimale mais suffisante pour tax_query ---
+$GLOBALS['__gwseq_test_post_terms'] = array();
+function gws_test_assign_term($post_id, $slug) { $GLOBALS['__gwseq_test_post_terms'][$post_id][] = $slug; }
+function gws_test_tax_query_matches($post_id, $tax_query) {
+  $post_terms = $GLOBALS['__gwseq_test_post_terms'][$post_id] ?? array();
+  foreach ($tax_query as $clause) {
+    if (!is_array($clause) || !isset($clause['terms'])) continue;
+    if (!array_intersect((array) $clause['terms'], $post_terms)) return false;
+  }
+  return true;
+}
+
 class WP_Query {
   public $posts = array();
   public function __construct($args = array()) {
@@ -151,6 +202,8 @@ class WP_Query {
     $author = $args['author'] ?? null;
     $search = isset($args['s']) ? mb_strtolower(trim((string) $args['s'])) : '';
     $limit = $args['posts_per_page'] ?? -1;
+    $meta_query = $args['meta_query'] ?? null;
+    $tax_query = $args['tax_query'] ?? null;
 
     $results = array();
     foreach ($GLOBALS['__gwseq_test_posts'] as $id => $post) {
@@ -164,6 +217,8 @@ class WP_Query {
       }
       if ($author !== null && (int) $post['post_author'] !== (int) $author) continue;
       if ($search !== '' && mb_strpos(mb_strtolower($post['post_title']), $search) === false) continue;
+      if ($meta_query && !gws_test_meta_query_matches($id, $meta_query)) continue;
+      if ($tax_query && !gws_test_tax_query_matches($id, $tax_query)) continue;
       $results[] = $id;
     }
     if ($limit > 0) $results = array_slice($results, 0, $limit);
@@ -173,8 +228,12 @@ class WP_Query {
 
 define('ABSPATH', __DIR__ . '/');
 const GWSEQ_CPT_CHEVAL = 'gwseq_cheval';
+const GWSEQ_CPT_PRESTATION = 'gwseq_prestation';
+const GWSEQ_CPT_GROUPE = 'gwseq_groupe';
+const GWSEQ_CPT_MEMBRE = 'gwseq_membre';
 define('GWSEQ_MODULE_URL', 'https://example.test/wp-content/plugins/gws-core/modules/gws-equestrian/');
 define('GWSEQ_MODULE_VERSION', 'test');
+function remove_meta_box($id, $post_type, $context) {}
 
 $repo_root = dirname(__DIR__);
 $module_dir = $repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/';
@@ -189,6 +248,7 @@ require $module_dir . 'includes/pedigree-resolver.php';
 require $module_dir . 'includes/cheval-pedigree.php';
 require $module_dir . 'includes/cheval-share.php';
 require $module_dir . 'includes/cheval-share-admin.php';
+require $module_dir . 'includes/admin-ui.php';
 
 function gws_test_make_horse($id, $title, $author = 1, $overrides = array()) {
   gws_test_make_post($id, GWSEQ_CPT_CHEVAL, $title, $overrides['post_status'] ?? 'publish', $author);
@@ -239,6 +299,19 @@ ob_start();
 call_user_func($meta_box['callback'], $auto_draft);
 $meta_box_auto_draft_html = ob_get_clean();
 gws_test_assert(strpos($meta_box_auto_draft_html, 'cheval_id=') === false, 'Boîte latérale : pas de lien de partage tant que la fiche n’a jamais été enregistrée (auto-draft)');
+
+// =====================================================================================
+// Vignette de remplacement neutre (correctif de recette §2) — élément d'interface réutilisable,
+// jamais un média/une image à la une fabriqués.
+// =====================================================================================
+
+$placeholder_html = gwseq_render_media_placeholder();
+gws_test_assert(strpos($placeholder_html, 'gwseq-media-placeholder') !== false, 'Vignette : classe CSS partagée présente (réutilisable ailleurs dans le BO)');
+gws_test_assert(strpos($placeholder_html, 'dashicons-pets') !== false, 'Vignette : réutilise le dashicon déjà choisi comme icône de menu "Chevaux", jamais une nouvelle icône');
+gws_test_assert(strpos($placeholder_html, 'aria-hidden="true"') !== false, 'Vignette : élément purement décoratif, masqué aux technologies d’assistance');
+
+$placeholder_html_extra = gwseq_render_media_placeholder('gwseq-partager-result__photo');
+gws_test_assert(strpos($placeholder_html_extra, 'gwseq-media-placeholder') !== false && strpos($placeholder_html_extra, 'gwseq-partager-result__photo') !== false, 'Vignette : classe supplémentaire de dimensionnement combinable avec la classe partagée');
 
 // =====================================================================================
 // AJAX — sécurité générale (nonce, capacité edit_posts)
@@ -299,6 +372,97 @@ $ids_all = array_column($json['data']['resultats'], 'id');
 gws_test_assert(in_array(200, $ids_all, true) && in_array(202, $ids_all, true), 'AJAX recherche : un utilisateur avec edit_others_posts voit bien les chevaux de tous les auteurs');
 gws_test_reset_security();
 $_POST = array();
+
+// =====================================================================================
+// Filtres métier (correctif de recette §3-4) : sexe, statut commercial, plage d'année de
+// naissance, catégorie de cheval — cumulatifs entre eux ET avec la recherche texte.
+// =====================================================================================
+
+gws_test_assert(
+  gwseq_sanitize_horse_share_filters(array('sexe' => 'female'))['sexe'] === 'female',
+  'Filtres : sexe valide conservé (valeur technique du référentiel existant)'
+);
+gws_test_assert(
+  gwseq_sanitize_horse_share_filters(array('sexe' => 'licorne'))['sexe'] === '',
+  'Filtres : une valeur de sexe hors référentiel est ignorée, jamais propagée à la requête'
+);
+gws_test_assert(
+  gwseq_sanitize_horse_share_filters(array('statut' => 'for_sale'))['statut'] === 'for_sale',
+  'Filtres : statut commercial valide conservé (valeur interne exacte)'
+);
+gws_test_assert(
+  gwseq_sanitize_horse_share_filters(array('statut' => 'invalide'))['statut'] === '',
+  'Filtres : un statut hors référentiel est ignoré'
+);
+$filters_annee = gwseq_sanitize_horse_share_filters(array('annee_min' => '2021', 'annee_max' => '2018'));
+gws_test_assert($filters_annee['annee_min'] === 2018 && $filters_annee['annee_max'] === 2021, 'Filtres : des bornes d’année inversées sont simplement échangées, jamais une erreur');
+gws_test_assert(
+  gwseq_sanitize_horse_share_filters(array('annee_min' => '1500'))['annee_min'] === 0,
+  'Filtres : une année hors des bornes déjà établies pour Cheval (GWSEQ_CHEVAL_ANNEE_MIN) est ignorée, aucune seconde limite inventée'
+);
+gws_test_make_term('chevaux_de_sport', 'Chevaux de sport');
+gws_test_assert(
+  gwseq_sanitize_horse_share_filters(array('categorie' => 'chevaux_de_sport'))['categorie'] === 'chevaux_de_sport',
+  'Filtres : catégorie réellement configurée sur le site conservée'
+);
+gws_test_assert(
+  gwseq_sanitize_horse_share_filters(array('categorie' => 'inexistante'))['categorie'] === '',
+  'Filtres : une catégorie qui n’existe pas est ignorée, jamais créée automatiquement (§3)'
+);
+
+$args_annee = gwseq_horse_share_filters_to_query_args(array('annee_min' => 2018, 'annee_max' => 2021, 'sexe' => '', 'statut' => '', 'categorie' => ''));
+gws_test_assert($args_annee['meta_query'][0]['compare'] === 'BETWEEN', 'Filtres : plage d’année complète -> comparaison BETWEEN');
+$args_categorie = gwseq_horse_share_filters_to_query_args(array('categorie' => 'chevaux_de_sport', 'sexe' => '', 'statut' => '', 'annee_min' => 0, 'annee_max' => 0));
+gws_test_assert($args_categorie['tax_query'][0]['taxonomy'] === GWSEQ_TAX_CATEGORIE_CHEVAL && $args_categorie['tax_query'][0]['terms'] === 'chevaux_de_sport', 'Filtres : catégorie transformée en tax_query sur la taxonomie déjà existante');
+$args_vides = gwseq_horse_share_filters_to_query_args(array());
+gws_test_assert(!isset($args_vides['meta_query']) && !isset($args_vides['tax_query']), 'Filtres : aucun filtre actif -> aucune contrainte meta_query/tax_query ajoutée à la requête');
+
+// --- Cumul réel via l'AJAX de recherche : sexe + statut + plage d'année + catégorie + texte ---
+gws_test_make_horse(210, 'Jument Filtrée', 1, array('identity' => array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2019)));
+$commercial_210 = gwseq_sanitize_cheval_commercial_input(array('_gwseq_statut_commercial' => 'for_sale'));
+update_post_meta(210, '_gwseq_statut_commercial', $commercial_210['statut_commercial']);
+gws_test_assign_term(210, 'chevaux_de_sport');
+
+gws_test_make_horse(211, 'Jument Hors Categorie', 1, array('identity' => array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2019)));
+update_post_meta(211, '_gwseq_statut_commercial', 'for_sale');
+// Pas de catégorie assignée à 211 -> doit être exclue par le filtre catégorie.
+
+gws_test_make_horse(212, 'Étalon Filtré', 1, array('identity' => array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2019)));
+update_post_meta(212, '_gwseq_statut_commercial', 'for_sale');
+gws_test_assign_term(212, 'chevaux_de_sport');
+// Sexe différent -> doit être exclu par le filtre sexe.
+
+$_POST = array('nonce' => 'valid', 's' => 'filtr', 'filters' => array('sexe' => 'female', 'statut' => 'for_sale', 'annee_min' => '2018', 'annee_max' => '2021', 'categorie' => 'chevaux_de_sport'));
+$json = null;
+try { gwseq_ajax_partager_search_cheval(); } catch (Gws_Test_Json_Exit $e) { $json = $GLOBALS['__gwseq_test_json_response']; }
+$ids_filtres = array_column($json['data']['resultats'], 'id');
+gws_test_assert($ids_filtres === array(210), 'Filtres cumulés + recherche texte : seul le cheval correspondant à TOUS les critères à la fois est retourné (§4)');
+$_POST = array();
+
+// --- Réinitialisation : filtres vides -> comportement identique à une recherche sans filtre ---
+$_POST = array('nonce' => 'valid', 's' => '', 'filters' => array());
+$json = null;
+try { gwseq_ajax_partager_search_cheval(); } catch (Gws_Test_Json_Exit $e) { $json = $GLOBALS['__gwseq_test_json_response']; }
+$ids_sans_filtre = array_column($json['data']['resultats'], 'id');
+gws_test_assert(in_array(210, $ids_sans_filtre, true) && in_array(211, $ids_sans_filtre, true) && in_array(212, $ids_sans_filtre, true), 'Réinitialisation des filtres : tous les chevaux accessibles réapparaissent');
+$_POST = array();
+
+// --- Non-régression de la restriction de permission avec des filtres actifs ---
+$GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
+$GLOBALS['__gwseq_test_security']['current_user_id'] = 2;
+$_POST = array('nonce' => 'valid', 's' => '', 'filters' => array('sexe' => 'female'));
+$json = null;
+try { gwseq_ajax_partager_search_cheval(); } catch (Gws_Test_Json_Exit $e) { $json = $GLOBALS['__gwseq_test_json_response']; }
+$ids_filtres_scoped = array_column($json['data']['resultats'], 'id');
+gws_test_assert(!in_array(210, $ids_filtres_scoped, true) && !in_array(211, $ids_filtres_scoped, true), 'Filtres : la restriction de permission (§21) reste appliquée même avec des filtres actifs — aucune fuite de chevaux inaccessibles');
+gws_test_reset_security();
+$_POST = array();
+
+// --- Les recherches/filtres ne modifient jamais aucune donnée Cheval ---
+$identity_210_before = gwseq_get_cheval_identity(210);
+$commercial_210_before = gwseq_get_cheval_commercial(210);
+gwseq_horse_share_search_chevaux('filtr', array('sexe' => 'female', 'statut' => 'for_sale', 'annee_min' => 2018, 'annee_max' => 2021, 'categorie' => 'chevaux_de_sport'));
+gws_test_assert($identity_210_before === gwseq_get_cheval_identity(210) && $commercial_210_before === gwseq_get_cheval_commercial(210), 'Filtres/recherche : aucune donnée Cheval modifiée par une simple recherche ou un filtrage');
 
 // =====================================================================================
 // AJAX données complètes (§27) : uniquement une fois choisi, capacité edit_post SPÉCIFIQUE
