@@ -184,13 +184,21 @@ function gwseq_horse_share_prix_label($commercial) {
 }
 
 /**
- * Libellé d'une vidéo (§11 de la demande) : jamais un titre inventé. "🎥 {titre}" si un titre a été
- * saisi par le professionnel, sinon "🎥 Vidéo" — jamais "Parcours"/"Modèle"/"Allures"/"Travail" par
+ * Libellé d'une vidéo (§11 de la demande) : jamais un titre inventé — "{titre}" si un titre a été
+ * saisi par le professionnel, sinon "Vidéo" — jamais "Parcours"/"Modèle"/"Allures"/"Travail" par
  * défaut, qui supposerait le contenu réel de la vidéo.
+ *
+ * Correctif de recette (test réel WhatsApp) : le pictogramme 🎥 qui préfixait ce libellé n'était
+ * pas transporté de façon fiable vers WhatsApp sur un appareil réel (transformé en caractère de
+ * remplacement invalide "�") — retiré purement et simplement pour cette V1, sans le remplacer par
+ * un autre emoji (le titre de la vidéo suffit à lui seul à identifier la ligne). Cette fonction
+ * étant l'unique source du libellé pour l'aperçu BO ET les trois canaux externes (WhatsApp/SMS/
+ * Copier), ce retrait s'applique uniformément partout sans aucun autre changement de code : l'aperçu
+ * représente ainsi fidèlement le message réellement envoyé (§2 de ce correctif).
  */
 function gwseq_horse_share_video_label($video) {
   $titre = trim((string) ($video['titre'] ?? ''));
-  return '🎥 ' . ($titre !== '' ? $titre : __('Vidéo', 'gws-core'));
+  return $titre !== '' ? $titre : __('Vidéo', 'gws-core');
 }
 
 /**

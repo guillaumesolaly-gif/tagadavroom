@@ -5,6 +5,54 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.25.0 — Partager un cheval : correctifs du transport vers les canaux (premier test réel WhatsApp)
+
+Retour du premier test réel du bouton WhatsApp de `Chevaux → Partager` (0.24.0) : le message était
+correctement structuré dans l'aperçu BO, mais perdait ses sauts de ligne et son pictogramme vidéo
+🎥 (transformé en caractère de remplacement invalide « � ») une fois reçu dans WhatsApp. Ce lot
+corrige uniquement le TRANSPORT vers les canaux externes, sans toucher au moteur de composition
+(`gwseq_build_horse_share_message()`), déjà testé et correct.
+
+**Cause exacte de la perte des sauts de ligne.** Le pipeline complet a été vérifié de bout en bout
+(message PHP → réponse AJAX/JS → `encodeURIComponent()` → URL WhatsApp) : ni la composition, ni
+l'encodage lui-même n'étaient en cause — `encodeURIComponent()` transforme déjà correctement `\n`
+en `%0A` et tout caractère UTF-8 (accents/`×`/`•`/emoji) en séquences UTF-8 percent-encodées
+valides, vérifié par un test de bout en bout reconstituant le pipeline complet. La divergence se
+situe au dernier maillon : le lien court `https://wa.me/?text=...`, dont le transport du texte
+pré-rempli s'est montré, sur un appareil réel, moins fiable que le point d'entrée canonique
+documenté par WhatsApp lui-même, `https://api.whatsapp.com/send?text=...` (celui que `wa.me`
+résout in fine). Le bouton WhatsApp utilise désormais directement ce point d'entrée canonique
+(`assets/cheval-share-admin.js`, `buildWhatsappUrl()`) — aucun autre changement de code sur ce
+point.
+
+**Pictogramme vidéo 🎥 retiré (§2).** Non fiable à transporter vers un canal externe sur un appareil
+réel (transformé en caractère de remplacement invalide), et non essentiel : le titre de la vidéo
+suffit seul à l'identifier. Retiré à la source unique du libellé (`gwseq_horse_share_video_label()`,
+`includes/cheval-share.php`) — l'aperçu BO ET les trois canaux externes en bénéficient uniformément
+sans code supplémentaire, puisqu'ils consomment tous ce même libellé. Non remplacé par un autre
+emoji.
+
+**Bug découvert et corrigé en vérifiant explicitement « Ajouter la fiche complète » (§3).** Un
+booléen JavaScript `false` transite par `FormData`/`$_POST` comme la CHAÎNE littérale `"false"`,
+jamais comme un vrai booléen — `!empty('false')` (l'ancienne sanitation) vaut VRAI (chaîne non
+vide), ce qui aurait silencieusement ignoré la case décochée et inclus quand même le lien de fiche.
+Corrigé par `filter_var($raw['fiche'] ?? '', FILTER_VALIDATE_BOOLEAN)`
+(`gwseq_sanitize_horse_share_selection()`, `includes/cheval-share-admin.php`), qui interprète
+correctement `"false"`/`"0"`/`""` comme faux et `"true"`/`"1"` comme vrai. Coché/décoché vérifié
+explicitement sur les trois canaux (WhatsApp/SMS/Copier), pas seulement l'aperçu.
+
+**Adaptateur `sms:` audité et corrigé.** `sms:` n'est pas un standard unique entre plateformes :
+sans numéro de destinataire, iOS exige `sms:&body=...` (séparateur `&`) alors qu'Android et la
+plupart des autres navigateurs attendent `sms:?body=...` (séparateur `?`) — utiliser le mauvais
+séparateur sur iOS ouvre l'application Messages SANS pré-remplir le texte, silencieusement, sans
+erreur visible. Détection minimale par `navigator.userAgent` (`buildSmsUrl()`) ; même encodage que
+WhatsApp (`encodeURIComponent()`) des deux côtés — seul le séparateur diffère d'une plateforme à
+l'autre, jamais le contenu ni son encodage.
+
+**Copier** : confirmé qu'il continue de copier le texte brut avec ses vrais retours à la ligne,
+sans jamais d'encodage URL dans le presse-papiers (aucun changement de code nécessaire — déjà
+correct).
+
 ## 0.24.0 — Partager un cheval : correctifs de recette avant test des canaux
 
 Retour de la deuxième recette runtime de `Chevaux → Partager` (0.23.0) : placeholder, recherche,

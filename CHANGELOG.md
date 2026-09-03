@@ -1,5 +1,18 @@
 # Changelog — GWS Starter
 
+## 1.28.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Partager un cheval : correctifs du transport vers les canaux (GWS Equestrian 0.25.0).** Premier
+  test réel WhatsApp : les sauts de ligne disparaissaient et le pictogramme vidéo 🎥 devenait un
+  caractère invalide « � ». Cause exacte : ni la composition ni l'encodage (`encodeURIComponent()`,
+  déjà correct) — le lien court `wa.me`, moins fiable sur appareil réel, remplacé par le point
+  d'entrée canonique `api.whatsapp.com/send`. Pictogramme vidéo retiré à la source (aperçu ET
+  canaux externes uniformément). Bug découvert en vérifiant "Ajouter la fiche complète" : un
+  booléen JS `false` transitait comme la chaîne `"false"`, interprétée à tort comme vraie — corrigé.
+  Adaptateur `sms:` audité et corrigé pour la différence de séparateur iOS/Android. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.25.0) pour le détail
+  complet.
+
 ## 1.27.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Partager un cheval : correctifs de recette avant test des canaux (GWS Equestrian 0.24.0).**

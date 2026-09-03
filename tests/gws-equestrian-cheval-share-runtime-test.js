@@ -138,7 +138,7 @@ const FIXTURE_SHAREABLE = {
     prix: { label: 'À vendre — 25 000 €', default_checked: false },
   },
   videos: [
-    { index: 0, label: '🎥 Allures à 3 ans', url: 'https://example.test/v1', default_checked: true },
+    { index: 0, label: 'Allures à 3 ans', url: 'https://example.test/v1', default_checked: true },
   ],
   fiche_url: 'https://example.test/chevaux/cheval-10/',
   fiche_default_checked: true,
@@ -155,30 +155,64 @@ const FIXTURE_SHAREABLE_NO_PHOTO = {
   fiche_default_checked: false,
 };
 
+// Fixture dédiée au correctif de recette WhatsApp (retours à la ligne/emoji perdus dans le
+// transport réel) : rassemble volontairement TOUS les caractères signalés par la demande dans un
+// seul cheval — apostrophe, accents, "×", "•", et une URL vidéo réaliste (YouTube) — afin de vérifier
+// d'un coup que le pipeline complet (message -> encodage URL -> WhatsApp/SMS) préserve chacun d'eux.
+const FIXTURE_SHAREABLE_ENCODING = {
+  id: 99,
+  nom: "Nacelle d'Elle",
+  nom_affiche: "NACELLE D'ELLE",
+  photo_url: 'https://example.test/photo-99.jpg',
+  items: {
+    identite: { label: '1,68 m • ISO 135', default_checked: true },
+    origines: { label: 'Par UNTOUCHABLE × ROSIRE', default_checked: true },
+  },
+  videos: [
+    { index: 0, label: 'GP Amat 2 110 Hôpital le Grand', url: 'https://www.youtube.com/watch?v=abc123XYZ', default_checked: true },
+  ],
+  fiche_url: 'https://example.test/chevaux/cheval-99/',
+  fiche_default_checked: true,
+};
+
+function pickFixture(chevalId) {
+  if (chevalId === String(FIXTURE_SHAREABLE_NO_PHOTO.id)) return FIXTURE_SHAREABLE_NO_PHOTO;
+  if (chevalId === String(FIXTURE_SHAREABLE_ENCODING.id)) return FIXTURE_SHAREABLE_ENCODING;
+  return FIXTURE_SHAREABLE;
+}
+
 // Réplique délibérément SIMPLIFIÉE de la composition (déjà testée exhaustivement côté PHP) — sert
 // uniquement à vérifier que le CLIENT transmet/consomme correctement la sélection et les réponses,
 // jamais à revalider la logique de composition elle-même.
+// Réplique de filter_var(..., FILTER_VALIDATE_BOOLEAN) côté PHP (correctif de recette §3) : un
+// booléen JS transite par FormData sous forme de chaîne littérale ("false"/"true"), jamais un vrai
+// booléen — "false"/"0"/"" doivent être interprétés comme faux, pas comme une chaîne non vide truthy.
+function parseBooleanField(value) {
+  return ['true', '1', 'on', 'yes'].indexOf(String(value).toLowerCase()) !== -1;
+}
+
 function composeFakeMessage(formData) {
+  const shareable = pickFixture(formValue(formData, 'cheval_id'));
   const items = formValues(formData, 'selection[items][]');
   const videos = formValues(formData, 'selection[videos][]');
-  const fiche = formValue(formData, 'selection[fiche]');
+  const fiche = parseBooleanField(formValue(formData, 'selection[fiche]'));
   const personal = formValue(formData, 'selection[message_personnel]') || '';
-  let lines = [FIXTURE_SHAREABLE.nom_affiche];
-  items.forEach((key) => { if (FIXTURE_SHAREABLE.items[key]) lines.push(FIXTURE_SHAREABLE.items[key].label); });
+  let lines = [shareable.nom_affiche];
+  items.forEach((key) => { if (shareable.items[key]) lines.push(shareable.items[key].label); });
   let message = (personal ? personal + '\n\n' : '') + lines.join('\n');
   videos.forEach((index) => {
-    const video = FIXTURE_SHAREABLE.videos.filter((v) => String(v.index) === String(index))[0];
+    const video = shareable.videos.filter((v) => String(v.index) === String(index))[0];
     if (video) message += '\n' + video.label + ' : ' + video.url;
   });
-  if (fiche) message += '\n' + FIXTURE_SHAREABLE.fiche_url;
+  if (fiche) message += '\n\n' + t_ficheIntro() + '\n' + shareable.fiche_url;
   return message;
 }
+function t_ficheIntro() { return 'Fiche complète, photos et pedigree :'; }
 
 function fakeServerResponse(formData, sandboxState) {
   const action = formValue(formData, 'action');
   if (action === 'gwseq_partager_get_cheval') {
-    const chevalId = formValue(formData, 'cheval_id');
-    const cheval = chevalId === String(FIXTURE_SHAREABLE_NO_PHOTO.id) ? FIXTURE_SHAREABLE_NO_PHOTO : FIXTURE_SHAREABLE;
+    const cheval = pickFixture(formValue(formData, 'cheval_id'));
     return { success: true, data: { cheval: cheval } };
   }
   if (action === 'gwseq_partager_build_message') {
@@ -246,6 +280,7 @@ function buildSandbox(options) {
     open(url) { openedUrls.push(url); },
     location: { href: '' },
     navigator: {
+      userAgent: options.userAgent || 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
       clipboard: {
         writeText(text) { clipboardWrites.push(text); return Promise.resolve(); },
       },
@@ -330,10 +365,10 @@ async function run() {
   const copyButton = buttons.filter((b) => b.className.indexOf('gwseq-partager-action--copy') !== -1)[0];
 
   whatsappButton.dispatchEvent({ type: 'click' });
-  ok('WhatsApp : ouvre bien "https://wa.me/?text=" avec le texte de l’aperçu correctement encodé', parts2.openedUrls[0] === 'https://wa.me/?text=' + encodeURIComponent(currentPreviewText));
+  ok('WhatsApp : ouvre bien "https://api.whatsapp.com/send?text=" (correctif de recette — point d’entrée canonique, jamais le lien court "wa.me" au transport moins fiable sur appareil réel) avec le texte de l’aperçu correctement encodé', parts2.openedUrls[0] === 'https://api.whatsapp.com/send?text=' + encodeURIComponent(currentPreviewText));
 
   smsButton.dispatchEvent({ type: 'click' });
-  ok('SMS : navigue bien vers "sms:?body=" avec le MÊME texte correctement encodé (jamais "iMessage" promis)', parts2.fakeWindow.location.href === 'sms:?body=' + encodeURIComponent(currentPreviewText));
+  ok('SMS (Android) : navigue bien vers "sms:?body=" avec le MÊME texte correctement encodé (jamais "iMessage" promis)', parts2.fakeWindow.location.href === 'sms:?body=' + encodeURIComponent(currentPreviewText));
 
   copyButton.dispatchEvent({ type: 'click' });
   await wait(20);
@@ -349,6 +384,102 @@ async function run() {
   ok('Encodage : les retours à la ligne deviennent %0A', encoded.indexOf('%0A') !== -1);
   ok('Encodage : les espaces deviennent %20', encoded.indexOf('%20') !== -1);
   ok('Encodage : les caractères accentués sont bien encodés (jamais laissés bruts dans l’URL)', encoded.indexOf('Français') === -1 && encoded.indexOf('Fran%C3%A7ais') !== -1);
+
+  // =====================================================================================
+  // CORRECTIF DE RECETTE — premier test réel WhatsApp : les sauts de ligne disparaissaient et le
+  // pictogramme vidéo 🎥 devenait un caractère de remplacement invalide "�" une fois reçu dans
+  // WhatsApp. Cause identifiée : ni la composition (déjà testée côté PHP), ni l'encodage
+  // (`encodeURIComponent`, déjà vérifié ci-dessus) — mais le point de sortie WhatsApp lui-même
+  // (lien court "wa.me", moins fiable sur un appareil réel que le point d'entrée canonique
+  // documenté par WhatsApp, "api.whatsapp.com/send") et un pictogramme non fiable à transporter.
+  // Ce bloc exerce le pipeline COMPLET (composition serveur réelle simulée -> aperçu -> clic ->
+  // URL finale) avec un cheval réunissant TOUS les caractères demandés par la recette : apostrophe,
+  // accents, "×", "•", lignes vides, et une URL vidéo YouTube réaliste.
+  // =====================================================================================
+
+  const partsEncoding = buildSandbox();
+  partsEncoding.root.setAttribute('data-gwseq-preselected-id', '99');
+  runScript(partsEncoding);
+  await wait(20);
+
+  const composeRootEncoding = partsEncoding.root;
+  const previewNodeEncoding = composeRootEncoding.querySelector('.gwseq-partager-preview__text');
+  const sourceText = previewNodeEncoding.textContent;
+
+  ok('Aperçu (cheval "encodage") : contient bien l’apostrophe telle quelle, jamais une entité ni un caractère altéré', sourceText.indexOf("NACELLE D'ELLE") !== -1);
+  ok('Aperçu : contient bien "×" (origines)', sourceText.indexOf('×') !== -1);
+  ok('Aperçu : contient bien "•" (identité/taille+indice)', sourceText.indexOf('•') !== -1);
+  ok('Aperçu : contient bien des lettres accentuées (titre de vidéo)', sourceText.indexOf('Hôpital') !== -1);
+  ok('Aperçu : contient bien AU MOINS une ligne vide (bloc fiche séparé du reste par "\\n\\n")', sourceText.indexOf('\n\n') !== -1);
+  ok('Aperçu : le pictogramme vidéo 🎥 n’apparaît nulle part (retiré, §2 du correctif — jamais remplacé par un autre emoji)', sourceText.indexOf('🎥') === -1);
+  ok('Aperçu : aucun caractère de remplacement invalide "�" (signe d’une corruption d’encodage)', sourceText.indexOf('�') === -1);
+  ok('Aperçu : l’URL YouTube de la vidéo est présente intégralement, en clair (pas encore encodée à ce stade — c’est un aperçu texte, pas une URL)', sourceText.indexOf('https://www.youtube.com/watch?v=abc123XYZ') !== -1);
+
+  const buttonsEncoding = composeRootEncoding.querySelectorAll('.gwseq-partager-action');
+  const whatsappButtonEncoding = buttonsEncoding.filter((b) => b.className.indexOf('gwseq-partager-action--whatsapp') !== -1)[0];
+  const smsButtonEncoding = buttonsEncoding.filter((b) => b.className.indexOf('gwseq-partager-action--sms') !== -1)[0];
+  const copyButtonEncoding = buttonsEncoding.filter((b) => b.className.indexOf('gwseq-partager-action--copy') !== -1)[0];
+
+  whatsappButtonEncoding.dispatchEvent({ type: 'click' });
+  const whatsappUrl = partsEncoding.openedUrls[partsEncoding.openedUrls.length - 1];
+  ok('WhatsApp : l’URL ouverte pointe bien vers le point d’entrée canonique "api.whatsapp.com/send", jamais "wa.me"', whatsappUrl.indexOf('https://api.whatsapp.com/send?text=') === 0);
+  ok('WhatsApp : les retours à la ligne survivent dans l’URL sous forme de "%0A" — jamais remplacés par un espace ni disparus', whatsappUrl.indexOf('%0A') !== -1 && whatsappUrl.indexOf('%0A%0A') !== -1);
+  ok('WhatsApp : décoder l’URL restitue EXACTEMENT le texte source de l’aperçu, caractère pour caractère (cohérence aperçu <-> contenu réellement transmis)', decodeURIComponent(whatsappUrl.slice('https://api.whatsapp.com/send?text='.length)) === sourceText);
+  ok('WhatsApp : l’URL ne contient jamais le pictogramme 🎥 ni sa forme encodée (retiré à la source)', whatsappUrl.indexOf('%F0%9F%8E%A5') === -1);
+
+  // --- SMS : séparateur dépendant de la plateforme (Android/générique "?" déjà vérifié plus haut ;
+  // iOS exige "&" — sans quoi le corps du SMS resterait vide, silencieusement, sur cet OS) ---
+  smsButtonEncoding.dispatchEvent({ type: 'click' });
+  ok('SMS (Android/générique) : "sms:?body=" et texte identique à l’aperçu, correctement encodé', partsEncoding.fakeWindow.location.href === 'sms:?body=' + encodeURIComponent(sourceText));
+
+  const partsEncodingIOS = buildSandbox({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15' });
+  partsEncodingIOS.root.setAttribute('data-gwseq-preselected-id', '99');
+  runScript(partsEncodingIOS);
+  await wait(20);
+  const smsButtonIOS = partsEncodingIOS.root.querySelectorAll('.gwseq-partager-action').filter((b) => b.className.indexOf('gwseq-partager-action--sms') !== -1)[0];
+  smsButtonIOS.dispatchEvent({ type: 'click' });
+  const sourceTextIOS = partsEncodingIOS.root.querySelector('.gwseq-partager-preview__text').textContent;
+  ok('SMS (iOS) : utilise bien "sms:&body=" (séparateur "&", requis sur iOS sans numéro de destinataire — "?" laisserait le corps vide silencieusement)', partsEncodingIOS.fakeWindow.location.href === 'sms:&body=' + encodeURIComponent(sourceTextIOS));
+  ok('SMS : le contenu source transmis est identique sur iOS et Android (seul le séparateur diffère, jamais le texte ni son encodage)', decodeURIComponent(partsEncodingIOS.fakeWindow.location.href.slice('sms:&body='.length)) === decodeURIComponent(partsEncoding.fakeWindow.location.href.slice('sms:?body='.length)));
+
+  // --- Copier : le texte brut copié ne doit JAMAIS contenir d’encodage URL (%0A, %C3%97...) ---
+  copyButtonEncoding.dispatchEvent({ type: 'click' });
+  await wait(20);
+  const copiedText = partsEncoding.clipboardWrites[partsEncoding.clipboardWrites.length - 1];
+  ok('Copier : le texte copié est identique à l’aperçu, avec de VRAIS retours à la ligne (pas "%0A")', copiedText === sourceText && copiedText.indexOf('%0A') === -1);
+  ok('Copier : aucun caractère encodé en pourcentage dans le presse-papiers (ni "%C3%97" pour "×", ni "%E2%80%A2" pour "•")', copiedText.indexOf('%C3%97') === -1 && copiedText.indexOf('%E2%80%A2') === -1);
+
+  // -------------------------------------------------------------------------------------------
+  // §3 — « Ajouter la fiche complète » : bascule explicite vérifiée sur les TROIS canaux externes
+  // (WhatsApp/SMS/Copier), pas seulement l'aperçu — puisqu'ils consomment tous le même texte
+  // source, vérifier l'aperçu suffit à garantir les trois, mais on le vérifie ici explicitement
+  // pour ne plus jamais régresser silencieusement sur ce point précis signalé par la recette.
+  // -------------------------------------------------------------------------------------------
+  const ficheCheckboxEncoding = composeRootEncoding.querySelector('#gwseq-partager-fiche');
+  ok('Fiche complète : cochée par défaut (fiche_default_checked de la fixture)', ficheCheckboxEncoding.checked === true);
+  ok('Fiche complète cochée : le bloc "Fiche complète, photos et pedigree :" + URL est bien présent dans l’aperçu', sourceText.indexOf('Fiche complète, photos et pedigree :') !== -1 && sourceText.indexOf(FIXTURE_SHAREABLE_ENCODING.fiche_url) !== -1);
+
+  ficheCheckboxEncoding.checked = false;
+  ficheCheckboxEncoding.dispatchEvent({ type: 'change' });
+  await wait(500);
+  const sourceTextFicheOff = previewNodeEncoding.textContent;
+  ok('Fiche complète décochée : le bloc est ENTIÈREMENT absent de l’aperçu (ni l’intitulé, ni l’URL)', sourceTextFicheOff.indexOf('Fiche complète') === -1 && sourceTextFicheOff.indexOf(FIXTURE_SHAREABLE_ENCODING.fiche_url) === -1);
+
+  whatsappButtonEncoding.dispatchEvent({ type: 'click' });
+  const whatsappUrlFicheOff = partsEncoding.openedUrls[partsEncoding.openedUrls.length - 1];
+  ok('Fiche complète décochée : absente également de l’URL WhatsApp transmise (même source de vérité)', decodeURIComponent(whatsappUrlFicheOff.slice('https://api.whatsapp.com/send?text='.length)).indexOf('Fiche complète') === -1);
+
+  smsButtonEncoding.dispatchEvent({ type: 'click' });
+  ok('Fiche complète décochée : absente également du corps SMS transmis', decodeURIComponent(partsEncoding.fakeWindow.location.href.slice('sms:?body='.length)).indexOf('Fiche complète') === -1);
+
+  copyButtonEncoding.dispatchEvent({ type: 'click' });
+  await wait(20);
+  ok('Fiche complète décochée : absente également du texte Copié', partsEncoding.clipboardWrites[partsEncoding.clipboardWrites.length - 1].indexOf('Fiche complète') === -1);
+
+  ficheCheckboxEncoding.checked = true;
+  ficheCheckboxEncoding.dispatchEvent({ type: 'change' });
+  await wait(500);
+  ok('Fiche complète re-cochée : le bloc réapparaît immédiatement dans l’aperçu', previewNodeEncoding.textContent.indexOf('Fiche complète') !== -1);
 
   // =====================================================================================
   // CORRECTIF DE RECETTE — le prix (ou toute autre information) apparaissait dans l'aperçu alors
@@ -394,7 +525,7 @@ async function run() {
   const finalPreviewText = previewNode3.textContent;
   const buttons3 = composeRoot3.querySelectorAll('.gwseq-partager-action');
   buttons3.filter((b) => b.className.indexOf('gwseq-partager-action--whatsapp') !== -1)[0].dispatchEvent({ type: 'click' });
-  ok('Correctif prix : WhatsApp consomme bien l’aperçu final correct, pas une version obsolète', parts3.openedUrls[parts3.openedUrls.length - 1] === 'https://wa.me/?text=' + encodeURIComponent(finalPreviewText));
+  ok('Correctif prix : WhatsApp consomme bien l’aperçu final correct, pas une version obsolète', parts3.openedUrls[parts3.openedUrls.length - 1] === 'https://api.whatsapp.com/send?text=' + encodeURIComponent(finalPreviewText));
 
   // =====================================================================================
   // Vignette de remplacement neutre quand un cheval n'a pas de photo (correctif de recette §2)

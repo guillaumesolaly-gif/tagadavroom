@@ -300,6 +300,14 @@ add_action('wp_ajax_gwseq_partager_get_cheval', 'gwseq_ajax_partager_get_cheval'
  * libre). Les données structurées (identity/origines/...) sont TOUJOURS relues depuis la base via
  * gwseq_get_horse_shareable_data($cheval_id), jamais acceptées telles que soumises par le client :
  * celui-ci ne peut donc jamais injecter une ligne fabriquée dans le message.
+ *
+ * Correctif de recette (vérification explicite de "Ajouter la fiche complète", §3) : le booléen
+ * JavaScript `false` envoyé via `FormData` traverse le réseau comme la CHAÎNE littérale "false"
+ * (comportement standard de `FormData`/`$_POST`, aucun booléen natif n'existe en dehors de JSON) —
+ * `!empty('false')` vaut TRUE (chaîne non vide), ce qui aurait ignoré silencieusement la case
+ * décochée et inclus quand même le lien de fiche. `filter_var(..., FILTER_VALIDATE_BOOLEAN)`
+ * interprète correctement "false"/"0"/"" comme faux et "true"/"1" comme vrai, quelle que soit la
+ * représentation texte reçue.
  */
 function gwseq_sanitize_horse_share_selection($raw) {
   $raw = is_array($raw) ? $raw : array();
@@ -318,7 +326,7 @@ function gwseq_sanitize_horse_share_selection($raw) {
   return array(
     'items' => $items,
     'videos' => $videos,
-    'fiche' => !empty($raw['fiche']),
+    'fiche' => filter_var($raw['fiche'] ?? '', FILTER_VALIDATE_BOOLEAN),
     'message_personnel' => gws_core_field_sanitize('textarea', $raw['message_personnel'] ?? ''),
   );
 }

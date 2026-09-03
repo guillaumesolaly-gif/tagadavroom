@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.24.0 — Partager un cheval (0.22.0) corrigé après une deuxième recette runtime : décodage des titres contenant une entité HTML littérale (ex. « &rsquo; » affiché tel quel), libellés désormais visibles pour les quatre filtres de l'écran de sélection (Sexe/Statut commercial/Catégorie/Année de naissance) — aucune autre évolution engagée dans ce lot (ni sélection multiple, ni lien privé, ni PDF, ni QR code). En attente d'une nouvelle recette runtime avant de tester les actions WhatsApp/SMS/Copier elles-mêmes. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime — aucune autre évolution engagée avant celle-ci.
+## État actuel : GWS Equestrian 0.25.0 — Partager un cheval (0.22.0) : premier test réel du bouton WhatsApp corrigé — sauts de ligne et pictogramme vidéo perdus dans le transport (cause exacte : le lien court `wa.me`, remplacé par le point d'entrée canonique `api.whatsapp.com/send` ; pictogramme retiré à la source), bug de "Ajouter la fiche complète" découvert et corrigé au passage (booléen JS transitant comme chaîne littérale), adaptateur `sms:` audité pour la différence iOS/Android — aucune autre évolution engagée dans ce lot. En attente d'une nouvelle recette runtime en conditions réelles (WhatsApp/SMS/Copier) avant de considérer ce lot clos. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime — aucune autre évolution engagée avant celle-ci.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -689,6 +689,20 @@ l'Open Graph, `textContent` côté JavaScript). Libellés désormais VISIBLES po
 l'écran de sélection (Sexe/Statut commercial/Catégorie/Année de naissance, `<label>` réels associés
 via `for`/`id`, compacts sur desktop et empilés sur mobile), sans aucune modification de la logique
 de filtrage. Voir `CHANGELOG.md` de ce dossier (0.24.0) pour le détail complet.
+
+**Correctifs du transport vers les canaux (0.25.0)**, à la suite du premier test réel WhatsApp :
+les sauts de ligne disparaissaient et le pictogramme vidéo 🎥 devenait un caractère invalide « � ».
+Cause exacte, vérifiée de bout en bout (message PHP → AJAX/JS → `encodeURIComponent()` → URL) : ni
+la composition ni l'encodage n'étaient en cause — le lien court `wa.me`, moins fiable sur appareil
+réel, remplacé par le point d'entrée canonique `https://api.whatsapp.com/send` (`buildWhatsappUrl()`,
+`assets/cheval-share-admin.js`). Pictogramme vidéo retiré à la source unique du libellé
+(`gwseq_horse_share_video_label()`), aperçu et canaux externes uniformément alignés, non remplacé
+par un autre emoji. En vérifiant explicitement « Ajouter la fiche complète », un bug a été
+découvert et corrigé : un booléen JavaScript `false` transite par `FormData`/`$_POST` comme la
+chaîne littérale `"false"`, interprétée à tort comme vraie par l'ancienne sanitation
+(`!empty('false')`) — corrigé par `filter_var(..., FILTER_VALIDATE_BOOLEAN)`. Adaptateur `sms:`
+audité et corrigé : séparateur `&` requis sur iOS contre `?` sur Android (`buildSmsUrl()`), même
+encodage des deux côtés. Voir `CHANGELOG.md` de ce dossier (0.25.0) pour le détail complet.
 
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et

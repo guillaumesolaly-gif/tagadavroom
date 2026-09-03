@@ -288,6 +288,38 @@
     };
   }
 
+  /**
+   * Correctif de recette (premier test réel WhatsApp) : le message transmis perdait sa structure
+   * (sauts de ligne disparus, texte de plusieurs lignes réduit à une seule) — jamais un problème de
+   * COMPOSITION (`currentMessage` contient bien les vrais "\n", l'aperçu BO l'affiche correctement
+   * dans une balise `<pre>`) ni d'ENCODAGE ({@link encodeURIComponent} encode déjà correctement
+   * "\n" en "%0A" et tout caractère UTF-8, accents/×/•/emoji inclus — vérifié par test dédié). La
+   * divergence se situe au dernier maillon, le lien court `wa.me`, dont le comportement de
+   * transport du texte pré-rempli s'est montré, sur un appareil réel, moins fiable que le point
+   * d'entrée canonique documenté par WhatsApp lui-même, `api.whatsapp.com/send` (ce que `wa.me`
+   * résout in fine) : ce dernier est donc utilisé directement pour ce bouton, sans passer par le
+   * lien court. Aucun changement du moteur de composition (`gwseq_build_horse_share_message()`) ni
+   * de son encodage : uniquement le point de sortie WhatsApp.
+   */
+  function buildWhatsappUrl(text) {
+    return 'https://api.whatsapp.com/send?text=' + encodeURIComponent(text);
+  }
+
+  /**
+   * `sms:` n'est PAS un standard unique : sans numéro de destinataire, iOS exige un `&` avant
+   * `body=` (`sms:&body=...`) alors qu'Android (et la plupart des autres navigateurs) attendent un
+   * `?` (`sms:?body=...`) — utiliser le mauvais séparateur sur iOS ouvre l'application Messages
+   * SANS pré-remplir le texte, silencieusement (aucune erreur visible). Détection minimale par
+   * `navigator.userAgent`, suffisante pour ce cas d'usage (aucune nouvelle dépendance). Même
+   * encodage que WhatsApp (`encodeURIComponent`) : seul le séparateur diffère d'une plateforme à
+   * l'autre, jamais le contenu ni son encodage.
+   */
+  function buildSmsUrl(text) {
+    var ua = (window.navigator && window.navigator.userAgent) || '';
+    var isIOS = /iPad|iPhone|iPod/.test(ua);
+    return 'sms:' + (isIOS ? '&' : '?') + 'body=' + encodeURIComponent(text);
+  }
+
   function initComposeScreen(root, chevalId, shareable, onBack) {
     clearNode(root);
     var wrapper = el('div', 'gwseq-partager-compose');
@@ -431,10 +463,10 @@
     refreshPreview();
 
     actionButtons.whatsapp.addEventListener('click', function () {
-      window.open('https://wa.me/?text=' + encodeURIComponent(currentMessage), '_blank');
+      window.open(buildWhatsappUrl(currentMessage), '_blank');
     });
     actionButtons.sms.addEventListener('click', function () {
-      window.location.href = 'sms:?body=' + encodeURIComponent(currentMessage);
+      window.location.href = buildSmsUrl(currentMessage);
     });
     actionButtons.copy.addEventListener('click', function () {
       copyTextToClipboard(currentMessage).then(function () {

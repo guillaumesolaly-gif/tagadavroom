@@ -1053,3 +1053,41 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   Quatre mécanismes critiques supplémentaires vérifiés par retrait/restauration (jeton de requête
   côté JS, validation de catégorie inexistante, restriction de permission avec filtres actifs).
   Intégralité de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée : aucune régression.
+- **Partager un cheval : correctifs du transport vers les canaux (0.25.0)** : premier test réel
+  WhatsApp — sauts de ligne perdus et pictogramme vidéo 🎥 transformé en caractère invalide « � ».
+  Trois correctifs strictement (WhatsApp/pictogramme/fiche complète) + audit `sms:`, sans nouveau
+  fichier de test.
+  - `gws-equestrian-cheval-share-logic-test.php` (96 assertions au total) : `gwseq_horse_share_
+    video_label()` vérifié sans pictogramme (avec et sans titre saisi), absence de `🎥` dans le
+    message final composé ; bascule explicite de "Ajouter la fiche complète" isolée côté moteur de
+    composition (cochée -> intitulé + URL sur deux lignes ; décochée -> bloc entièrement absent,
+    intitulé ET URL, jamais un intitulé orphelin).
+  - `gws-equestrian-cheval-share-admin-test.php` (63 assertions au total) : régression du booléen
+    `fiche` couverte explicitement — la chaîne littérale `"false"` (valeur réelle transmise par un
+    booléen JavaScript décoché via `FormData`) est bien interprétée comme faux par `gwseq_sanitize_
+    horse_share_selection()` (`filter_var(..., FILTER_VALIDATE_BOOLEAN)`, remplace l'ancien
+    `!empty()` qui aurait considéré cette chaîne non vide comme vraie), ainsi que `"0"` ; la chaîne
+    `"true"` reste bien interprétée comme vrai.
+  - `gws-equestrian-cheval-share-runtime-test.js` (72 assertions au total) : nouveau cheval fixture
+    dédié (`FIXTURE_SHAREABLE_ENCODING`) réunissant volontairement TOUS les caractères demandés par
+    la recette (apostrophe, accents, `×`, `•`, lignes vides, URL YouTube) pour exercer le pipeline
+    complet aperçu → clic → URL finale en un seul scénario. Vérifié : le bouton WhatsApp ouvre
+    désormais `https://api.whatsapp.com/send?text=...` (jamais `wa.me`) ; décoder l'URL WhatsApp
+    restitue EXACTEMENT le texte source de l'aperçu, caractère pour caractère, y compris les lignes
+    vides (`%0A%0A`) ; absence totale de `🎥` et de `�` dans l'aperçu comme dans l'URL encodée ;
+    l'adaptateur SMS utilise `sms:?body=` sur Android/générique et `sms:&body=` sur iOS (détection
+    par `navigator.userAgent` simulé), avec un contenu source identique des deux côtés ; Copier
+    reproduit le texte brut avec de VRAIS retours à la ligne, sans aucun caractère `%`-encodé
+    (`%0A`/`%C3%97`/`%E2%80%A2`) dans le presse-papiers ; "Ajouter la fiche complète" vérifiée
+    cochée/décochée/recochée avec répercussion immédiate sur l'aperçu ET sur les trois canaux
+    externes (WhatsApp/SMS/Copier), qui consomment tous la même source.
+
+  Cause exacte de la perte des sauts de ligne établie par un test de bout en bout reconstituant tout
+  le pipeline (message → AJAX/JS → `encodeURIComponent()` → URL) : ni la composition ni l'encodage
+  n'étaient en cause (`encodeURIComponent()` transforme déjà correctement `\n` en `%0A` et tout
+  caractère UTF-8) — la divergence était isolée au point de sortie WhatsApp (`wa.me`).
+
+  Les trois correctifs vérifiés par retrait/restauration (rétablir `wa.me`, réintroduire le
+  pictogramme, revenir à `!empty()` pour "fiche") font chacun échouer exactement les assertions
+  dédiées, aucune autre. Intégralité de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée
+  après ce lot : aucune régression.

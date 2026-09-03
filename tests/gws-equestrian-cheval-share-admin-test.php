@@ -537,6 +537,20 @@ gws_test_assert(strpos($selection['message_personnel'], "\n") !== false, 'Sélec
 $selection_empty = gwseq_sanitize_horse_share_selection(array());
 gws_test_assert($selection_empty['items'] === array() && $selection_empty['videos'] === array() && $selection_empty['fiche'] === false, 'Sélection : payload vide -> sélection entièrement vide, aucune erreur');
 
+// --- Correctif de recette (§3, vérification explicite de "Ajouter la fiche complète") : un
+// booléen JavaScript `false` transite par FormData/$_POST comme la CHAÎNE littérale "false", jamais
+// un vrai booléen PHP — une case décochée envoyée ainsi ne doit JAMAIS être interprétée comme vraie
+// (un simple `!empty('false')` vaudrait TRUE, chaîne non vide, ce qui aurait laissé le lien de
+// fiche apparaître malgré la case décochée). ---
+$selection_fiche_false_string = gwseq_sanitize_horse_share_selection(array('fiche' => 'false'));
+gws_test_assert($selection_fiche_false_string['fiche'] === false, 'Sélection : la chaîne littérale "false" (valeur réelle transmise par un booléen JS décoché via FormData) est bien interprétée comme FAUX, jamais comme une chaîne non vide truthy');
+
+$selection_fiche_zero_string = gwseq_sanitize_horse_share_selection(array('fiche' => '0'));
+gws_test_assert($selection_fiche_zero_string['fiche'] === false, 'Sélection : la chaîne "0" est également interprétée comme faux');
+
+$selection_fiche_true_string = gwseq_sanitize_horse_share_selection(array('fiche' => 'true'));
+gws_test_assert($selection_fiche_true_string['fiche'] === true, 'Sélection : la chaîne littérale "true" (valeur réelle transmise par un booléen JS coché via FormData) est bien interprétée comme VRAI');
+
 // =====================================================================================
 // AJAX composition du message (§14) : mêmes données que gwseq_get_horse_shareable_data(),
 // jamais un contenu fourni par le client pour les lignes structurées

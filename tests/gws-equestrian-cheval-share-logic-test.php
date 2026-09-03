@@ -185,8 +185,9 @@ gws_test_assert($shareable_10['items']['prix']['default_checked'] === false, 'Sh
 gws_test_assert($shareable_10['items']['accroche']['label'] === 'Jument respectueuse et facile.', 'Shareable : accroche présente reprise telle quelle');
 gws_test_assert($shareable_10['items']['accroche']['default_checked'] === true, 'Shareable : accroche présélectionnée par défaut lorsqu’elle existe');
 gws_test_assert(count($shareable_10['videos']) === 2, 'Shareable : les deux vidéos réellement présentes sont proposées');
-gws_test_assert($shareable_10['videos'][0]['label'] === '🎥 Allures à 3 ans', 'Shareable : vidéo AVEC titre -> "🎥 {titre}"');
-gws_test_assert($shareable_10['videos'][1]['label'] === '🎥 Vidéo', 'Shareable : vidéo SANS titre -> "🎥 Vidéo" (jamais un titre inventé, §11)');
+gws_test_assert($shareable_10['videos'][0]['label'] === 'Allures à 3 ans', 'Shareable : vidéo AVEC titre -> "{titre}", SANS pictogramme (correctif de recette WhatsApp — transport peu fiable sur appareil réel)');
+gws_test_assert($shareable_10['videos'][1]['label'] === 'Vidéo', 'Shareable : vidéo SANS titre -> "Vidéo" (jamais un titre inventé, §11 ; sans pictogramme non plus)');
+gws_test_assert(strpos($shareable_10['videos'][0]['label'], '🎥') === false && strpos($shareable_10['videos'][1]['label'], '🎥') === false, 'Shareable : aucun pictogramme vidéo résiduel, ni un autre emoji de remplacement (§2 du correctif — "ne pas le remplacer par un autre emoji")');
 gws_test_assert($shareable_10['videos'][0]['default_checked'] === true && $shareable_10['videos'][1]['default_checked'] === true, 'Shareable : les deux premières vidéos sont présélectionnées (2 <= présélection par défaut)');
 gws_test_assert($shareable_10['fiche_url'] === 'https://example.test/chevaux/cheval-10/', 'Shareable : lien de fiche complète présent (cheval publié, non protégé)');
 gws_test_assert($shareable_10['fiche_default_checked'] === true, 'Shareable : fiche complète présélectionnée par défaut lorsqu’un lien public existe (§9/§13)');
@@ -252,8 +253,9 @@ $message_full = gwseq_build_horse_share_message($shareable_10, array(
 ));
 gws_test_assert(strpos($message_full, "JAMEROSE DE FELINES\nJument Selle Français — 7 ans\nPar UNTOUCHABLE × KANNAN\n1,68 m • ISO 135") === 0, 'Message : bloc identité (nom + lignes structurées sélectionnées) en tête, sans ligne vide entre elles');
 gws_test_assert(strpos($message_full, "\n\nJument respectueuse et facile.") !== false, 'Message : accroche sélectionnée en paragraphe séparé (ligne vide avant)');
-gws_test_assert(strpos($message_full, '🎥 Allures à 3 ans : https://example.test/v1') !== false, 'Message : ligne vidéo "{libellé} : {url}"');
-gws_test_assert(strpos($message_full, '🎥 Vidéo : https://example.test/v2') !== false, 'Message : deuxième vidéo (sans titre) bien incluse également');
+gws_test_assert(strpos($message_full, 'Allures à 3 ans : https://example.test/v1') !== false, 'Message : ligne vidéo "{libellé} : {url}"');
+gws_test_assert(strpos($message_full, 'Vidéo : https://example.test/v2') !== false, 'Message : deuxième vidéo (sans titre) bien incluse également');
+gws_test_assert(strpos($message_full, '🎥') === false, 'Message : aucun pictogramme vidéo dans le message final (correctif de recette — transport peu fiable vers WhatsApp sur appareil réel, retiré sans être remplacé par un autre emoji)');
 gws_test_assert(strpos($message_full, 'Fiche complète, photos et pedigree :') !== false, 'Message : intitulé fixe du lien de fiche');
 gws_test_assert(substr($message_full, -strlen($shareable_10['fiche_url'])) === $shareable_10['fiche_url'], 'Message : URL de la fiche complète en toute fin de message');
 gws_test_assert(strpos($message_full, 'À vendre') === false, 'Message : le prix n’apparaît pas s’il n’a pas été sélectionné, même s’il existe');
@@ -261,6 +263,20 @@ gws_test_assert(strpos($message_full, 'À vendre') === false, 'Message : le prix
 $message_with_price = gwseq_build_horse_share_message($shareable_10, array('items' => array('prix'), 'videos' => array(), 'fiche' => false));
 gws_test_assert(strpos($message_with_price, 'À vendre — 25 000 €') !== false, 'Message : ligne commerciale adaptée intégrée lorsque le prix est explicitement sélectionné');
 gws_test_assert(strpos($message_with_price, 'Fiche complète') === false, 'Message : aucun lien de fiche si "fiche" non sélectionné');
+
+// =====================================================================================
+// Correctif de recette (test réel WhatsApp §3) — bascule explicite de "Ajouter la fiche complète"
+// vérifiée isolément côté moteur de composition : cochée -> bloc "Fiche complète, photos et
+// pedigree :\n{URL}" intégralement présent ; décochée -> ce bloc est ABSENT, y compris son
+// intitulé fixe (jamais seulement l'URL retirée en laissant l'intitulé orphelin).
+// =====================================================================================
+
+$message_fiche_on = gwseq_build_horse_share_message($shareable_10, array('items' => array(), 'videos' => array(), 'fiche' => true));
+gws_test_assert(strpos($message_fiche_on, "Fiche complète, photos et pedigree :\n" . $shareable_10['fiche_url']) !== false, 'Fiche complète cochée : intitulé + URL présents, sur deux lignes, bloc entier intact');
+
+$message_fiche_off = gwseq_build_horse_share_message($shareable_10, array('items' => array(), 'videos' => array(), 'fiche' => false));
+gws_test_assert(strpos($message_fiche_off, 'Fiche complète') === false, 'Fiche complète décochée : intitulé totalement absent');
+gws_test_assert(strpos($message_fiche_off, $shareable_10['fiche_url']) === false, 'Fiche complète décochée : URL totalement absente elle aussi (jamais un intitulé orphelin ni une URL orpheline)');
 
 $message_personnel = gwseq_build_horse_share_message($shareable_10, array('items' => array(), 'videos' => array(), 'fiche' => false, 'message_personnel' => "Bonjour Pierre, je pensais à cette jument suite à notre échange :"));
 gws_test_assert(strpos($message_personnel, "Bonjour Pierre, je pensais à cette jument suite à notre échange :\n\nJAMEROSE DE FELINES") === 0, 'Message : message personnel en tête, séparé par une ligne vide, avant le nom du cheval');
