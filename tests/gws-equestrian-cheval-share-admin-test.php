@@ -374,6 +374,28 @@ gws_test_reset_security();
 $_POST = array();
 
 // =====================================================================================
+// Correctif de recette — décodage du titre dans la ligne légère de résultat (gwseq_horse_share_
+// lightweight_row(), même correctif que gwseq_get_horse_shareable_data() dans cheval-share.php) :
+// un titre contenant une entité HTML littérale ne doit jamais apparaître tel quel dans les
+// résultats de recherche, et un titre "dangereux" ne doit jamais produire de HTML exécutable une
+// fois décodé (texte simple uniquement, jamais un `wp_kses`/`innerHTML` — voir le rendu JS qui
+// n'utilise que `textContent`).
+// =====================================================================================
+
+gws_test_make_horse(220, "Nacelle D&rsquo;Elle", 1);
+gws_test_make_horse(221, '&lt;img src=x onerror=alert(1)&gt;', 1);
+$_POST = array('nonce' => 'valid', 's' => 'nacelle');
+$json = null;
+try { gwseq_ajax_partager_search_cheval(); } catch (Gws_Test_Json_Exit $e) { $json = $GLOBALS['__gwseq_test_json_response']; }
+$row_220 = current($json['data']['resultats']);
+gws_test_assert($row_220['nom'] === 'Nacelle D’Elle', 'Ligne légère (recherche) : titre contenant une entité littérale "&rsquo;" décodé, plus jamais affiché tel quel');
+gws_test_assert(strpos($row_220['nom'], '&rsquo;') === false, 'Ligne légère (recherche) : aucune entité résiduelle dans le nom exposé au client');
+
+$row_221 = gwseq_horse_share_lightweight_row(221);
+gws_test_assert($row_221['nom'] === '<img src=x onerror=alert(1)>', 'Ligne légère : titre dangereux décodé en texte littéral inerte (chaîne PHP simple, jamais du HTML exécuté côté serveur)');
+$_POST = array();
+
+// =====================================================================================
 // Filtres métier (correctif de recette §3-4) : sexe, statut commercial, plage d'année de
 // naissance, catégorie de cheval — cumulatifs entre eux ET avec la recherche texte.
 // =====================================================================================

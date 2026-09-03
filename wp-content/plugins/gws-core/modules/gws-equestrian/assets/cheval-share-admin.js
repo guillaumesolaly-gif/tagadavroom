@@ -123,7 +123,7 @@
    */
   function buildSelect(idSuffix, labelText, allLabel, options) {
     var wrapperEl = el('div', 'gwseq-partager-filter');
-    var labelEl = el('label', 'screen-reader-text', labelText);
+    var labelEl = el('label', 'gwseq-partager-filter__label', labelText);
     labelEl.setAttribute('for', 'gwseq-partager-filter-' + idSuffix);
     wrapperEl.appendChild(labelEl);
 
@@ -163,32 +163,43 @@
     var filtersConfig = config.filters || {};
     var filtersRow = el('div', 'gwseq-partager-filters');
 
-    var sexeFilter = buildSelect('sexe', t('allSexe', 'Sexe'), t('allSexe', 'Tous'), filtersConfig.sexe);
+    var sexeFilter = buildSelect('sexe', t('sexeFilterLabel', 'Sexe'), t('allSexe', 'Tous'), filtersConfig.sexe);
     filtersRow.appendChild(sexeFilter.wrapper);
 
-    var statutFilter = buildSelect('statut', t('allStatut', 'Statut'), t('allStatut', 'Tous'), filtersConfig.statut);
+    var statutFilter = buildSelect('statut', t('statutFilterLabel', 'Statut commercial'), t('allStatut', 'Tous'), filtersConfig.statut);
     filtersRow.appendChild(statutFilter.wrapper);
 
-    var categorieFilter = buildSelect('categorie', t('allCategories', 'Catégorie'), t('allCategories', 'Toutes les catégories'), filtersConfig.categories);
+    var categorieFilter = buildSelect('categorie', t('categorieFilterLabel', 'Catégorie'), t('allCategories', 'Toutes les catégories'), filtersConfig.categories);
     filtersRow.appendChild(categorieFilter.wrapper);
 
+    // Groupe "Année de naissance" : un <label> visible unique pour le groupe (associé au premier
+    // champ, "De") plus les deux `aria-label` déjà en place sur chaque champ ("De"/"à") — ce sont
+    // deux informations complémentaires, pas redondantes : le libellé de groupe identifie le FILTRE
+    // ("à quoi sert cette zone ?"), les aria-label distinguent les deux champs ENTRE EUX pour les
+    // technologies d'assistance ("De" vs "à").
     var yearWrapper = el('div', 'gwseq-partager-filter gwseq-partager-filter--annee');
-    yearWrapper.appendChild(el('span', 'gwseq-partager-filter__annee-label', t('yearFrom', 'De')));
+    var yearGroupLabel = el('label', 'gwseq-partager-filter__label', t('anneeFilterLabel', 'Année de naissance'));
+    yearGroupLabel.setAttribute('for', 'gwseq-partager-filter-annee-min');
+    yearWrapper.appendChild(yearGroupLabel);
+    var yearInputsWrapper = el('div', 'gwseq-partager-filter__annee-inputs');
+    yearInputsWrapper.appendChild(el('span', 'gwseq-partager-filter__annee-label', t('yearFrom', 'De')));
     var yearMinInput = document.createElement('input');
     yearMinInput.type = 'number';
+    yearMinInput.id = 'gwseq-partager-filter-annee-min';
     yearMinInput.className = 'gwseq-partager-filter__annee-input';
     yearMinInput.setAttribute('aria-label', t('yearFrom', 'De'));
     if (filtersConfig.anneeMin) yearMinInput.min = filtersConfig.anneeMin;
     if (filtersConfig.anneeMax) yearMinInput.max = filtersConfig.anneeMax;
-    yearWrapper.appendChild(yearMinInput);
-    yearWrapper.appendChild(el('span', 'gwseq-partager-filter__annee-label', t('yearTo', 'à')));
+    yearInputsWrapper.appendChild(yearMinInput);
+    yearInputsWrapper.appendChild(el('span', 'gwseq-partager-filter__annee-label', t('yearTo', 'à')));
     var yearMaxInput = document.createElement('input');
     yearMaxInput.type = 'number';
     yearMaxInput.className = 'gwseq-partager-filter__annee-input';
     yearMaxInput.setAttribute('aria-label', t('yearTo', 'à'));
     if (filtersConfig.anneeMin) yearMaxInput.min = filtersConfig.anneeMin;
     if (filtersConfig.anneeMax) yearMaxInput.max = filtersConfig.anneeMax;
-    yearWrapper.appendChild(yearMaxInput);
+    yearInputsWrapper.appendChild(yearMaxInput);
+    yearWrapper.appendChild(yearInputsWrapper);
     filtersRow.appendChild(yearWrapper);
 
     var resetButton = el('button', 'gwseq-partager-filters__reset', t('resetFilters', 'Réinitialiser les filtres'));

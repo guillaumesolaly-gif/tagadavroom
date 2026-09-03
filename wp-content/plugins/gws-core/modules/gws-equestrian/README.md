@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.23.0 — Partager un cheval (0.22.0) corrigé et amélioré après première recette runtime : bug d'aperçu (information décochée apparaissant quand même) corrigé à la cause racine, vignette de remplacement neutre pour un cheval sans photo, filtres métier cumulables (sexe/statut/année/catégorie) sur l'écran de sélection, densité de l'écran de composition améliorée. En attente d'une nouvelle recette runtime sur le même cheval avant de tester les actions WhatsApp/SMS/Copier. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime — aucune autre évolution engagée avant celle-ci.
+## État actuel : GWS Equestrian 0.24.0 — Partager un cheval (0.22.0) corrigé après une deuxième recette runtime : décodage des titres contenant une entité HTML littérale (ex. « &rsquo; » affiché tel quel), libellés désormais visibles pour les quatre filtres de l'écran de sélection (Sexe/Statut commercial/Catégorie/Année de naissance) — aucune autre évolution engagée dans ce lot (ni sélection multiple, ni lien privé, ni PDF, ni QR code). En attente d'une nouvelle recette runtime avant de tester les actions WhatsApp/SMS/Copier elles-mêmes. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime — aucune autre évolution engagée avant celle-ci.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -678,6 +678,17 @@ commercial/Année de naissance/Catégorie, réutilisant les référentiels déj�
 volontairement découplée pour être réutilisable telle quelle par un futur écran de sélection
 multiple (non développé dans ce lot). Voir `CHANGELOG.md` de ce dossier (0.23.0) pour le détail
 complet.
+
+**Correctifs de recette avant test des canaux (0.24.0)** : décodage des entités HTML (`gwseq_
+horse_share_decode_title()`, `includes/cheval-share.php`) appliqué au point de lecture du titre
+d'un cheval — un titre déjà enregistré avec une entité littérale (ex. « &rsquo; ») s'affichait telle
+quelle au lieu du caractère qu'elle représente ; décodage à la volée à l'affichage uniquement,
+aucun titre modifié en base, aucune nouvelle possibilité d'injection (décodage unique à la source,
+échappement contextuel déjà en place inchangé selon la sortie : texte brut, `esc_attr()` pour
+l'Open Graph, `textContent` côté JavaScript). Libellés désormais VISIBLES pour les quatre filtres de
+l'écran de sélection (Sexe/Statut commercial/Catégorie/Année de naissance, `<label>` réels associés
+via `for`/`id`, compacts sur desktop et empilés sur mobile), sans aucune modification de la logique
+de filtrage. Voir `CHANGELOG.md` de ce dossier (0.24.0) pour le détail complet.
 
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et

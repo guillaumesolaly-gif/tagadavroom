@@ -5,6 +5,50 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.24.0 — Partager un cheval : correctifs de recette avant test des canaux
+
+Retour de la deuxième recette runtime de `Chevaux → Partager` (0.23.0) : placeholder, recherche,
+filtres cumulés et synchronisation du prix avec l'aperçu sont tous confirmés fonctionnels. Ce lot
+corrige les deux seuls points restants signalés, SANS développer la sélection multiple, le lien
+privé, le PDF, le QR code ni aucune autre évolution du partage.
+
+**Bug corrigé — un titre de cheval contenant une entité HTML littérale (ex. « NACELLE D&rsquo;ELLE
+») s'affichait tel quel au lieu du caractère qu'elle représente (« NACELLE D'ELLE »).** Cause
+racine : `get_the_title()` renvoie le contenu réel de `post_title` — un titre déjà enregistré avec
+une entité sous forme de texte littéral (probablement un résidu d'un import/copier-coller antérieur)
+n'est jamais corrigé automatiquement par WordPress à la lecture. Corrigé par un point de décodage
+UNIQUE, `gwseq_horse_share_decode_title()` (`includes/cheval-share.php`,
+`html_entity_decode(..., ENT_QUOTES | ENT_HTML5, 'UTF-8')`), appliqué aux quatre endroits où un nom
+de cheval entre dans ce module : `gwseq_get_horse_shareable_data()` (champs `nom`/`nom_affiche`),
+`gwseq_horse_share_lightweight_row()` (résultats de recherche, `includes/cheval-share-admin.php`),
+et `gwseq_horse_share_pedigree_node_name()` (nom d'un parent dans les origines, qui peut lui aussi
+provenir de `get_the_title()` via le résolveur de pedigree). Décodage à la volée à l'affichage
+UNIQUEMENT — aucun titre existant n'est modifié en base. Sécurité : décodage une seule fois à la
+source, puis échappement propre à chaque contexte de sortie déjà en place (texte brut pour
+WhatsApp/SMS/Copier, `esc_attr()` pour l'Open Graph, `textContent` côté JavaScript qui n'interprète
+jamais de HTML) — vérifié qu'un titre décodé contenant des caractères HTML potentiellement dangereux
+ne produit jamais de balise exécutable à aucune étape (voir les tests dédiés). Vérifié par
+retrait/restauration du décodage (les tests dédiés échouent exactement comme attendu sans le
+correctif).
+
+**UX corrigée — les filtres de l'écran de sélection (Sexe/Statut commercial/Catégorie/Année de
+naissance) n'affichaient aucun libellé visible** (uniquement des libellés masqués aux technologies
+d'assistance) : impossible de deviner à l'écran ce que représentait chaque « Tous ». Corrigé côté
+JavaScript uniquement (`assets/cheval-share-admin.js`/`.css`) — aucune modification de la logique ou
+de l'architecture de filtrage déjà validée (`gwseq_sanitize_horse_share_filters()`, `gwseq_horse_
+share_filters_to_query_args()`, `gwseq_horse_share_search_chevaux()`, les points d'entrée AJAX
+restent inchangés). Quatre `<label>` réels et VISIBLES, correctement associés à leur contrôle via
+`for`/`id` (« Sexe », « Statut commercial », « Catégorie », « Année de naissance » pour le groupe
+De/à) remplacent les précédents libellés `screen-reader-text`. Compact sur desktop (les quatre
+groupes restent dans la même zone), empilement naturel sur mobile ; « Réinitialiser les filtres »
+reste à sa place, toujours facilement accessible. En creusant ce correctif, une seconde erreur a été
+trouvée et corrigée dans le même mouvement : le libellé du champ Sexe/Statut réutilisait par erreur
+la même clé d'i18n que le texte de l'option « Tous » (`allSexe`/`allStatut`), ce qui aurait de toute
+façon affiché « Tous » au lieu de « Sexe »/« Statut » même en rendant l'ancien libellé masqué
+visible — quatre nouvelles clés dédiées (`sexeFilterLabel`, `statutFilterLabel`,
+`categorieFilterLabel`, `anneeFilterLabel`) séparent désormais clairement le nom du champ du
+contenu de son option "Tous".
+
 ## 0.23.0 — Partager un cheval : correctifs et améliorations de recette
 
 Retour de la première recette runtime de `Chevaux → Partager` (0.22.0) : le principe général

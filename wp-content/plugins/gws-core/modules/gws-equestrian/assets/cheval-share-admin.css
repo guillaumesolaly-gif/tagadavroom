@@ -79,14 +79,27 @@
 .gwseq-partager-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 8px 16px;
   margin-bottom: 16px;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .gwseq-partager-filter {
   flex: 1 1 140px;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Libellé VISIBLE de chaque groupe de filtre (correctif de recette — "Sexe" / "Statut commercial" /
+   "Catégorie" / "Année de naissance"), toujours associé à son contrôle via for/id : volontairement
+   sobre et compact (pas de mise en forme de champ de formulaire classique), pour rester cohérent
+   avec la densité déjà validée de cet écran. */
+.gwseq-partager-filter__label {
+  font-size: 12px;
+  color: #646970;
+  line-height: 1.2;
 }
 
 .gwseq-partager-filter__select {
@@ -97,10 +110,13 @@
 }
 
 .gwseq-partager-filter--annee {
+  flex: 1 1 100%;
+}
+
+.gwseq-partager-filter__annee-inputs {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1 1 100%;
 }
 
 .gwseq-partager-filter__annee-input {

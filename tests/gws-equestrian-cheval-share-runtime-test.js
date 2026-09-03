@@ -442,6 +442,25 @@ async function run() {
   ok('Filtres : le sélecteur Statut commercial utilise exactement les valeurs internes existantes', statutSelect !== null && statutSelect.children.some((o) => o.value === 'for_sale'));
   ok('Filtres : le sélecteur Catégorie propose les catégories réellement configurées (aucune nouvelle catégorie créée)', categorieSelect !== null && categorieSelect.children.some((o) => o.value === 'chevaux_de_sport' && o.textContent === 'Chevaux de sport'));
 
+  // -------------------------------------------------------------------------------------------
+  // Correctif de recette — libellés VISIBLES des filtres ("Sexe" / "Statut commercial" /
+  // "Catégorie" / "Année de naissance") : de vrais <label> associés via for/id, jamais seulement
+  // un placeholder ni un libellé masqué (screen-reader-text) — l'utilisateur doit pouvoir lire à
+  // l'écran ce que représente chaque contrôle sans connaître l'ordre des champs.
+  // -------------------------------------------------------------------------------------------
+  const allFilterLabels = filtersRoot.querySelectorAll('label');
+  const findLabelFor = (forId) => allFilterLabels.filter((labelEl) => labelEl.getAttribute('for') === forId)[0] || null;
+  const sexeLabel = findLabelFor('gwseq-partager-filter-sexe');
+  const statutLabel = findLabelFor('gwseq-partager-filter-statut');
+  const categorieLabel = findLabelFor('gwseq-partager-filter-categorie');
+  const anneeLabel = findLabelFor('gwseq-partager-filter-annee-min');
+  ok('Filtres : un <label> "Sexe" existe, associé au sélecteur via for/id', sexeLabel !== null && sexeLabel.textContent === 'Sexe' && sexeLabel.getAttribute('for') === sexeSelect.id);
+  ok('Filtres : un <label> "Statut commercial" existe, associé au sélecteur via for/id', statutLabel !== null && statutLabel.textContent === 'Statut commercial' && statutLabel.getAttribute('for') === statutSelect.id);
+  ok('Filtres : un <label> "Catégorie" existe, associé au sélecteur via for/id', categorieLabel !== null && categorieLabel.textContent === 'Catégorie' && categorieLabel.getAttribute('for') === categorieSelect.id);
+  ok('Filtres : un <label> "Année de naissance" existe pour le groupe De/à, associé au premier champ via for/id', anneeLabel !== null && anneeLabel.textContent === 'Année de naissance');
+  ok('Filtres : aucun de ces libellés n’est visuellement masqué (screen-reader-text) — ils doivent être VISIBLES à l’écran', [sexeLabel, statutLabel, categorieLabel, anneeLabel].every((labelEl) => (labelEl.className || '').split(/\s+/).indexOf('screen-reader-text') === -1));
+  ok('Filtres : les options "Tous"/"Toutes les catégories" restent, elles, le contenu des sélecteurs (inchangé), distinct du libellé du champ', sexeSelect.children[0].textContent === 'Tous' && categorieSelect.children[0].textContent === 'Toutes les catégories');
+
   sexeSelect.value = 'female';
   statutSelect.value = 'for_sale';
   categorieSelect.value = 'chevaux_de_sport';

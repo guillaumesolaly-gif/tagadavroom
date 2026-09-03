@@ -75,7 +75,7 @@ function gwseq_horse_share_lightweight_row($post_id) {
   $identity = gwseq_get_cheval_identity($post_id);
   return array(
     'id' => $post_id,
-    'nom' => get_the_title($post_id),
+    'nom' => gwseq_horse_share_decode_title(get_the_title($post_id)),
     'photo_url' => wp_get_attachment_image_url(gwseq_get_cheval_photo_principale_id($post_id), 'thumbnail') ?: '',
     'sous_titre' => gwseq_horse_share_identite_label($identity),
     'statut' => gwseq_cheval_statut_commercial_options()[gwseq_get_cheval_commercial($post_id)['statut_commercial']] ?? '',
@@ -417,6 +417,13 @@ function gwseq_enqueue_horse_share_admin_assets($hook) {
       'yearFrom' => __('De', 'gws-core'),
       'yearTo' => __('à', 'gws-core'),
       'resetFilters' => __('Réinitialiser les filtres', 'gws-core'),
+      // Libellés VISIBLES des groupes de filtres (correctif de recette — distincts des libellés de
+      // l'option "Tous"/"Toutes les catégories" ci-dessus, qui restent le contenu de l'option, pas
+      // le nom du champ) : "Sexe" / "Statut commercial" / "Catégorie" / "Année de naissance".
+      'sexeFilterLabel' => __('Sexe', 'gws-core'),
+      'statutFilterLabel' => __('Statut commercial', 'gws-core'),
+      'categorieFilterLabel' => __('Catégorie', 'gws-core'),
+      'anneeFilterLabel' => __('Année de naissance', 'gws-core'),
     ),
   ));
 }

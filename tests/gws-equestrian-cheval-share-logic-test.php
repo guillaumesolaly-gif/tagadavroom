@@ -347,7 +347,58 @@ $GLOBALS['__gwseq_test_context'] = array('is_singular' => false, 'queried_id' =>
 gwseq_render_horse_og_meta();
 gws_test_assert(ob_get_clean() === '', 'Open Graph : rien n’est émis hors d’une page singulière de cheval');
 
+// =====================================================================================
+// Correctif de recette — un titre de cheval contenant une entité HTML littérale (ex. "NACELLE
+// D&rsquo;ELLE" affiché tel quel au lieu de "NACELLE D'ELLE") doit être décodé AVANT toute
+// utilisation dans ce module (gwseq_horse_share_decode_title()) — jamais réécrit en base (aucun
+// gws_test_make_post() ci-dessous ne modifie le titre stocké, uniquement le titre LU). Couvre a
+// minima : apostrophe droite, apostrophe typographique, entité nommée encodée, esperluette, lettres
+// accentuées, et une chaîne HTML potentiellement dangereuse — pour prouver qu'aucune injection
+// n'est possible une fois décodée (jamais de HTML brut rendu, voir gwseq_render_horse_og_meta() plus
+// haut qui réapplique esc_attr() sur la valeur décodée).
+// =====================================================================================
+
+gws_test_assert(gwseq_horse_share_decode_title("NACELLE D'ELLE") === "NACELLE D'ELLE", 'Décodage titre : apostrophe droite déjà correcte -> inchangée');
+gws_test_assert(gwseq_horse_share_decode_title('NACELLE D’ELLE') === 'NACELLE D’ELLE', 'Décodage titre : apostrophe typographique (caractère réel) déjà correcte -> inchangée');
+gws_test_assert(gwseq_horse_share_decode_title('NACELLE D&rsquo;ELLE') === 'NACELLE D’ELLE', 'Décodage titre : entité nommée "&rsquo;" littérale -> décodée en caractère apostrophe typographique (cause racine du bug de recette)');
+gws_test_assert(gwseq_horse_share_decode_title('NACELLE D&#8217;ELLE') === 'NACELLE D’ELLE', 'Décodage titre : entité numérique "&#8217;" -> décodée de façon identique');
+gws_test_assert(gwseq_horse_share_decode_title('Bibi &amp; Co') === 'Bibi & Co', 'Décodage titre : esperluette encodée "&amp;" -> caractère "&" simple');
+gws_test_assert(gwseq_horse_share_decode_title('Étalon Décoré') === 'Étalon Décoré', 'Décodage titre : lettres accentuées déjà correctes -> inchangées (pas de sur-décodage)');
+gws_test_assert(gwseq_horse_share_decode_title('&lt;script&gt;alert(1)&lt;/script&gt;') === '<script>alert(1)</script>', 'Décodage titre : chaîne HTML dangereuse encodée -> décodée en texte littéral inerte (chaîne PHP simple, jamais exécutée)');
+
+gws_test_make_horse(50, "NACELLE D&rsquo;ELLE");
+$shareable_50 = gwseq_get_horse_shareable_data(50);
+gws_test_assert($shareable_50['nom'] === 'NACELLE D’ELLE', 'Shareable : "nom" décodé -> plus jamais l’entité littérale "&rsquo;" affichée telle quelle');
+gws_test_assert($shareable_50['nom_affiche'] === 'NACELLE D’ELLE', 'Shareable : "nom_affiche" construit à partir du titre déjà décodé (convention majuscules déjà en place, gwseq_format_horse_name_display)');
+gws_test_assert(strpos($shareable_50['nom'], '&rsquo;') === false && strpos($shareable_50['nom_affiche'], '&rsquo;') === false, 'Shareable : aucune entité littérale résiduelle dans les champs exposés au partage');
+
+// --- Titre dangereux : jamais de HTML exécutable, à aucune étape (message texte, Open Graph) ---
+gws_test_make_horse(51, '&lt;img src=x onerror=alert(1)&gt;');
+$shareable_51 = gwseq_get_horse_shareable_data(51);
+gws_test_assert($shareable_51['nom'] === '<img src=x onerror=alert(1)>', 'Shareable : titre dangereux décodé en texte littéral inerte (chaîne, pas du HTML interprété)');
+$message_51 = gwseq_build_horse_share_message($shareable_51, array('items' => array(), 'videos' => array(), 'fiche' => false));
+gws_test_assert(trim($message_51) === '<IMG SRC=X ONERROR=ALERT(1)>', 'Message : le texte décodé (via nom_affiche) est repris tel quel dans un message TEXTE (aucun contexte HTML, aucun échappement supplémentaire nécessaire ni pertinent)');
+gws_test_assert(strpos($message_51, '&lt;') === false && strpos($message_51, '&gt;') === false, 'Message : aucune entité résiduelle dans le message texte (le décodage a bien eu lieu en amont)');
+
+ob_start();
+$GLOBALS['__gwseq_test_context'] = array('is_singular' => GWSEQ_CPT_CHEVAL, 'queried_id' => 51);
+gwseq_render_horse_og_meta();
+$og_html_dangerous = ob_get_clean();
+gws_test_assert(strpos($og_html_dangerous, 'og:title" content="&lt;img src=x onerror=alert(1)&gt;"') !== false, 'Open Graph : valeur décodée rééchappée par esc_attr() pour un rendu HTML sûr en attribut (jamais de balise "<img>" brute dans la page)');
+gws_test_assert(strpos($og_html_dangerous, '<img') === false, 'Open Graph : aucune balise HTML brute injectée dans <head> (pas de vulnérabilité XSS via le titre)');
+
+// --- Origines (pedigree) : le nom d'un parent (externe ou fiche GWS) contenant une entité littérale
+// doit lui aussi être décodé — gwseq_horse_share_pedigree_node_name() réutilise
+// gwseq_horse_share_decode_title() avant gwseq_format_horse_name_display() ---
+gws_test_make_horse(52, 'Cheval Origines Entite');
+gwseq_set_horse_parent(52, 'father', array('mode' => 'external', 'external' => array('name' => "Fils d&rsquo;Or")));
+$origines_52 = gwseq_horse_share_origines_label(52);
+gws_test_assert(strpos($origines_52, '&rsquo;') === false, 'Origines : aucune entité littérale résiduelle dans le nom d’un parent externe');
+gws_test_assert(strpos($origines_52, "FILS D") !== false, 'Origines : nom du parent externe avec entité décodée bien repris (convention majuscules)');
+
 // --- Aucun second système SEO concurrent : si un plugin SEO est détecté, rien n'est émis ---
+// (placé en tout dernier : WPSEO_VERSION est une constante PHP, donc définitive une fois posée —
+// tout test Open Graph placé après elle dans ce fichier serait à tort neutralisé.)
 define('WPSEO_VERSION', '99.0');
 ob_start();
 $GLOBALS['__gwseq_test_context'] = array('is_singular' => GWSEQ_CPT_CHEVAL, 'queried_id' => 10);

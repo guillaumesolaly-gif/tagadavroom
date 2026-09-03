@@ -1016,6 +1016,39 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
     la recherche texte, réinitialisation complète). Le DOM factice de ce fichier a été étendu pour
     supporter les sélecteurs CSS composés (`tag.classe`, `.classe1.classe2`), nécessaires aux
     nouvelles assertions.
+- **Partager un cheval : correctifs de recette avant test des canaux (0.24.0)** : deuxième recette
+  runtime — deux correctifs strictement, sans nouveau fichier de test.
+  - `gws-equestrian-cheval-share-logic-test.php` (91 assertions au total) : nouveau helper
+    `gwseq_horse_share_decode_title()` couvert isolément (apostrophe droite/typographique déjà
+    correctes -> inchangées, entité nommée `&rsquo;` et numérique `&#8217;` -> décodées vers le même
+    caractère, esperluette `&amp;`, lettres accentuées déjà correctes non sur-décodées, chaîne HTML
+    dangereuse encodée -> texte littéral inerte) puis son application réelle dans
+    `gwseq_get_horse_shareable_data()` (`nom`/`nom_affiche`), dans un message texte composé
+    (aucune entité résiduelle) et dans l'Open Graph (`esc_attr()` réapplique un échappement HTML sûr
+    sur la valeur décodée — vérifié qu'aucune balise `<img>`/`<script>` brute n'apparaît jamais dans
+    `<head>`), et dans `gwseq_horse_share_origines_label()` (nom d'un parent externe avec entité
+    littérale). Section Open Graph réordonnée : le test "plugin SEO actif" (qui pose une constante
+    PHP globale, donc définitive une fois posée) est désormais placé en tout dernier, pour ne plus
+    neutraliser à tort les assertions Open Graph ajoutées après lui.
+  - `gws-equestrian-cheval-share-admin-test.php` (60 assertions au total) : même correctif vérifié
+    pour `gwseq_horse_share_lightweight_row()` (ligne légère des résultats de recherche) — un titre
+    avec une entité littérale n'apparaît plus jamais tel quel dans les résultats AJAX, un titre
+    dangereux reste un texte littéral inerte une fois décodé.
+  - `gws-equestrian-cheval-share-runtime-test.js` (48 assertions au total) : nouvelles assertions
+    vérifiant que les quatre filtres exposent désormais un `<label>` RÉEL et VISIBLE (jamais
+    `screen-reader-text`), correctement associé à son contrôle via `for`/`id` ("Sexe", "Statut
+    commercial", "Catégorie", "Année de naissance" pour le groupe De/à), et que le contenu de
+    l'option "Tous"/"Toutes les catégories" reste, lui, inchangé et distinct du libellé du champ —
+    vérifié par retrait/restauration (remettre `screen-reader-text` fait échouer exactement
+    l'assertion de visibilité).
+
+  Correctif du décodage vérifié par retrait/restauration : neutraliser temporairement
+  `gwseq_horse_share_decode_title()` (retour de la valeur brute, non décodée) fait échouer
+  exactement les 10 assertions dédiées à ce correctif, aucune autre — confirmant qu'aucun autre
+  chemin ne compense silencieusement l'absence de décodage.
+
+  Intégralité des suites existantes (21 fichiers PHP + 3 suites JS runtime) ré-exécutée après ce
+  lot : aucune régression.
 
   Quatre mécanismes critiques supplémentaires vérifiés par retrait/restauration (jeton de requête
   côté JS, validation de catégorie inexistante, restriction de permission avec filtres actifs).

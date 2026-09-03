@@ -1,5 +1,18 @@
 # Changelog — GWS Starter
 
+## 1.27.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Partager un cheval : correctifs de recette avant test des canaux (GWS Equestrian 0.24.0).**
+  Bug corrigé : un titre de cheval contenant une entité HTML littérale (ex. « NACELLE D&rsquo;ELLE
+  ») s'affichait tel quel au lieu du caractère qu'elle représente — décodage au point unique de
+  lecture du titre, jamais de modification des titres existants en base, échappement contextuel
+  déjà en place inchangé (texte brut/`esc_attr()`/`textContent`), vérifié sans introduire de
+  possibilité d'injection. Libellés désormais VISIBLES pour les quatre filtres de l'écran de
+  sélection (Sexe/Statut commercial/Catégorie/Année de naissance), sans aucune modification de la
+  logique de filtrage déjà validée. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.24.0) pour le détail
+  complet.
+
 ## 1.26.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Partager un cheval : correctifs et améliorations de recette (GWS Equestrian 0.23.0).** Bug

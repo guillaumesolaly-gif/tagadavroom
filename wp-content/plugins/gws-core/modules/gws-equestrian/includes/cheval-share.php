@@ -39,6 +39,23 @@
 
 if (!defined('ABSPATH')) exit;
 
+/**
+ * Décode les entités HTML (nommées et numériques, ex. `&rsquo;`, `&#8217;`, `&amp;`) d'un titre de
+ * cheval AVANT toute utilisation dans ce module — correctif recette : certains titres contiennent
+ * l'entité sous forme de texte littéral (et non le caractère qu'elle représente), ce que
+ * `get_the_title()` ne corrige pas systématiquement. Point de décodage UNIQUE (principe
+ * "décoder une fois, échapper au bon endroit ensuite") : chaque consommateur applique ensuite son
+ * propre échappement contextuel (texte brut pour WhatsApp/SMS/Copier — aucun échappement
+ * supplémentaire nécessaire ; `esc_attr()` pour Open Graph ; `textContent` côté JS, qui n'interprète
+ * jamais de HTML). Volontairement `html_entity_decode()` (pas `wp_specialchars_decode()`, qui ne
+ * couvre que les 5 entités XML de base et ne décoderait pas `&rsquo;`) avec `ENT_HTML5` pour la
+ * table complète des entités nommées HTML5. Décodage à la volée à l'affichage seulement — ne
+ * modifie JAMAIS le titre en base (aucun `wp_update_post()` ici).
+ */
+function gwseq_horse_share_decode_title($raw_title) {
+  return html_entity_decode((string) $raw_title, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+}
+
 /* -------------------------------------------------------------------------------------------
  * Vocabulaire commercial du sexe (§8 de la demande — "Jument Selle Français — 7 ans").
  *
@@ -96,7 +113,7 @@ function gwseq_horse_share_identite_label($identity) {
 function gwseq_horse_share_pedigree_node_name($node) {
   if (!is_array($node)) return '';
   if (!in_array($node['type'] ?? '', array('gws_horse', 'external'), true)) return '';
-  return gwseq_format_horse_name_display($node['name'] ?? '');
+  return gwseq_format_horse_name_display(gwseq_horse_share_decode_title($node['name'] ?? ''));
 }
 
 function gwseq_horse_share_origines_label($cheval_id) {
@@ -256,8 +273,8 @@ function gwseq_get_horse_shareable_data($cheval_id) {
 
   return array(
     'id' => $cheval_id,
-    'nom' => get_the_title($cheval_id),
-    'nom_affiche' => gwseq_format_horse_name_display(get_the_title($cheval_id)),
+    'nom' => gwseq_horse_share_decode_title(get_the_title($cheval_id)),
+    'nom_affiche' => gwseq_format_horse_name_display(gwseq_horse_share_decode_title(get_the_title($cheval_id))),
     'photo_url' => wp_get_attachment_image_url(gwseq_get_cheval_photo_principale_id($cheval_id), 'medium') ?: '',
     'items' => $items,
     'videos' => $videos,
