@@ -72,10 +72,10 @@ $taxonomies = $GLOBALS['__gwseq_test_taxonomies'];
 
 // --- Post types attendus, ni plus ni moins ---
 gws_test_assert(
-  count($post_types) === 6,
-  'Exactement six post types enregistrés à cette étape (Prestation, Groupe, Cheval, Membre, Pop-in, Sticky bar)'
+  count($post_types) === 4,
+  'Exactement quatre post types enregistrés à cette étape (Prestation, Groupe, Cheval, Membre)'
 );
-foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, GWSEQ_CPT_POPIN, GWSEQ_CPT_STICKY_BAR) as $expected) {
+foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE) as $expected) {
   gws_test_assert(
     array_key_exists($expected, $post_types),
     "Post type attendu enregistré : $expected"
@@ -121,10 +121,6 @@ $module_files = array(
   $module_dir . 'includes/membre-fields.php',
   $module_dir . 'includes/membre-editor.php',
   $module_dir . 'includes/actualites.php',
-  $module_dir . 'includes/campagnes-shared.php',
-  $module_dir . 'includes/popin-fields.php',
-  $module_dir . 'includes/sticky-bar-fields.php',
-  $module_dir . 'includes/campagnes-front.php',
 );
 $prefix_violation_found = false;
 $non_gwseq_functions = array();
@@ -212,8 +208,6 @@ $expected_search_items = array(
   GWSEQ_CPT_GROUPE => 'Rechercher un groupe tarifaire',
   GWSEQ_CPT_CHEVAL => 'Rechercher un cheval',
   GWSEQ_CPT_MEMBRE => 'Rechercher des membres',
-  GWSEQ_CPT_POPIN => 'Rechercher une pop-in',
-  GWSEQ_CPT_STICKY_BAR => 'Rechercher une sticky bar',
 );
 foreach ($expected_search_items as $slug => $expected_label) {
   gws_test_assert(
@@ -224,7 +218,7 @@ foreach ($expected_search_items as $slug => $expected_label) {
 
 // --- Action de ligne "Modification rapide" (Quick Edit) retirée sur les quatre objets métier GWS
 // Equestrian ET sur `post` (Actualités, §6 de la demande Actualités), jamais globalement ---
-foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, GWSEQ_CPT_POPIN, GWSEQ_CPT_STICKY_BAR, 'post') as $slug) {
+foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, 'post') as $slug) {
   $native_actions = array('edit' => '<a>Modifier</a>', 'inline hide-if-no-js' => '<button>Modification rapide</button>', 'trash' => '<a>Corbeille</a>');
   $filtered = gwseq_remove_quick_edit_row_action($native_actions, (object) array('post_type' => $slug));
   gws_test_assert(
@@ -292,27 +286,17 @@ gws_test_assert(
 );
 
 // =====================================================================================
-// Mises en avant (Pop-in / Sticky bar) : deux post types distincts, non publics, sans Gutenberg,
-// réunis sous UNE SEULE entrée de menu (voir tests/gws-equestrian-campagnes-*-test.php pour la
-// couverture métier complète — sanitation, éligibilité, preview, rendu).
+// Mises en avant (Pop-in / Sticky bar) : module retiré en 0.21.0 (décision produit, cette
+// fonctionnalité périphérique sera couverte le cas échéant par une extension WordPress tierce
+// spécialisée — voir CHANGELOG.md). Vérifie que le retrait est bien complet : ni les post types, ni
+// le menu, ni aucune trace de meta box/libellé associés ne subsistent.
 // =====================================================================================
 
-$popin = $post_types[GWSEQ_CPT_POPIN] ?? array();
-$sticky = $post_types[GWSEQ_CPT_STICKY_BAR] ?? array();
-
-gws_test_assert(($popin['public'] ?? null) === false, 'Pop-in : public => false (jamais une page/URL front autonome)');
-gws_test_assert(($sticky['public'] ?? null) === false, 'Sticky bar : public => false');
-gws_test_assert(in_array('page-attributes', $popin['supports'] ?? array(), true), 'Pop-in : support \'page-attributes\' présent (menu_order réutilisé comme priorité, §I)');
-gws_test_assert(in_array('page-attributes', $sticky['supports'] ?? array(), true), 'Sticky bar : support \'page-attributes\' présent');
-gws_test_assert(!in_array('editor', $popin['supports'] ?? array(), true), 'Pop-in : pas de support \'editor\' natif (fiche structurée, pas de Gutenberg)');
-
-gws_test_assert(($popin['labels']['name'] ?? null) === 'Mises en avant', 'Pop-in : porte le libellé du menu principal "Mises en avant" (§B)');
-gws_test_assert(($popin['labels']['all_items'] ?? null) === 'Pop-ins', 'Pop-in : premier sous-menu "Pop-ins"');
-gws_test_assert(($popin['show_in_menu'] ?? null) === true, 'Pop-in : porte son propre menu principal (show_in_menu => true)');
-gws_test_assert(($sticky['labels']['all_items'] ?? null) === 'Sticky bars', 'Sticky bar : second sous-menu "Sticky bars"');
+gws_test_assert(!array_key_exists('gwseq_popin', $post_types), 'Retrait Mises en avant : le post type gwseq_popin n\'est plus enregistré');
+gws_test_assert(!array_key_exists('gwseq_sticky_bar', $post_types), 'Retrait Mises en avant : le post type gwseq_sticky_bar n\'est plus enregistré');
 gws_test_assert(
-  ($sticky['show_in_menu'] ?? null) === 'edit.php?post_type=' . GWSEQ_CPT_POPIN,
-  'Sticky bar : rattachée au menu de Pop-in (show_in_menu pointant vers son edit.php) — jamais un second menu principal, une seule entrée "Mises en avant" au total'
+  !in_array('Mises en avant', array_column(array_column($post_types, 'labels'), 'name'), true),
+  'Retrait Mises en avant : aucun post type restant ne porte le libellé de menu "Mises en avant"'
 );
 
 echo ($failures === 0 ? 'Tous les tests sont passés.' : "$failures test(s) en échec.") . "\n";

@@ -1,5 +1,19 @@
 # Changelog — GWS Starter
 
+## 1.24.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Retrait du module Mises en avant (GWS Equestrian 0.21.0) — décision produit, pas une
+  régression.** Après recette UX du lot 0.20.0, décision de ne pas conserver de moteur
+  propriétaire Pop-in/Sticky bar : fonctionnalité jugée périphérique à la valeur métier de GWS
+  Equestrian, à couvrir le cas échéant par une extension WordPress tierce spécialisée
+  (probablement Hustle) plutôt que par du code maison. Retrait complet et propre : les deux post
+  types (`gwseq_popin`/`gwseq_sticky_bar`), le menu "Mises en avant", les champs/meta, l'aperçu BO
+  et son point d'entrée AJAX, le rendu front, les assets JS/CSS dédiés et les fonctions partagées
+  devenues inutiles sont supprimés — aucun code mort laissé, aucune suppression destructive de
+  données en base. Actualités (cadrage Gutenberg, 0.19.0) inchangé et conservé. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.21.0) pour le détail
+  complet.
+
 ## 1.23.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Mises en avant : Pop-in et Sticky bar (GWS Equestrian 0.20.0).** Deux nouveaux objets métier

@@ -29,19 +29,13 @@ node tests/gws-equestrian-race-referentiel-autocomplete-runtime-test.js
 php tests/gws-equestrian-cheval-labels-test.php
 php tests/gws-equestrian-membre-logic-test.php
 php tests/gws-equestrian-actualites-logic-test.php
-php tests/gws-equestrian-campagnes-shared-test.php
-php tests/gws-equestrian-popin-logic-test.php
-php tests/gws-equestrian-sticky-bar-logic-test.php
-php tests/gws-equestrian-campagnes-front-test.php
-node tests/gws-equestrian-campagnes-front-runtime-test.js
 ```
 
 (`tests/qa-toggle-logic-test.php` est appelé automatiquement par `starter-logic-test.php`, dans
 un processus PHP séparé — il peut aussi être lancé seul.)
 
-**`gws-equestrian-cheval-admin-tabs-runtime-test.js`**,
-**`gws-equestrian-race-referentiel-autocomplete-runtime-test.js`** et
-**`gws-equestrian-campagnes-front-runtime-test.js`** sont les SEULS fichiers de ce
+**`gws-equestrian-cheval-admin-tabs-runtime-test.js`** et
+**`gws-equestrian-race-referentiel-autocomplete-runtime-test.js`** sont les SEULS fichiers de ce
 dossier qui ne s'exécutent pas via `php` : ils nécessitent `node` (aucune dépendance npm, aucun
 `package.json` — des scripts Node autonomes, DOM minimal fait main via le module `vm`). Contrairement
 aux autres fichiers, qui ne peuvent que scanner le TEXTE SOURCE d'un script JavaScript (présence de
@@ -935,79 +929,13 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   dépourvu de `post_type` reçoivent la valeur d'entrée INCHANGÉE, jamais recalculée — vérifié
   littéralement plutôt que supposé). Non-régression : compte de post types toujours à quatre,
   intégralité de la suite existante ré-exécutée.
-- **Mises en avant : Pop-in et Sticky bar (0.20.0)** : quatre nouveaux fichiers PHP et un nouveau
-  fichier d'exécution réelle Node.
-  - `gws-equestrian-campagnes-shared-test.php` (56 assertions) : style/couleurs (hex valide 6/3
-    caractères, nom CSS et charge XSS rejetés), CTA avec préfixe, texte enrichi (`wp_kses` —
-    `<strong>` conservé, `<script>` et `onclick` retirés, `<a href>`/`<ul>`/`<li>` conservés), mode
-    teeny scopé (comportement des autres usages du filtre natif inchangé avant/après, restreint
-    UNIQUEMENT pendant l'exécution du rendu du champ), dates/fuseau (`wp_timezone()` — un test
-    Europe/Paris ET un test UTC, vide/invalide -> 0), fenêtre de dates (bornes inclusives), ciblage
-    (encodage/décodage `post_type:post_id`, rejet d'une usurpation de post_type — vérifié par
-    retrait/restauration —, rejet d'un post type hors périmètre comme Équipe, déduplication, purge
-    des cibles hors mode `include`/`exclude`), éligibilité de page pour les quatre modes (dont les
-    cas "aucun contenu identifiable" : `include` -> false, `exclude` -> true), round-trip
-    horodatage <-> `datetime-local` préservant l'heure LOCALE sous Europe/Paris (vérifié par
-    retrait/restauration : un fuseau UTC codé en dur casse ce test ET le test Europe/Paris).
-  - `gws-equestrian-popin-logic-test.php` (~100 assertions) : sanitation des quatre sections
-    (Contenu/Apparence/Déclenchement/Diffusion), bornes serveur sur délai/scroll/jours (trop
-    grand/négatif/non numérique -> toujours une valeur saine, jamais une erreur), nettoyage
-    systématique des couleurs ET de l'image de fond en mode "Style du site" même si le payload
-    soumet encore d'anciennes valeurs, sauvegarde/rechargement complet, sécurité de la sauvegarde
-    (nonce/permissions/révision, chacun vérifié indépendamment), rendu partagé
-    `gwseq_render_popin_markup()` — DISTINCTION EXPLICITE entre l'image de CONTENU (balise `<img>`)
-    et l'image de FOND (variable CSS `--gws-popin-bg-image`), fermeture TOUJOURS présente, CTA
-    inactif jamais affiché, configuration vide -> rendu propre par défaut, fusion d'attributs
-    supplémentaires (preuve que preview et front partagent une seule fonction de rendu), point
-    d'entrée AJAX de preview (réponse de succès, sécurité, HTML reflétant l'état de formulaire via
-    les MÊMES sanitizers), meta boxes (ordre exact des cinq sections, contenu réel de chaque
-    rendu — rappels "jamais affiché sur le site"/distinction image contenu-fond/toujours
-    centrée/aide desktop-only de l'intention de sortie/fermeture compte comme exposition), colonnes
-    de liste (ordre exact, contenu réel), désactivation de Gutenberg scopée à `gwseq_popin`,
-    placeholder du titre natif, toutes les meta enregistrées jamais exposées en REST.
-  - `gws-equestrian-sticky-bar-logic-test.php` (~75 assertions) : mêmes catégories que Pop-in,
-    adaptées à un objet volontairement plus simple — texte court en texte SIMPLE (jamais de
-    balises, contrairement au texte enrichi de Pop-in), AUCUNE image de fond (vérifié à la fois côté
-    sanitation, rendu et meta enregistrées), fermeture CONDITIONNELLE (bouton de fermeture présent
-    uniquement si "fermable" est coché — contrairement à Pop-in, toujours fermable), position
-    Haut/Bas, trois meta boxes seulement (pas de Déclenchement), colonnes de liste sans colonne
-    Déclenchement.
-  - `gws-equestrian-campagnes-front-test.php` (14 assertions) : requête des candidates (statut GWS
-    "active" ET `post_status` "publish" ET tri par `menu_order` croissant), résolution
-    d'éligibilité combinant fenêtre de dates et ciblage, PRIORITÉ (la première candidate réellement
-    éligible dans l'ordre déjà trié gagne), COHABITATION indépendante d'une Pop-in et d'une Sticky
-    bar sur la même page, contexte de page (`is_front_page()`/ID de contenu courant), garde de
-    chargement conditionnel des assets front (jamais en administration/AJAX/flux, jamais si aucune
-    campagne éligible). **Un bug réel de production a été détecté et corrigé pendant l'écriture de
-    ce fichier** : `gwseq_campagne_choisir_eligible()` transmettait le tableau de diffusion brut
-    (clés `ciblage_mode`/`ciblage_cibles`, celles réellement renvoyées par
-    `gwseq_get_popin_diffusion()`/`gwseq_get_sticky_bar_diffusion()`) directement à
-    `gwseq_campagne_page_est_ciblee()`, qui attend des clés `mode`/`cibles` — ce qui provoquait un
-    avertissement PHP pour les modes "Tout le site"/"Page d'accueil uniquement" et une ERREUR FATALE
-    (`in_array()` sur un `null`) pour "Certains contenus"/"Tout sauf certains contenus", en clair :
-    toute campagne réellement ciblée aurait fait planter le rendu `wp_footer` du site. Corrigé dans
-    `includes/campagnes-front.php` par construction explicite du tableau `array('mode' =>
-    $diffusion['ciblage_mode'], 'cibles' => $diffusion['ciblage_cibles'])` avant l'appel — confirmé
-    par retrait/restauration (revert -> échec exact reproduit, fix restauré -> suite de nouveau
-    verte). Deux autres mécanismes critiques vérifiés par retrait/restauration : la priorité par
-    `menu_order` (cassure du tri -> échec détecté) et la garde desktop-only de l'intention de sortie
-    (voir le fichier runtime ci-dessous).
-  - `gws-equestrian-campagnes-front-runtime-test.js` (34 assertions, exécution RÉELLE via `node`,
-    même méthodologie que les deux autres suites runtime de ce dossier — DOM minimal fait main,
-    aucune dépendance npm) : déclenchement immédiat, fréquence "à chaque visite" (aucune trace de
-    stockage), fréquence "session" (`sessionStorage`, la marque posée DÈS L'AFFICHAGE — donc avant
-    toute fermeture, ce qui satisfait "fermer compte comme une exposition" sans logique séparée —
-    bloque un second affichage dans la même session simulée), fréquence "X jours" (`localStorage` +
-    horodatage comparé à un `Date.now()` injecté : bloqué avant l'échéance, autorisé et rafraîchi
-    après), intention de sortie DESKTOP (écouteur `mouseout` attaché quand `matchMedia('(hover:
-    hover)...')` répond vrai, déclenché par un mouvement de sortie vers le haut de la fenêtre) VS
-    MOBILE (AUCUN écouteur attaché du tout quand `matchMedia` répond faux — confirmé par
-    retrait/restauration du garde-fou correspondant dans le script), fermeture accessible (Échap
-    ferme et restaure le focus sur l'élément actif avant ouverture, bouton de fermeture natif),
-    piège à focus (Tab depuis le dernier élément focalisable boucle vers le premier et
-    inversement avec Shift+Tab, comportement par défaut du navigateur empêché dans les deux sens),
-    Sticky bar (fermeture mémorisée en `sessionStorage`, barre retirée d'emblée si déjà fermée lors
-    d'un chargement précédent simulé).
-
-  Intégralité des suites existantes (23 fichiers PHP + 3 suites JS runtime) ré-exécutée après ce
-  lot : aucune régression sur Cheval, Prestations, Équipe, Actualités, Groupes tarifaires.
+- **Mises en avant : Pop-in et Sticky bar (0.20.0), retiré en 0.21.0** : les quatre fichiers de
+  test PHP (`gws-equestrian-campagnes-shared-test.php`, `-popin-logic-test.php`,
+  `-sticky-bar-logic-test.php`, `-campagnes-front-test.php`) et le fichier d'exécution réelle Node
+  (`-campagnes-front-runtime-test.js`) qui couvraient ce module ont été supprimés avec le code
+  correspondant, retiré à la suite d'une décision produit (fonctionnalité périphérique, pas une
+  régression — voir `CHANGELOG.md` du module, 0.21.0). `gws-equestrian-foundations-test.php` porte
+  désormais trois assertions confirmant explicitement l'absence des deux post types et du menu
+  "Mises en avant" (vérifiées par retrait/restauration). Intégralité de la suite restante
+  (18 fichiers PHP + 2 suites JS runtime) ré-exécutée après ce retrait : aucune régression sur
+  Cheval, Prestations, Équipe, Actualités, Groupes tarifaires.

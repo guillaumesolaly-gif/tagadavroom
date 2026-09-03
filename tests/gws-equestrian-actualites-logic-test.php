@@ -287,7 +287,7 @@ gws_test_assert(
 // =====================================================================================
 
 $post_types = $GLOBALS['__gwseq_test_post_types'];
-gws_test_assert(count($post_types) === 6, 'Non-régression : toujours exactement six post types métier GWS enregistrés (Prestation, Groupe, Cheval, Membre, Pop-in, Sticky bar)');
+gws_test_assert(count($post_types) === 4, 'Non-régression : toujours exactement quatre post types métier GWS enregistrés (Prestation, Groupe, Cheval, Membre)');
 foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE) as $expected) {
   gws_test_assert(array_key_exists($expected, $post_types), "Non-régression : post type '$expected' toujours enregistré");
 }

@@ -5,6 +5,55 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.21.0 — Retrait du module Mises en avant (décision produit)
+
+**Ceci n'est PAS une correction de bug ni une régression.** Après recette UX du lot 0.20.0
+(ci-dessous), décision produit de ne pas conserver de moteur propriétaire Pop-in/Sticky bar dans
+GWS Equestrian : cette fonctionnalité est jugée périphérique à la valeur métier du module, et sera
+couverte, si l'usage réel le justifie un jour, par une extension WordPress tierce spécialisée
+(probablement Hustle) plutôt que par du code maison à maintenir. L'implémentation livrée en 0.20.0
+fonctionnait et avait été validée par une suite de tests complète — son retrait est une décision
+de périmètre, pas un désaveu technique.
+
+**Décision produit conservée** (documentaire uniquement, aucun code) : *Pop-in / mises en avant
+temporaires : fonctionnalité périphérique pouvant être couverte par une extension spécialisée
+telle que Hustle.* Aucune dépendance, installation automatique, intégration, template ni logique
+spécifique à une extension tierce n'a été ajoutée — ce sujet sera retraité séparément si l'usage
+réel le justifie.
+
+**Retrait complet** de tout ce qui avait été introduit spécifiquement pour ce lot :
+- Fichiers supprimés : `includes/campagnes-shared.php`, `includes/popin-fields.php`,
+  `includes/sticky-bar-fields.php`, `includes/campagnes-front.php`, `assets/campagnes-admin.js`,
+  `assets/campagnes-admin.css`, `assets/campagnes-front.js`, `assets/campagnes-front.css`,
+  `tests/gws-equestrian-campagnes-shared-test.php`, `tests/gws-equestrian-popin-logic-test.php`,
+  `tests/gws-equestrian-sticky-bar-logic-test.php`, `tests/gws-equestrian-campagnes-front-test.php`,
+  `tests/gws-equestrian-campagnes-front-runtime-test.js`.
+- `module.php` : constantes `GWSEQ_CPT_POPIN`/`GWSEQ_CPT_STICKY_BAR` et les quatre `require_once`
+  correspondants retirés.
+- `includes/post-types.php` : les deux `register_post_type()` (et le docblock expliquant la
+  technique de regroupement de menu) retirés — les deux CPT ne sont plus enregistrés, le menu
+  "Mises en avant" a disparu.
+- `includes/admin-ui.php` : les deux hooks `add_meta_boxes_gwseq_popin`/`add_meta_boxes_
+  gwseq_sticky_bar`, et les deux post types retirés des tableaux de `gwseq_admin_default_order_
+  by_menu_order()` et `gwseq_remove_quick_edit_row_action()`.
+
+Aucune suppression de données en base : les CPT ne sont plus enregistrés, mais aucun script de
+purge de posts/metas orphelins n'a été écrit (environnement encore en développement — un nettoyage
+volontaire des données de test, s'il est souhaité, reste une action séparée et délibérée).
+
+**Tests** : les quatre fichiers de test métier spécifiques (`campagnes-shared`, `popin-logic`,
+`sticky-bar-logic`, `campagnes-front`) et le fichier d'exécution réelle Node
+(`campagnes-front-runtime-test.js`) sont supprimés avec le code qu'ils couvraient.
+`gws-equestrian-foundations-test.php` : le compte de post types revient à quatre (Prestation,
+Groupe, Cheval, Membre), toutes les références aux deux CPT retirées, et trois nouvelles
+assertions confirment explicitement l'absence des deux post types et du libellé de menu "Mises en
+avant" (vérifiées par retrait/restauration : réintroduire un enregistrement minimal du CPT Pop-in
+fait échouer ces trois assertions comme attendu, remise en place -> suite de nouveau verte).
+`gws-equestrian-actualites-logic-test.php` : assertion de non-régression alignée sur quatre post
+types. Cadrage Gutenberg des Actualités inchangé et toujours couvert par sa suite dédiée. Suite
+complète (18 fichiers PHP + 2 suites JS runtime) ré-exécutée : aucune régression sur Cheval,
+Prestations, Équipe, Actualités, Groupes tarifaires.
+
 ## 0.20.0 — Mises en avant : Pop-in et Sticky bar
 
 Nouveau lot « Actualités cadrées + Mises en avant ». La partie Actualités (0.19.0, allowlist
