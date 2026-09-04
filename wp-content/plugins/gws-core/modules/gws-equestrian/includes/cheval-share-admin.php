@@ -396,11 +396,26 @@ const GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR = 'gwseq_partage_token';
 const GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION = 'gwseq_partage_prive';
 
 /**
- * Formulaire classique WordPress (admin-post.php + nonce), volontairement PAS un point d'entrée
- * AJAX supplémentaire : créer/révoquer/régénérer un lien privé est une action ponctuelle et rare,
- * contrairement aux interactions fréquentes de l'écran Partager (recherche, cases à cocher) qui,
- * elles, justifient l'AJAX. Rendu dans la MÊME boîte latérale que le bouton "Partager ce cheval" —
- * jamais une seconde interface.
+ * CAUSE RACINE d'un bug de recette bloquant (premier test réel du Lot 1) : cette boîte est rendue
+ * DANS la boîte latérale "Partage" de l'écran d'édition WordPress, elle-même DÉJÀ à l'intérieur du
+ * grand `<form id="post" method="post" action="post.php">` qui enveloppe TOUT l'écran d'édition
+ * (titre, contenu, TOUTES les boîtes, bouton Publier/Mettre à jour). Un `<form>` imbriqué dans un
+ * autre est INVALIDE en HTML : le navigateur ignore/aplatit la balise `<form>` interne, si bien que
+ * cliquer sur un bouton pensé pour soumettre CE formulaire soumettait en réalité le grand formulaire
+ * EXTÉRIEUR de l'écran d'édition (vers `post.php`, avec son propre champ cachÉ `action` en conflit
+ * avec le nôtre) — d'où la redirection constatée vers la liste "Actualités" (repli générique de
+ * `post.php` pour une valeur de `$_POST['action']` qu'il ne reconnaît pas), sans jamais atteindre
+ * notre gestionnaire `admin-post.php`.
+ *
+ * CORRECTIF (pas un contournement) : remplace les `<form>` imbriqués par de simples liens
+ * `<a class="button">` protégés par nonce (`gwseq_horse_private_share_action_url()`) — exactement
+ * le même schéma que les actions de ligne natives de WordPress ("Corbeille", "Restaurer"...), qui
+ * ne sont JAMAIS des formulaires imbriqués. `admin-post.php` traite indifféremment GET et POST
+ * (`$_REQUEST['action']`), et `check_admin_referer()` valide un nonce transmis en GET tout aussi
+ * bien qu'en POST — volontairement PAS un point d'entrée AJAX supplémentaire : créer/révoquer/
+ * régénérer un lien privé est une action ponctuelle et rare, contrairement aux interactions
+ * fréquentes de l'écran Partager (recherche, cases à cocher) qui, elles, justifient l'AJAX. Rendu
+ * dans la MÊME boîte latérale que le bouton "Partager ce cheval" — jamais une seconde interface.
  */
 function gwseq_render_horse_private_share_controls($post) {
   if (!current_user_can('edit_post', $post->ID)) return;
@@ -413,31 +428,29 @@ function gwseq_render_horse_private_share_controls($post) {
     $url = gwseq_horse_private_share_url($post->ID);
     echo '<p class="description">' . esc_html__('Ce cheval est accessible uniquement via ce lien secret, jamais publiquement (recherche, catalogue, sitemap).', 'gws-core') . '</p>';
     echo '<p><input type="text" readonly value="' . esc_attr($url) . '" style="width:100%;" onclick="this.select();"></p>';
-    ?>
-    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block;margin-right:6px;">
-      <?php wp_nonce_field(GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION . '_' . $post->ID, '_wpnonce'); ?>
-      <input type="hidden" name="action" value="gwseq_partage_prive_activer">
-      <input type="hidden" name="cheval_id" value="<?php echo (int) $post->ID; ?>">
-      <button type="submit" class="button"><?php esc_html_e('Régénérer (invalide l’ancien lien)', 'gws-core'); ?></button>
-    </form>
-    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block;">
-      <?php wp_nonce_field(GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION . '_' . $post->ID, '_wpnonce'); ?>
-      <input type="hidden" name="action" value="gwseq_partage_prive_revoquer">
-      <input type="hidden" name="cheval_id" value="<?php echo (int) $post->ID; ?>">
-      <button type="submit" class="button"><?php esc_html_e('Révoquer', 'gws-core'); ?></button>
-    </form>
-    <?php
+    echo '<p>';
+    echo '<a class="button" style="margin-right:6px;" href="' . esc_url(gwseq_horse_private_share_action_url('activer', $post->ID)) . '">' . esc_html__('Régénérer (invalide l’ancien lien)', 'gws-core') . '</a>';
+    echo '<a class="button" href="' . esc_url(gwseq_horse_private_share_action_url('revoquer', $post->ID)) . '">' . esc_html__('Révoquer', 'gws-core') . '</a>';
+    echo '</p>';
   } else {
     echo '<p class="description">' . esc_html__('Envoyer ce cheval à des acheteurs précis sans l’afficher publiquement sur le site.', 'gws-core') . '</p>';
-    ?>
-    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-      <?php wp_nonce_field(GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION . '_' . $post->ID, '_wpnonce'); ?>
-      <input type="hidden" name="action" value="gwseq_partage_prive_activer">
-      <input type="hidden" name="cheval_id" value="<?php echo (int) $post->ID; ?>">
-      <button type="submit" class="button button-secondary"><?php esc_html_e('Créer un lien de partage privé', 'gws-core'); ?></button>
-    </form>
-    <?php
+    echo '<p><a class="button button-secondary" href="' . esc_url(gwseq_horse_private_share_action_url('activer', $post->ID)) . '">' . esc_html__('Créer un lien de partage privé', 'gws-core') . '</a></p>';
   }
+}
+
+/**
+ * Construit l'URL nonce-protégée d'une action de partage privé — POINT UNIQUE de construction,
+ * jamais reconstruite ailleurs (le lien "Régénérer" réutilise l'action "activer", identique à une
+ * création puisque c'est la même opération, voir gwseq_horse_private_share_activate()). `$action`
+ * est l'un des deux suffixes réellement enregistrés ci-dessous ('activer'/'revoquer'), jamais une
+ * valeur libre.
+ */
+function gwseq_horse_private_share_action_url($action, $cheval_id) {
+  $url = add_query_arg(
+    array('action' => 'gwseq_partage_prive_' . $action, 'cheval_id' => (int) $cheval_id),
+    admin_url('admin-post.php')
+  );
+  return wp_nonce_url($url, GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION . '_' . (int) $cheval_id);
 }
 
 /**
@@ -451,8 +464,22 @@ function gwseq_horse_private_share_user_can_manage($cheval_id) {
   return $cheval_id > 0 && get_post_type($cheval_id) === GWSEQ_CPT_CHEVAL && current_user_can('edit_post', $cheval_id);
 }
 
+/**
+ * URL de retour après une action de partage privé — extraite à part (jamais mêlée à
+ * wp_safe_redirect()/exit ci-dessous) pour rester testable unitairement, et pour ne JAMAIS renvoyer
+ * une URL vide : `get_edit_post_link()` peut renvoyer une chaîne vide dans des cas limites (capacité
+ * réévaluée différemment entre-temps, type de post modifié) — un repli sur la liste des Chevaux
+ * garantit toujours un atterrissage cohérent plutôt qu'un repli WordPress générique vers le
+ * Tableau de bord. `get_edit_post_link()`/`admin_url()` ne produisent jamais qu'une URL interne à ce
+ * site (jamais une entrée utilisateur) : aucun risque d'open redirect ici, quel que soit le résultat.
+ */
+function gwseq_horse_private_share_redirect_url_after_action($cheval_id) {
+  $url = get_edit_post_link($cheval_id, 'raw');
+  return $url ? $url : admin_url('edit.php?post_type=' . GWSEQ_CPT_CHEVAL);
+}
+
 function gwseq_horse_private_share_handle_admin_post($activate) {
-  $cheval_id = isset($_POST['cheval_id']) ? absint($_POST['cheval_id']) : 0;
+  $cheval_id = isset($_REQUEST['cheval_id']) ? absint($_REQUEST['cheval_id']) : 0;
   check_admin_referer(GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION . '_' . $cheval_id);
 
   if (!gwseq_horse_private_share_user_can_manage($cheval_id)) {
@@ -465,7 +492,7 @@ function gwseq_horse_private_share_handle_admin_post($activate) {
     gwseq_horse_private_share_revoke($cheval_id);
   }
 
-  wp_safe_redirect(get_edit_post_link($cheval_id, 'raw'));
+  wp_safe_redirect(gwseq_horse_private_share_redirect_url_after_action($cheval_id));
   exit;
 }
 

@@ -1168,3 +1168,29 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   Intégralité de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée après ce lot : aucune
   régression. Seuls deux fichiers touchés dans tout le dépôt pour cette correction (le fichier de
   glue et son test), conformément à la demande de ne rien modifier d'autre dans ce lot.
+- **Lot 1 « Partager & vendre » : correctif bloquant, création d'un lien privé (0.28.0)** : premier
+  test réel — cliquer sur "Créer un lien de partage privé" redirigeait vers la liste "Actualités"
+  au lieu de revenir sur la fiche. Cause racine : des `<form>` imbriqués dans le grand formulaire
+  d'édition WordPress (invalide en HTML). Sans nouveau fichier de test.
+  - `gws-equestrian-cheval-share-admin-test.php` (109 assertions au total) : régression EXPLICITE
+    contre la cause racine — le HTML rendu par la boîte latérale "Partage" est vérifié comme ne
+    contenant JAMAIS de balise `<form` (dans les DEUX états, sans/avec partage privé actif), et les
+    actions Régénérer/Révoquer sont bien rendues comme des liens `<a>`. `gwseq_horse_private_share_
+    action_url()` testé isolément (cible `admin-post.php`, action `activer`/`revoquer` correcte,
+    `cheval_id` correctement transmis, nonce présent et propre à L'ACTION PRÉCISE `gwseq_partage_
+    prive_{id}` — jamais un nonce générique partagé entre deux chevaux différents).
+    `gwseq_horse_private_share_redirect_url_after_action()` — LE point explicitement demandé par la
+    recette ("un test couvrant explicitement l'URL de redirection finale") — vérifié ramenant vers
+    l'écran d'édition DU MÊME cheval (jamais une autre liste), URL toujours interne à `/wp-admin/`
+    (aucun risque d'open redirect, ni `get_edit_post_link()` ni `admin_url()` ne dépendent d'une
+    entrée utilisateur), et repli explicite vers la liste des Chevaux si `get_edit_post_link()`
+    échoue exceptionnellement (capacité réévaluée différemment entre-temps) — jamais une URL vide,
+    jamais le repli WordPress générique vers le Tableau de bord qui a précisément produit le
+    symptôme observé en recette.
+
+  Les deux correctifs vérifiés par retrait/restauration : réintroduire un `<form>` imbriqué fait
+  échouer exactement l'assertion de régression dédiée ; retirer le repli explicite de `gwseq_horse_
+  private_share_redirect_url_after_action()` fait échouer exactement les deux assertions du
+  scénario d'échec de `get_edit_post_link()`. Intégralité de la suite (21 fichiers PHP + 3 suites JS
+  runtime) ré-exécutée après ce lot : aucune régression. Seuls deux fichiers touchés dans tout le
+  dépôt (le fichier de glue et son test), conformément à la demande de ne rien développer d'autre.

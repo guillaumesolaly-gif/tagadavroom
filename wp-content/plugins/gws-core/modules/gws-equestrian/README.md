@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.27.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : visibilité public/privé (lien de partage privé `/partage/{token}`, révocable/régénérable, exclu recherche/archive/API REST y compris `/wp/v2/search` transversal/sitemap), vocabulaire "Inclure le lien vers la fiche" (GWS détermine seul le lien approprié), Open Graph fonctionnel aussi sur la route privée (og:url correct, noindex systématique, directives anti-cache explicites pour une révocation immédiatement effective même derrière un cache/CDN). Deux failles identifiées en revue avant recette et corrigées en 0.27.0 (voir CHANGELOG.md). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + accès sans compte au lien privé) avant d'engager le Lot 2.
+## État actuel : GWS Equestrian 0.28.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : visibilité public/privé (lien de partage privé `/partage/{token}`, révocable/régénérable, exclu recherche/archive/API REST y compris `/wp/v2/search` transversal/sitemap), vocabulaire "Inclure le lien vers la fiche" (GWS détermine seul le lien approprié), Open Graph fonctionnel aussi sur la route privée (og:url correct, noindex systématique, directives anti-cache explicites). Premier test réel : bug bloquant sur la création d'un lien privé corrigé à la cause racine (formulaires imbriqués dans l'écran d'édition WordPress, remplacés par des liens nonce-protégés, voir CHANGELOG.md 0.28.0). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + accès sans compte au lien privé, création/régénération/révocation du lien) avant d'engager le Lot 2.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -732,6 +732,19 @@ Corrigé par `gwseq_horse_private_share_send_nocache_headers()` (`Cache-Control:
 `Pragma: no-cache`, constante `DONOTCACHEPAGE`) appelée sur les deux issues de la route privée —
 comportement de cache des fiches publiques strictement inchangé. Voir `CHANGELOG.md` de ce dossier
 (0.27.0) pour le détail complet.
+
+**Correctif bloquant, création d'un lien privé (0.28.0), premier test réel.** Cliquer sur "Créer un
+lien de partage privé" redirigeait vers la liste "Actualités" sans revenir sur la fiche. Cause
+racine : les actions Créer/Régénérer/Révoquer étaient rendues comme des `<form>` DANS la boîte
+latérale "Partage", elle-même déjà à l'intérieur du grand formulaire d'édition WordPress qui
+enveloppe tout l'écran (`<form id="post">`) — un `<form>` imbriqué dans un autre est invalide en
+HTML, le clic soumettait donc en réalité le formulaire extérieur (vers `post.php`), jamais notre
+gestionnaire `admin-post.php`. Corrigé en remplaçant les formulaires par de simples liens
+`<a class="button">` nonce-protégés (`gwseq_horse_private_share_action_url()`, point unique de
+construction), exactement le schéma des actions de ligne natives de WordPress. Redirection de
+retour extraite dans `gwseq_horse_private_share_redirect_url_after_action()`, avec repli explicite
+vers la liste des Chevaux si `get_edit_post_link()` échoue exceptionnellement — jamais une URL vide
+ni le Tableau de bord générique. Voir `CHANGELOG.md` de ce dossier (0.28.0) pour le détail complet.
 
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et

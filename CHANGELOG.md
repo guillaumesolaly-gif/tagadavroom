@@ -1,5 +1,18 @@
 # Changelog — GWS Starter
 
+## 1.31.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Lot 1 « Partager & vendre » : correctif bloquant, création d'un lien privé (GWS Equestrian
+  0.28.0).** Premier test réel : cliquer sur "Créer un lien de partage privé" redirigeait vers la
+  liste "Actualités" au lieu de revenir sur la fiche. Cause racine : les actions de partage privé
+  étaient rendues comme des `<form>` imbriqués dans le grand formulaire d'édition WordPress — un
+  `<form>` imbriqué est invalide en HTML, le clic soumettait donc le formulaire extérieur (vers
+  `post.php`) au lieu du gestionnaire `admin-post.php` prévu. Corrigé en remplaçant les formulaires
+  par de simples liens nonce-protégés (même schéma que les actions de ligne natives de WordPress) ;
+  redirection de retour rendue plus robuste (repli explicite vers la liste des Chevaux, jamais une
+  URL vide ni le Tableau de bord générique). Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.28.0) pour le détail complet.
+
 ## 1.30.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Lot 1 « Partager & vendre » : deux correctifs suite à revue avant recette (GWS Equestrian

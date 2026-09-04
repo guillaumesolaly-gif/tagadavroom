@@ -5,6 +5,50 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.28.0 — Lot 1 « Partager & vendre » : correctif bloquant, création d'un lien privé
+
+Premier test réel du Lot 1 (0.27.0) : cliquer sur "Créer un lien de partage privé" dans la boîte
+latérale "Partage" d'une fiche cheval publiée redirigeait vers la liste "Actualités" au lieu de
+revenir sur la fiche, sans jamais présenter le résultat de la création du lien.
+
+**Cause racine.** Les actions de partage privé (Créer/Régénérer/Révoquer) étaient rendues comme des
+`<form method="post" action="admin-post.php">` DANS la boîte latérale "Partage" — elle-même déjà à
+l'intérieur du grand `<form id="post" method="post" action="post.php">` qui enveloppe la TOTALITÉ de
+l'écran d'édition WordPress (titre, contenu, toutes les boîtes, bouton Publier/Mettre à jour). Un
+`<form>` imbriqué dans un autre est INVALIDE en HTML : le navigateur ignore/aplatit la balise
+interne, si bien que cliquer sur le bouton soumettait en réalité le formulaire EXTÉRIEUR de l'écran
+d'édition (vers `post.php`, avec son propre champ caché `action` en conflit avec le nôtre) — jamais
+notre gestionnaire `admin-post.php`. La redirection observée vers "Actualités" est le repli
+générique de `post.php` pour une valeur de `$_POST['action']` qu'il ne reconnaît pas, jamais un
+comportement de notre code.
+
+**Correctif** (pas une redirection ajoutée pour masquer le symptôme — la cause elle-même est
+retirée) : les trois `<form>` imbriqués de `gwseq_render_horse_private_share_controls()`
+(`includes/cheval-share-admin.php`) sont remplacés par de simples liens `<a class="button">`
+nonce-protégés (`gwseq_horse_private_share_action_url()`, nouvelle fonction, point unique de
+construction de ces URL) — exactement le même schéma que les actions de ligne natives de WordPress
+("Corbeille", "Restaurer"...), qui ne sont jamais des formulaires imbriqués. `admin-post.php` traite
+indifféremment GET et POST (`$_REQUEST['action']`), et `check_admin_referer()` valide un nonce
+transmis en GET tout aussi bien qu'en POST — `$_POST['cheval_id']` devient donc `$_REQUEST['cheval_id']`
+dans `gwseq_horse_private_share_handle_admin_post()`.
+
+**Robustesse de la redirection de retour** (revue en même temps, même fonction concernée) : extraite
+dans `gwseq_horse_private_share_redirect_url_after_action()`, testable isolément, avec un repli
+explicite vers la liste des Chevaux si `get_edit_post_link()` ne peut exceptionnellement pas produire
+d'URL (capacité réévaluée différemment entre-temps) — jamais une URL vide transmise à
+`wp_safe_redirect()`, jamais le repli WordPress générique vers le Tableau de bord qui a précisément
+produit le symptôme observé. Aucun risque d'open redirect : `get_edit_post_link()`/`admin_url()` ne
+dépendent jamais d'une entrée utilisateur.
+
+**Vérifié pour les trois actions** (créer/régénérer/révoquer) : capacité (`edit_post` sur la fiche
+précise), nonce (action précise `gwseq_partage_prive_{id}`, jamais générique — un nonce généré pour
+un cheval ne fonctionne jamais pour un autre), validation du `post_id` et du type `gwseq_cheval`
+(réutilise `gwseq_horse_private_share_user_can_manage()`, déjà en place, inchangée), comportement
+d'erreur (`wp_die()` 403 si non autorisé, inchangé), conservation du token (activer/révoquer restent
+strictement les mêmes fonctions métier qu'en 0.26.0, aucune régression sur la logique de token
+elle-même — uniquement le TRANSPORT de l'action, de POST-formulaire-imbriqué vers GET-lien, a
+changé).
+
 ## 0.27.0 — Lot 1 « Partager & vendre » : deux correctifs suite à revue avant recette
 
 Revue du ZIP 0.26.0 avant recette réelle (par le professionnel, sans exécution) : deux failles

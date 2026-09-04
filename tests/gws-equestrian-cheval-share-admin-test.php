@@ -119,6 +119,15 @@ function get_the_title($post) {
   return $GLOBALS['__gwseq_test_posts'][$id]['post_title'] ?? '';
 }
 function get_permalink($post_id) { return 'https://example.test/chevaux/cheval-' . (int) $post_id . '/'; }
+// Réplique fidèle du comportement réel de get_edit_post_link() suffisant pour ce test : chaîne vide
+// si le post n'existe pas ou si l'utilisateur courant ne peut pas l'éditer (WordPress fait de même),
+// sinon l'URL d'édition admin — jamais dérivée d'une entrée utilisateur (aucun risque d'open
+// redirect, quel que soit le résultat).
+function get_edit_post_link($post_id, $context = 'display') {
+  $post = get_post($post_id);
+  if (!$post || !current_user_can('edit_post', $post_id)) return '';
+  return 'https://example.test/wp-admin/post.php?post=' . (int) $post_id . '&action=edit';
+}
 
 $GLOBALS['__gwseq_test_attachment_urls'] = array();
 function wp_get_attachment_image_url($id, $size = 'thumbnail') { return $GLOBALS['__gwseq_test_attachment_urls'][$id][$size] ?? false; }
@@ -165,6 +174,10 @@ function wp_enqueue_script($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] =
 function wp_enqueue_style($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] = $handle; }
 function wp_localize_script($handle, $name, $data) { $GLOBALS['__gwseq_test_localized'][$handle][$name] = $data; }
 function wp_create_nonce($action) { return 'nonce-' . $action; }
+function wp_nonce_url($url, $action = -1, $name = '_wpnonce') {
+  $sep = strpos($url, '?') === false ? '?' : '&';
+  return $url . $sep . $name . '=' . wp_create_nonce($action);
+}
 
 // --- WP_Query minimal, fidèle au strict nécessaire de gwseq_horse_share_query_chevaux() :
 // post_type/post_status('any' = tout sauf corbeille/auto-draft)/author/s (recherche substring sur
@@ -721,6 +734,68 @@ $meta_box_html_non_autorise = ob_get_clean();
 gws_test_assert(strpos($meta_box_html_non_autorise, 'Partage privé') === false, 'Boîte latérale : aucun contrôle de partage privé affiché à un utilisateur qui ne peut pas éditer cette fiche');
 gws_test_reset_security();
 gwseq_horse_private_share_revoke(510);
+
+// =====================================================================================
+// Bug runtime bloquant (premier test réel du Lot 1) — CAUSE RACINE : les actions de partage privé
+// étaient rendues comme des <form> imbriqués dans le grand formulaire d'édition WordPress
+// (<form id="post">...), ce qui est invalide en HTML — le clic soumettait en réalité le formulaire
+// EXTÉRIEUR (vers post.php), jamais notre gestionnaire admin-post.php, d'où la redirection
+// constatée vers la liste "Actualités" au lieu de revenir sur la fiche. Corrigé en remplaçant les
+// <form> par de simples liens <a> nonce-protégés (même schéma que les actions de ligne natives de
+// WordPress). Ces tests couvrent EXPLICITEMENT la construction de l'URL de retour finale — les
+// tests précédents ne le faisaient pas, ce qui n'avait donc pas permis de reproduire ce bug.
+// =====================================================================================
+
+// --- Régression : plus JAMAIS de <form> dans cette boîte, dans AUCUN état (garde-fou explicite
+// contre la cause racine ci-dessus, qui ne se voit qu'en HTML réellement rendu dans un navigateur —
+// jamais dans un test qui se contente de vérifier la présence d'un texte de bouton) ---
+gws_test_make_horse(511, 'Cheval Sans Form Imbrique', 1);
+ob_start();
+call_user_func($meta_box['callback'], get_post(511));
+$meta_box_html_sans_partage = ob_get_clean();
+gws_test_assert(stripos($meta_box_html_sans_partage, '<form') === false, 'Boîte latérale : aucun <form> imbriqué (état sans partage privé) — cause racine du bug de redirection vers Actualités');
+
+gwseq_horse_private_share_activate(511);
+ob_start();
+call_user_func($meta_box['callback'], get_post(511));
+$meta_box_html_avec_partage = ob_get_clean();
+gws_test_assert(stripos($meta_box_html_avec_partage, '<form') === false, 'Boîte latérale : aucun <form> imbriqué non plus une fois le partage privé actif (Régénérer/Révoquer)');
+gws_test_assert(substr_count($meta_box_html_avec_partage, '<a class="button"') + substr_count($meta_box_html_avec_partage, 'class="button') >= 2, 'Boîte latérale : Régénérer et Révoquer sont bien rendus comme des liens (<a>), jamais comme des boutons de formulaire');
+gwseq_horse_private_share_revoke(511);
+
+// --- gwseq_horse_private_share_action_url() : construction de l'URL cliquée, testable isolément ---
+$url_activer = gwseq_horse_private_share_action_url('activer', 510);
+gws_test_assert(strpos($url_activer, 'admin-post.php') !== false, 'URL action partage privé : cible bien admin-post.php');
+gws_test_assert(strpos($url_activer, 'action=gwseq_partage_prive_activer') !== false, 'URL action partage privé : action="activer" correcte (Créer ET Régénérer réutilisent la même)');
+gws_test_assert(strpos($url_activer, 'cheval_id=510') !== false, 'URL action partage privé : identifiant du cheval correctement transmis');
+gws_test_assert(strpos($url_activer, '_wpnonce=') !== false, 'URL action partage privé : nonce présent dans l’URL (GET protégé, comme les actions de ligne natives de WordPress)');
+gws_test_assert(strpos($url_activer, 'nonce-gwseq_partage_prive_510') !== false, 'URL action partage privé : le nonce est bien généré pour L’ACTION PRÉCISE "gwseq_partage_prive_510" — la même chaîne que celle vérifiée par check_admin_referer() dans gwseq_horse_private_share_handle_admin_post(), jamais une action générique');
+
+$url_revoquer = gwseq_horse_private_share_action_url('revoquer', 510);
+gws_test_assert(strpos($url_revoquer, 'action=gwseq_partage_prive_revoquer') !== false, 'URL action partage privé : action="revoquer" correcte, distincte de "activer"');
+
+$url_autre_cheval = gwseq_horse_private_share_action_url('activer', 42);
+gws_test_assert(strpos($url_autre_cheval, 'cheval_id=42') !== false && strpos($url_autre_cheval, 'nonce-gwseq_partage_prive_42') !== false, 'URL action partage privé : nonce et identifiant varient bien avec le cheval concerné (jamais un nonce générique réutilisable sur un autre cheval)');
+
+// --- gwseq_horse_private_share_redirect_url_after_action() : URL DE RETOUR après activer/
+// régénérer/révoquer — exactement le point qui manquait de couverture et qui a laissé passer le
+// bug (§ "ajouter un test couvrant explicitement l'URL de redirection finale") ---
+gws_test_make_horse(512, 'Cheval Redirection Retour', 1);
+$redirect_url = gwseq_horse_private_share_redirect_url_after_action(512);
+gws_test_assert($redirect_url === get_edit_post_link(512, 'raw'), 'Redirection après action : ramène bien vers l’écran d’édition DU MÊME cheval (post.php?post=512&action=edit), jamais vers une autre liste');
+gws_test_assert(strpos($redirect_url, 'post=512') !== false, 'Redirection après action : l’identifiant du cheval concerné est bien celui de la redirection, jamais un autre');
+gws_test_assert(strpos($redirect_url, '/wp-admin/') === 0 || strpos($redirect_url, 'https://example.test/wp-admin/') === 0, 'Redirection après action : URL interne à wp-admin (jamais une URL externe — pas d’open redirect possible, get_edit_post_link()/admin_url() ne dépendent jamais d’une entrée utilisateur)');
+
+// --- Repli explicite si get_edit_post_link() ne peut pas produire d’URL (ex. capacité réévaluée
+// différemment entre-temps) : jamais une URL vide, jamais un repli WordPress générique vers le
+// Tableau de bord (qui a précisément produit le symptôme observé : atterrissage sur Actualités) ---
+$GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
+$GLOBALS['__gwseq_test_security']['current_user_id'] = 2; // pas l'auteur (1) de la fiche 512
+gws_test_assert(get_edit_post_link(512, 'raw') === '', 'Pré-requis du test de repli : get_edit_post_link() renvoie bien vide quand l’utilisateur ne peut pas éditer cette fiche (comportement réel de WordPress)');
+$redirect_url_repli = gwseq_horse_private_share_redirect_url_after_action(512);
+gws_test_assert($redirect_url_repli !== '', 'Redirection après action : jamais une URL vide transmise à wp_safe_redirect(), même si get_edit_post_link() échoue');
+gws_test_assert(strpos($redirect_url_repli, 'edit.php?post_type=' . GWSEQ_CPT_CHEVAL) !== false, 'Redirection après action : repli explicite vers la liste des Chevaux (jamais le Tableau de bord générique, jamais Actualités)');
+gws_test_reset_security();
 
 // --- Correctif de recette : la route de partage privé ne doit JAMAIS être mise en cache (page
 // cache, reverse proxy, CDN) — sans quoi une révocation/régénération ne serait pas immédiatement
