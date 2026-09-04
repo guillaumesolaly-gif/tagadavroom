@@ -20,12 +20,13 @@ const GWSEQ_CPT_PRESTATION = 'gwseq_prestation';
 const GWSEQ_CPT_GROUPE = 'gwseq_groupe';
 const GWSEQ_CPT_CHEVAL = 'gwseq_cheval';
 const GWSEQ_CPT_MEMBRE = 'gwseq_membre';
+const GWSEQ_CPT_SELECTION = 'gwseq_selection';
 const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
 
 // Version propre au module (distincte de la version du plugin gws-core qui l'héberge) : suit
 // l'avancement des étapes du plan de développement, voir CHANGELOG.md de ce dossier. Atteindra
 // 1.0.0 au gel de la V1 (fin de l'étape 9).
-define('GWSEQ_MODULE_VERSION', '0.33.0');
+define('GWSEQ_MODULE_VERSION', '0.34.0');
 define('GWSEQ_MODULE_URL', GWS_CORE_URL . 'modules/gws-equestrian/');
 
 /**
@@ -76,3 +77,5 @@ require_once __DIR__ . '/includes/membre-editor.php';
 require_once __DIR__ . '/includes/actualites.php';
 require_once __DIR__ . '/includes/cheval-share.php';
 require_once __DIR__ . '/includes/cheval-share-admin.php';
+require_once __DIR__ . '/includes/cheval-selection.php';
+require_once __DIR__ . '/includes/cheval-selection-admin.php';

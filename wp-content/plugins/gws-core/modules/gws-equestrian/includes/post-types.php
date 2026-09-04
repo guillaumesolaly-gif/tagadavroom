@@ -101,6 +101,36 @@ function gwseq_register_post_types() {
     'rewrite' => array('slug' => 'chevaux'),
   ));
 
+  /**
+   * Sélection de plusieurs chevaux (Suite V1 « Partager & vendre », Lot 2A — voir includes/
+   * cheval-selection.php pour la justification complète de ce choix de persistance). Objet
+   * d'organisation interne, JAMAIS une page publique — même traitement que "Groupe tarifaire"
+   * ci-dessus (aucune archive, aucun rewrite natif, absente de la recherche/REST) : la future route
+   * tokenisée `/selection/{token}` (Lot 2B) sera une règle de réécriture dédiée, indépendante du
+   * permalink natif de ce post type, sur le modèle déjà en place pour `/partage/{token}` (Cheval,
+   * includes/cheval-share-admin.php) — jamais le permalink natif d'un post type public.
+   * `show_ui => false` : aucun écran natif "Ajouter"/"Modifier" (qui suggérerait à tort un cycle
+   * Brouillon/Publier sans rapport avec ce modèle) — un écran dédié entièrement custom
+   * (includes/cheval-selection-admin.php, même esprit que `Chevaux → Partager`) gère la création
+   * et la liste des sélections existantes.
+   */
+  register_post_type(GWSEQ_CPT_SELECTION, array(
+    'labels' => array(
+      'name' => __('Sélections', 'gws-core'),
+      'singular_name' => __('Sélection', 'gws-core'),
+    ),
+    'public' => false,
+    'publicly_queryable' => false,
+    'has_archive' => false,
+    'exclude_from_search' => true,
+    'show_in_nav_menus' => false,
+    'show_ui' => false,
+    'show_in_menu' => false,
+    'show_in_rest' => false,
+    'supports' => array('title'),
+    'rewrite' => false,
+  ));
+
   register_post_type(GWSEQ_CPT_MEMBRE, array(
     'labels' => array(
       'name' => __('Équipe', 'gws-core'),

@@ -1,5 +1,22 @@
 # Changelog — GWS Starter
 
+## 1.37.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Suite V1 « Partager & vendre », Lot 2A : modèle et persistance de la Sélection de chevaux
+  (GWS Equestrian 0.34.0).** Première étape (sur cinq) du Lot 2 (sélection multi-chevaux),
+  développée par petits lots avec recette réelle entre chaque étape. Ce lot couvre strictement le
+  modèle métier, la persistance, la création d'une sélection et la gestion de son token — pas
+  encore le rendu public de la page destinataire, le partage WhatsApp/SMS/Copier, l'Open Graph, ni
+  la modification d'une sélection existante (développements ultérieurs, non engagés). Nouveau CPT
+  interne/non public `gwseq_selection`, aucune nouvelle table (liste ordonnée de chevaux dans une
+  seule meta), token de partage au même niveau de sécurité que le partage privé Cheval (32 octets
+  aléatoires, révocation NON DESTRUCTIVE). Un cheval "En préparation" n'entre jamais dans une
+  sélection (règle réutilisant exclusivement `gwseq_horse_diffusion_state()`) ; une sélection ne
+  stocke que des identifiants, jamais une copie des données du cheval — tout est relu à jour à
+  l'affichage, y compris son lien de fiche public/privé. Nouvel écran `Chevaux → Sélections`
+  réutilisant exactement le moteur de recherche/filtrage de l'écran `Chevaux → Partager`. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.34.0) pour le détail complet.
+
 ## 1.36.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctifs de clôture Lot 1 : libellé du filtre + import IFCE Naisseur

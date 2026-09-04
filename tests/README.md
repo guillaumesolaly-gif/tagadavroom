@@ -1392,3 +1392,63 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   "Éleveur" dans `cheval-fields.php` fait échouer exactement les deux nouvelles assertions de
   libellé dans `gws-equestrian-cheval-logic-test.php`. Intégralité de la suite ré-exécutée après
   chaque restauration : aucune régression.
+- **Suite V1 « Partager & vendre », Lot 2A : modèle et persistance de la Sélection de chevaux
+  (0.34.0)** — trois NOUVEAUX fichiers de test.
+  - `gws-equestrian-cheval-selection-logic-test.php` (couche métier, `includes/cheval-selection.
+    php`) : token (génération au format attendu, activation/lecture, régénération invalidant
+    immédiatement l'ancien token, révocation NON DESTRUCTIVE — le post et son titre restent
+    intacts), recherche inverse token -> sélection (format rejeté avant requête, token inconnu,
+    une sélection en corbeille ne résout jamais, strictement `publish` — un statut ni publié ni en
+    corbeille ne résout pas non plus, défense en profondeur) ; sanitation/dédoublonnage des IDs de
+    chevaux (ordre de première occurrence conservé, entrée non-tableau sans erreur) ; règle
+    d'éligibilité (réutilise exclusivement `gwseq_horse_diffusion_state()` — "En préparation"
+    jamais éligible, cheval inexistant/autre CPT/en corbeille jamais éligible) et son filtre
+    (dédoublonnage + éligibilité combinés, ordre préservé) ; résolution pour affichage (état et
+    lien de fiche toujours À JOUR, y compris après un changement de diffusion ultérieur — cheval
+    passé de "Diffusion privée" à "Visible sur le site" : le lien devient public ; cheval repassé
+    "En préparation" : devient non présentable SANS jamais être retiré de la liste stockée) ;
+    titre (libellé neutre calculé à l'affichage seulement, jamais stocké) ; création (ordre
+    préservé, dédoublonnage, exclusion automatique d'un ID "En préparation" soumis malgré tout,
+    token actif immédiatement, 1 seul cheval accepté, aucune limite haute arbitraire testée
+    jusqu'à 50 chevaux, entrée malformée sans erreur fatale, sélection sans plus aucun cheval
+    diffusable restant un objet valide et intact).
+  - `gws-equestrian-cheval-selection-admin-test.php` (glue wp-admin, `includes/cheval-selection-
+    admin.php`) : menu (sous-menu de "Chevaux", capacité `edit_posts`) ; recherche réutilisant
+    EXACTEMENT le moteur de l'écran « Partager », avec l'exclusion de "En préparation" vérifiée à
+    trois niveaux (résultats par défaut, tentative de forcer le filtre "En préparation" côté
+    client sans effet, options du filtre elles-mêmes limitées à deux valeurs) ; sécurité AJAX
+    (nonce, capacité, y compris via le point d'entrée réel) ; création AJAX (IDs partiellement
+    invalides silencieusement écartés — "En préparation", autre CPT, inexistant, doublon —, cheval
+    d'un autre auteur sans `edit_others_posts` écarté, nonce invalide rejeté) ; permission de
+    gestion du token (propriétaire vs auteur différent, ID inexistant, ID d'un autre CPT) et
+    construction des URLs nonce-protégées de régénération/révocation ; restriction "mes propres
+    sélections" ; ligne d'administration (comptage total/diffusable recalculé à la volée après un
+    changement de diffusion ultérieur) ; chargement conditionnel des assets et contenu localisé
+    (liste des sélections existantes, filtre diffusion à deux valeurs, vocabulaire identique à
+    l'écran « Partager »).
+  - `gws-equestrian-cheval-selection-runtime-test.js` (exécution RÉELLE de `assets/cheval-
+    selection-admin.js`, 32 assertions, même méthodologie que `gws-equestrian-cheval-share-
+    runtime-test.js` — DOM minimal fait main, aucune dépendance npm) : vue liste (message explicite
+    si vide, une ligne par sélection, lien copiable pour un token actif, action Régénérer/Révoquer
+    selon l'état, confirmation obligatoire avant toute action) ; bascule liste <-> création
+    (bouton dédié, retour, ouverture directe via `?vue=nouvelle`) ; vue création (une case par
+    résultat de recherche, compteur "N chevaux sélectionnés" mis à jour en temps réel, activation/
+    désactivation du bouton de création, ordre Monter/Descendre vérifié sur le panneau de
+    sélection, retrait synchronisant bien la case décochée dans les résultats, appel AJAX de
+    création transmettant le titre et les IDs DANS L'ORDRE de la sélection en cours, redirection
+    après succès, message d'erreur affiché et bouton réactivé après un échec serveur, recherche
+    appelant bien le point d'entrée AJAX dédié `gwseq_selection_search_cheval`, jamais celui de
+    l'écran « Partager »).
+
+  Trois correctifs vérifiés par retrait/restauration : neutraliser la règle d'éligibilité
+  (`gwseq_selection_horse_is_eligible()` toujours vraie) fait échouer exactement les assertions
+  qui en dépendent dans les deux fichiers PHP (logique + admin) ; assouplir la recherche inverse
+  par token de `publish` strict à `any` fait échouer exactement l'assertion dédiée à un statut ni
+  publié ni en corbeille (ajoutée précisément pour distinguer les deux, un premier essai avec
+  seulement une sélection en corbeille ne suffisant pas à isoler cette règle — `any` excluant déjà
+  la corbeille) ; réintroduire "En préparation" dans les états éligibles de l'écran Sélections
+  fait échouer exactement les cinq assertions qui dépendent de cette exclusion. Intégralité de la
+  suite ré-exécutée après chaque restauration : aucune régression. Deux fichiers de non-régression
+  préexistants mis à jour (le nouveau CPT interne porte le nombre total de post types métier GWS
+  de quatre à cinq) : `gws-equestrian-foundations-test.php` et
+  `gws-equestrian-actualites-logic-test.php`.

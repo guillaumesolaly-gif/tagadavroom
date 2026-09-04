@@ -297,8 +297,11 @@ gws_test_assert(
 // =====================================================================================
 
 $post_types = $GLOBALS['__gwseq_test_post_types'];
-gws_test_assert(count($post_types) === 4, 'Non-régression : toujours exactement quatre post types métier GWS enregistrés (Prestation, Groupe, Cheval, Membre)');
-foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE) as $expected) {
+// Suite V1 « Partager & vendre », Lot 2A : GWSEQ_CPT_SELECTION (interne/non public, voir
+// includes/post-types.php) porte désormais ce total à cinq — même principe de non-régression,
+// borne mise à jour plutôt que retirée.
+gws_test_assert(count($post_types) === 5, 'Non-régression : toujours exactement cinq post types métier GWS enregistrés (Prestation, Groupe, Cheval, Membre, Sélection)');
+foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, GWSEQ_CPT_SELECTION) as $expected) {
   gws_test_assert(array_key_exists($expected, $post_types), "Non-régression : post type '$expected' toujours enregistré");
 }
 $categorie_cheval = $GLOBALS['__gwseq_test_taxonomies'][GWSEQ_TAX_CATEGORIE_CHEVAL] ?? null;

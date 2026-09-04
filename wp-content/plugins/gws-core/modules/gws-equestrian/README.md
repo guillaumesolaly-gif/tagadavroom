@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.33.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : la diffusion d'une fiche Cheval est pilotée avec le SEUL vocabulaire métier GWS (boîte "État de diffusion" remplaçant, uniquement pour Cheval, la boîte native "Publier" — `post_status`/`post_password` + token restent la seule source technique, aucun statut personnalisé créé), avec un filtre "Tous les états de diffusion/En préparation/Diffusion privée/Visible sur le site" sur `Chevaux → Tous les chevaux` ET `Chevaux → Partager`, cumulable avec les autres filtres (Catégorie/Statut/Sexe/Année/recherche), réutilisant exclusivement `gwseq_horse_diffusion_state()` comme source de vérité (`gwseq_cheval_ids_by_diffusion_state()`, includes/cheval-share.php). Toute la suite de recette de ce Lot 1 est validée (transitions En préparation/Diffusion privée/Visible sur le site dans les deux sens, URL publique, token conservé, ancien lien privé bien en 404). Deux correctifs de clôture (0.33.0), demandés après cette recette : (1) le libellé par défaut du filtre passe de "Tous" à "Tous les états de diffusion", par cohérence avec les autres filtres de la barre — libellé uniquement, aucune logique modifiée ; (2) l'import IFCE n'extrayait pas le Naisseur pour les documents utilisant le libellé "Naisseur principal :" (cas réel L'Aganix d'Aubigny) — règle généralisée à partir de l'audit des 7 fixtures réelles du dépôt, restreinte à la zone de synthèse du cheval sujet, et corrigeant au passage un bug distinct détecté pendant l'audit (la mention légale d'opposition SIRE importée à tort comme un nom, cas Quaprice Bois Margot) ; le libellé du champ correspondant passe d'"Éleveur" à "Naisseur" (changement de libellé non destructif, sans renommage de meta ni migration). Correctif indépendant du lot précédent (0.32.0) toujours en vigueur : l'import IFCE n'attribue plus à un cheval importé un indice sportif (ISO/ICC/IDR) ou génétique appartenant en réalité à un ascendant présent dans le pedigree/la production de son document (bug réel constaté sur L'Aganix d'Aubigny, retrouvé sur 5 des 6 fixtures réelles déjà testées) — les indices ne sont plus recherchés que dans la zone de synthèse du cheval sujet, strictement avant la section Pedigree. Visibilité publique et lien de partage privé (`/partage/{token}`, révocable/régénérable) restent DÉCOUPLÉS (0.29.0) ; liste `Chevaux → Tous les chevaux` n'affichant toujours pas "— Visible sur le site" pour ne pas surcharger visuellement la liste (0.30.0), boîte "État de diffusion" et ses transitions centralisées et réutilisables par un futur écran mobile (0.31.0). Voir CHANGELOG.md (0.33.0 et 0.32.0) pour le détail complet. Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1.
+## État actuel : GWS Equestrian 0.34.0 — Suite V1 « Partager & vendre », Lot 1 validé en recette réelle (voir CHANGELOG.md, 0.32.0/0.33.0), Lot 2A en cours : sélection persistante de plusieurs chevaux. Le Lot 1 pilote la diffusion d'une fiche Cheval avec le SEUL vocabulaire métier GWS (boîte "État de diffusion" remplaçant, uniquement pour Cheval, la boîte native "Publier"), avec un filtre "Tous les états de diffusion/En préparation/Diffusion privée/Visible sur le site" cumulable sur `Chevaux → Tous les chevaux` ET `Chevaux → Partager`. Le Lot 2A (0.34.0), développé par petits lots avec recette réelle entre chaque étape (méthode explicitement demandée), introduit le nouvel écran `Chevaux → Sélections` : un professionnel peut désormais constituer une sélection PERSISTANTE de plusieurs chevaux (contrairement au partage individuel, entièrement éphémère) en réutilisant exactement le moteur de recherche/filtrage de l'écran « Partager », avec ordre explicite (Monter/Descendre) et token de partage au même niveau de sécurité que le partage privé Cheval (révocation non destructive). Un cheval "En préparation" n'entre jamais dans une sélection, et une sélection ne stocke que des identifiants — jamais une copie des données du cheval, toujours relues à jour à l'affichage. Ce lot 2A s'arrête volontairement au modèle/à la persistance/à la création/au token : le rendu public de la page destinataire, le partage WhatsApp/SMS/Copier, l'Open Graph et la modification d'une sélection existante restent des lots ultérieurs (2B+), non engagés. Voir CHANGELOG.md (0.34.0) pour le détail complet. Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent également à développer après validation des lots précédents. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -836,6 +836,73 @@ Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et
 `tests/gws-equestrian-cheval-share-runtime-test.js` pour la couverture dédiée, et le `CHANGELOG.md`
 de ce dossier (0.22.0) pour le détail complet, y compris les limites connues de cette V1.
+
+## Sélection de plusieurs chevaux (Lot 2A, 0.34.0)
+
+Suite du lot précédent : un professionnel qui identifie plusieurs chevaux susceptibles de convenir
+à un acheteur peut créer une SÉLECTION persistante (contrairement au partage individuel ci-dessus,
+entièrement éphémère) et obtenir un seul lien à envoyer. Développé en petits lots avec recette
+réelle entre chaque étape (méthode explicitement demandée) : ce Lot 2A couvre STRICTEMENT le
+modèle métier, la persistance, la création d'une sélection et la gestion de son token — le rendu
+public de la page destinataire, le partage WhatsApp/SMS/Copier, l'Open Graph et la MODIFICATION
+d'une sélection existante restent des lots ultérieurs, non engagés.
+
+**Persistance (`includes/cheval-selection.php`).** Nouveau CPT interne/non public
+`gwseq_selection` (`GWSEQ_CPT_SELECTION`), exactement le même traitement que "Groupe tarifaire"
+(`public => false`, aucune archive, aucun rewrite natif, absente de la recherche/REST) — jamais une
+page publique du site. Aucune nouvelle table : la liste ORDONNÉE de chevaux d'une sélection tient
+dans une seule meta (`_gwseq_selection_chevaux`, un tableau PHP d'identifiants — l'ordre du tableau
+EST l'ordre de présentation, aucun champ d'ordre séparé à synchroniser) ; le titre facultatif est
+`post_title` natif (aucun titre inventé n'est jamais stocké — un libellé neutre "Sélection de
+chevaux" n'est calculé qu'à l'affichage, `gwseq_selection_display_title()`) ; la date de création
+est `post_date` natif ; l'identifiant technique est l'ID du post. Le token de partage
+(`_gwseq_selection_token`) suit exactement la même architecture que le partage privé Cheval (32
+octets aléatoires cryptographiquement sûrs, sa seule présence = partage actif, révoquer = supprimer
+la meta, régénérer = l'écraser) — contrairement au Cheval, le token d'une sélection est actif DÈS
+LA CRÉATION (une sélection n'a de raison d'exister que pour être partagée).
+
+**Règle de diffusion, cœur architectural du lot.** Un cheval "En préparation" n'entre jamais dans
+une sélection — réutilise EXCLUSIVEMENT `gwseq_horse_diffusion_state()` (includes/cheval-share.php,
+jamais un recalcul depuis `post_status`), appliqué à la fois côté recherche de l'écran de création
+(le cheval n'apparaît même pas dans les résultats) ET côté serveur au moment de la création
+elle-même (défense en profondeur). Une sélection RÉFÉRENCE des chevaux, elle n'en stocke JAMAIS une
+copie : `gwseq_selection_resolve_cheval()` relit systématiquement l'état ACTUEL du cheval au
+moment de l'affichage (photo, prix, indice à jour automatiquement, sans recréer la sélection), y
+compris son lien de fiche approprié (public si "Visible sur le site", privé si "Diffusion privée",
+réutilise `gwseq_horse_share_fiche_url()`, jamais un second calcul). Si un cheval déjà inclus
+repasse "En préparation" après l'envoi d'une sélection, il devient simplement non présentable au
+prochain calcul — la liste stockée n'est JAMAIS modifiée pour autant, la sélection n'est jamais
+"cassée" par ce changement, même si elle ne contient alors plus aucun cheval diffusable.
+
+**Écran `Chevaux → Sélections` (`includes/cheval-selection-admin.php`).** Réutilise EXACTEMENT le
+moteur de recherche/filtrage déjà construit pour `Chevaux → Partager`
+(`gwseq_sanitize_horse_share_filters()`/`gwseq_horse_share_filters_to_query_args()`/
+`gwseq_horse_share_query_chevaux()`/`gwseq_horse_share_lightweight_row()`) — recherche texte, état
+de diffusion, sexe, statut commercial, année de naissance, catégorie, tous cumulables — avec pour
+seule différence l'exclusion systématique des chevaux "En préparation" (absents des résultats ET
+des options du filtre "État de diffusion" propre à cet écran). Sélection multiple par case à
+cocher, ordre explicite via des boutons Monter/Descendre (accessible, fonctionne aussi bien sur
+smartphone — jamais un drag & drop comme unique solution), un compteur visible ("N chevaux
+sélectionnés"), un titre facultatif, et AUCUNE limite artificielle de nombre de chevaux (une liste
+de simples identifiants dans une meta unique n'a pas de coût de jointure connu jusqu'à plusieurs
+centaines d'entrées, largement au-delà de tout usage commercial réaliste). La liste des sélections
+déjà créées affiche titre/date/nombre de chevaux actuellement diffusables sur le total/lien
+(copiable)/actions Régénérer ou Révoquer — restreinte aux propres sélections de l'utilisateur sans
+`edit_others_posts`, même règle que l'écran « Partager ». Pas de bouton "Modifier"/"Ouvrir" dans ce
+lot : la modification d'une sélection existante (ajout/retrait/réordonnancement/titre) est un
+développement du Lot 2B.
+
+**Sécurité.** Chaque identifiant de cheval soumis à la création AJAX est revérifié SERVEUR
+(appartenance au CPT Cheval, capacité `edit_post` sur ce cheval précis, éligibilité de diffusion) —
+jamais une confiance dans ce que le client affirme avoir sélectionné : tout ID invalide est
+simplement écarté, jamais une erreur bloquante pour le reste de la sélection. Gestion du token
+(régénérer/révoquer) via des liens `admin-post.php` nonce-protégés (jamais un formulaire imbriqué),
+exactement les mêmes mécanismes que le partage privé Cheval.
+
+Voir `tests/gws-equestrian-cheval-selection-logic-test.php`,
+`tests/gws-equestrian-cheval-selection-admin-test.php` et
+`tests/gws-equestrian-cheval-selection-runtime-test.js` pour la couverture dédiée, et le
+`CHANGELOG.md` de ce dossier (0.34.0) pour le détail complet.
 
 ## Mises en avant (Pop-in / Sticky bar) — retiré (0.21.0)
 

@@ -1,0 +1,269 @@
+/**
+ * Écran « Chevaux → Sélections » (Suite V1 « Partager & vendre », Lot 2A) — MOBILE-FIRST, même
+ * convention que assets/cheval-share-admin.css : règles de base pour smartphone, mise en page
+ * desktop à deux colonnes (recherche / sélection en cours) à partir de 782px (point de rupture
+ * natif de wp-admin).
+ */
+
+.gwseq-selections #gwseq-selections-app {
+  max-width: 960px;
+}
+
+/* --- Liste des sélections (§13) --- */
+
+.gwseq-selections-table {
+  margin-top: 16px;
+}
+
+.gwseq-selections-link-input {
+  width: 100%;
+  max-width: 320px;
+  margin-right: 6px;
+  font-size: 13px;
+}
+
+/* --- Création : disposition --- */
+
+.gwseq-selections-back {
+  background: none;
+  border: none;
+  color: #2271b1;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 8px 0;
+  min-height: 44px;
+}
+
+.gwseq-selections-create__layout {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* --- Recherche/filtres (repris de l'écran « Partager ») --- */
+
+.gwseq-selections-search__input {
+  width: 100%;
+  font-size: 16px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+
+.gwseq-selections-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+  align-items: flex-end;
+}
+
+.gwseq-selections-filter {
+  flex: 1 1 140px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gwseq-selections-filter__label {
+  font-size: 12px;
+  color: #646970;
+  line-height: 1.2;
+}
+
+.gwseq-selections-filter__select {
+  width: 100%;
+  min-height: 40px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.gwseq-selections-filter--annee {
+  flex: 1 1 100%;
+}
+
+.gwseq-selections-filter__annee-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gwseq-selections-filters__reset {
+  background: none;
+  border: none;
+  color: #2271b1;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px 0;
+  min-height: 40px;
+  flex: 1 1 100%;
+  text-align: left;
+}
+
+.gwseq-selections-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gwseq-selections-result {
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid #dcdcde;
+  border-radius: 4px;
+}
+
+.gwseq-selections-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.gwseq-selections-checkbox input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.gwseq-selections-result__photo {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #f0f0f1;
+  flex-shrink: 0;
+}
+
+.gwseq-selections-result__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gwseq-selections-result__sous-titre {
+  color: #646970;
+  font-size: 13px;
+}
+
+.gwseq-selections-no-results {
+  color: #646970;
+  padding: 12px 0;
+}
+
+/* --- Panneau "sélection en cours" (§7-8) --- */
+
+.gwseq-selections-selected {
+  background: #fff;
+  border: 1px solid #dcdcde;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.gwseq-selections-selected__count {
+  font-weight: 600;
+  margin-top: 0;
+}
+
+.gwseq-selections-selected__list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.gwseq-selections-selected__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f1;
+}
+
+.gwseq-selections-selected__item:last-child {
+  border-bottom: none;
+}
+
+.gwseq-selections-selected__photo {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #f0f0f1;
+  flex-shrink: 0;
+}
+
+.gwseq-selections-selected__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gwseq-selections-selected__sous-titre {
+  color: #646970;
+  font-size: 12px;
+}
+
+.gwseq-selections-selected__controls {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.gwseq-selections-field {
+  margin-bottom: 16px;
+}
+
+.gwseq-selections-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.gwseq-selections-field input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.gwseq-selections-create-error {
+  color: #d63638;
+  font-weight: 600;
+}
+
+/* --- Desktop (782px, point de rupture natif de wp-admin) --- */
+
+@media (min-width: 782px) {
+  .gwseq-selections-create__layout {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .gwseq-selections-search {
+    flex: 1 1 55%;
+    min-width: 0;
+  }
+
+  .gwseq-selections-selected {
+    flex: 1 1 40%;
+    min-width: 0;
+    position: sticky;
+    top: 32px;
+  }
+
+  .gwseq-selections-filter {
+    flex: 0 1 180px;
+  }
+
+  .gwseq-selections-filter--annee {
+    flex: 0 0 auto;
+  }
+
+  .gwseq-selections-filters__reset {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+}

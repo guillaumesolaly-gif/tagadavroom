@@ -5,6 +5,77 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.34.0 — Suite V1 « Partager & vendre », Lot 2A : modèle et persistance de la Sélection de chevaux
+
+Première étape du Lot 2 (sélection multi-chevaux), développée par petits lots avec recette réelle
+entre chaque étape (méthode explicitement demandée). Ce lot 2A couvre STRICTEMENT : le modèle
+métier, la persistance, la création d'une sélection, et la gestion de son token. Volontairement
+ABSENTS de ce lot (développements ultérieurs, non engagés) : le rendu public de la page
+destinataire, le partage WhatsApp/SMS/Copier, l'Open Graph, la préparation mobile concrète, l'export
+PDF, le catalogue, et la MODIFICATION d'une sélection existante (ajout/retrait/réordonnancement/
+titre après création).
+
+**Persistance — choix d'architecture.** Nouveau CPT interne/non public `gwseq_selection`
+(`GWSEQ_CPT_SELECTION`, includes/post-types.php), sur le modèle déjà en place pour "Groupe
+tarifaire" (`public => false`, aucune archive, aucun rewrite natif, absente de la recherche/REST).
+Aucune nouvelle table : la liste ORDONNÉE de chevaux d'une sélection tient dans une seule meta
+postmeta (`_gwseq_selection_chevaux`, tableau PHP d'IDs — l'ordre du tableau EST l'ordre de
+présentation), le titre facultatif est `post_title` natif, la date de création `post_date` natif,
+l'identifiant technique l'ID du post. Le token de partage (`_gwseq_selection_token`) suit
+exactement la même architecture que le partage privé Cheval (32 octets aléatoires
+cryptographiquement sûrs, présence de la meta = partage actif) — même niveau de sécurité demandé.
+`includes/cheval-selection.php` porte toute cette couche métier, indépendante de wp-admin
+(préparation explicite d'un futur écran mobile) ; `includes/cheval-selection-admin.php` porte la
+glue wp-admin (écran `Chevaux → Sélections`, AJAX, actions de gestion du token).
+
+**Règle de diffusion (cœur du lot).** Un cheval "En préparation" n'entre jamais dans une sélection
+(exclu à la fois de la recherche de l'écran de création ET par une revérification serveur au
+moment de la création elle-même) — réutilise EXCLUSIVEMENT `gwseq_horse_diffusion_state()`
+(includes/cheval-share.php), jamais un recalcul depuis `post_status`. Une sélection ne stocke QUE
+des identifiants de chevaux, jamais une copie de leurs données : toute résolution pour affichage
+(`gwseq_selection_resolve_cheval()`) relit l'état ACTUEL du cheval, y compris son lien de fiche
+(public si "Visible sur le site", privé si "Diffusion privée", réutilise
+`gwseq_horse_share_fiche_url()`). Si un cheval déjà inclus repasse "En préparation" après coup, il
+devient simplement non présentable au calcul suivant — la liste stockée n'est JAMAIS modifiée, la
+sélection n'est jamais "cassée".
+
+**Token.** Générer/activer/régénérer/révoquer suivent exactement les mêmes règles que le partage
+privé Cheval. Révocation NON DESTRUCTIVE (demande explicite) : seule la meta token disparaît, le
+post et la liste de chevaux restent intacts — l'utilisateur peut régénérer un token à tout moment
+pour redonner un accès. Recherche inverse token -> sélection strictement limitée au statut
+`publish` (aucun autre statut n'est aujourd'hui produit par ce module, défense en profondeur).
+
+**Écran `Chevaux → Sélections`.** Réutilise EXACTEMENT le moteur de recherche/filtrage de l'écran
+`Chevaux → Partager` (recherche texte, état de diffusion, sexe, statut commercial, année,
+catégorie, tous cumulables), avec l'exclusion supplémentaire des chevaux "En préparation" (jamais
+proposé dans les résultats ni dans les options du filtre "État de diffusion" sur cet écran).
+Sélection multiple par case à cocher, ordre explicite via boutons Monter/Descendre (accessible,
+fonctionnera aussi bien sur smartphone — jamais un drag & drop comme seule solution), compteur
+"N chevaux sélectionnés", titre facultatif, aucune limite artificielle de nombre de chevaux (une
+seule meta simple, aucun coût de jointure jusqu'à plusieurs centaines d'entrées). La liste des
+sélections déjà créées affiche titre/date/nombre de chevaux actuellement diffusables/lien
+(copiable)/actions Régénérer ou Révoquer — restreinte aux propres sélections de l'utilisateur sans
+`edit_others_posts`, même règle que l'écran « Partager ». Pas de bouton "Modifier"/"Ouvrir" dans ce
+lot (Lot 2B).
+
+**Sécurité.** Chaque ID de cheval soumis à la création est revérifié SERVEUR (appartenance au CPT
+Cheval, capacité `edit_post` sur ce cheval précis, éligibilité de diffusion) — jamais une confiance
+dans ce que le client affirme avoir sélectionné ; tout ID invalide est simplement écarté, jamais
+une erreur bloquante. Gestion du token via liens `admin-post.php` nonce-protégés (jamais un
+formulaire imbriqué), mêmes mécanismes que le partage privé Cheval. Restriction "mes propres
+sélections" pour un auteur sans `edit_others_posts`.
+
+**Tests.** Couverture complète du modèle (token/régénération/révocation non destructive/recherche
+inverse stricte, sanitation et dédoublonnage des IDs, éligibilité, résolution pour affichage y
+compris cheval supprimé/en corbeille/changement de diffusion ultérieur, création à 1/plusieurs
+chevaux/sans limite haute, données malformées, sélection sans plus aucun cheval diffusable) et de
+la glue wp-admin (menu, exclusion "En préparation" à tous les niveaux, AJAX de recherche/création
+avec sa sanitation serveur, permissions de gestion du token, restriction auteur, chargement
+conditionnel des assets). Nouveau test d'exécution réelle du script de l'écran (recherche, case à
+cocher, ordre, compteur, création, échec de création, confirmation avant régénérer/révoquer). Trois
+correctifs vérifiés par retrait/restauration (isolation confirmée). Deux tests de non-régression
+préexistants mis à jour (le nombre total de post types métier GWS passe de quatre à cinq).
+
 ## 0.33.0 — Correctifs de clôture Lot 1 : libellé du filtre + import IFCE (Naisseur)
 
 Deux correctifs demandés en recette après validation du correctif indices sportifs (0.32.0),

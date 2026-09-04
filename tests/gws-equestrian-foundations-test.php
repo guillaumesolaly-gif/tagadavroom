@@ -78,11 +78,14 @@ $post_types = $GLOBALS['__gwseq_test_post_types'];
 $taxonomies = $GLOBALS['__gwseq_test_taxonomies'];
 
 // --- Post types attendus, ni plus ni moins ---
+// Suite V1 « Partager & vendre », Lot 2A : GWSEQ_CPT_SELECTION (interne/non public, voir
+// includes/post-types.php) porte désormais ce total à cinq — même principe de non-régression,
+// borne mise à jour plutôt que retirée.
 gws_test_assert(
-  count($post_types) === 4,
-  'Exactement quatre post types enregistrés à cette étape (Prestation, Groupe, Cheval, Membre)'
+  count($post_types) === 5,
+  'Exactement cinq post types enregistrés à cette étape (Prestation, Groupe, Cheval, Membre, Sélection)'
 );
-foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE) as $expected) {
+foreach (array(GWSEQ_CPT_PRESTATION, GWSEQ_CPT_GROUPE, GWSEQ_CPT_CHEVAL, GWSEQ_CPT_MEMBRE, GWSEQ_CPT_SELECTION) as $expected) {
   gws_test_assert(
     array_key_exists($expected, $post_types),
     "Post type attendu enregistré : $expected"
