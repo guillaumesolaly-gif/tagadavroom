@@ -5,6 +5,56 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.31.0 — Lot 1 « Partager & vendre » : piloter la diffusion avec le vocabulaire GWS
+
+Recette du 0.30.0 concluante (sauvegarde implicite, état "Diffusion privée" bien dérivé), mais
+l'écran d'édition continuait d'afficher EN PARALLÈLE les contrôles natifs WordPress (boîte
+"Publier" : `Brouillon`/`Publier`/`État`/`Visibilité` Publique-Protégée par mot de passe-Privée) —
+deux modèles contradictoires pour la même donnée. La diffusion d'une fiche Cheval est désormais
+pilotée avec le SEUL vocabulaire métier GWS, `post_status`/`post_password` + token restant la seule
+source technique sous-jacente (aucun statut personnalisé créé).
+
+- **Boîte "État de diffusion"** (`includes/cheval-share-admin.php`) : remplace la boîte native
+  "Publier", UNIQUEMENT pour le CPT Cheval (`remove_meta_box('submitdiv', GWSEQ_CPT_CHEVAL, 'side')`
+  — mécanisme natif scopé, aucun impact sur Pages/Actualités/Prestations/Membres). Affiche "État de
+  diffusion : {En préparation|Diffusion privée|Visible sur le site}" puis uniquement les actions
+  pertinentes : *En préparation* → Enregistrer / Activer la diffusion privée / Rendre visible sur le
+  site (si capacité `publish_post`) ; *Diffusion privée* → Enregistrer les modifications / Rendre
+  visible sur le site / Repasser en préparation ; *Visible sur le site* → Enregistrer les
+  modifications / "Retirer la fiche du site" avec DEUX choix explicites (Repasser en préparation OU
+  Activer la diffusion privée — jamais un "Dépublier" ambigu). Chaque bouton de transition est un
+  VRAI `<button type="submit">` du formulaire d'édition existant : la fiche est donc toujours
+  réellement enregistrée AVANT la transition, en un seul geste (jamais "Enregistrer le brouillon"
+  PUIS changer la diffusion en deux opérations séparées), via le hook natif `save_post_{cpt}`
+  (aucune duplication de la logique de sauvegarde).
+- **Transitions métier centralisées** (`includes/cheval-share.php`) : trois nouvelles fonctions
+  pures, indépendantes de wp-admin — `gwseq_horse_diffusion_set_en_preparation()` (statut `draft`,
+  token révoqué), `gwseq_horse_diffusion_set_diffusion_privee()` (statut `draft`, réutilise un token
+  déjà actif ou en crée un), `gwseq_horse_diffusion_set_visible_site()` (statut `publish`, mot de
+  passe résiduel systématiquement levé). Un futur écran mobile GWS appellera exactement ces mêmes
+  fonctions, sans jamais manipuler `post_status`/`post_password`/le token directement.
+- **Sécurité** : `edit_post` pour toute transition (défense en profondeur), et `publish_post`
+  spécifiquement avant de rendre une fiche visible sur le site — vérifié à la fois côté affichage
+  (bouton absent) et côté hook de sauvegarde (refus silencieux si la capacité manque). Les règles du
+  token sont conservées à l'identique (privé → public : ancien token peut rester valide ; public →
+  non public : token existant conservé ; révocation : token supprimé).
+- **Jamais le statut natif `private` de WordPress ni la protection par mot de passe comme
+  implémentation de "Diffusion privée"** : elle reste `draft` + token GWS, exactement comme depuis
+  le Lot 1 — les deux notions "privé" restent homonymes mais distinctes, la confidentialité
+  commerciale étant assurée par GWS (token, route dédiée), jamais par un mécanisme de visibilité
+  WordPress natif. Une fiche déjà en `private` natif ou protégée par mot de passe reste classée sans
+  risque selon son état métier réel (`gwseq_horse_diffusion_state()` ne regarde jamais ces deux
+  éléments séparément).
+- **Audit non destructif** (`includes/cheval-fields.php`) : nouvelle notice sur la liste
+  `Chevaux → Tous les chevaux`, signalant les fiches existantes utilisant encore un statut `private`
+  natif ou une protection par mot de passe (`gwseq_cheval_native_visibility_mismatches()`, fonction
+  pure, aucune écriture) — jamais de migration automatique ni silencieuse, seulement un signalement
+  avec lien direct vers chaque fiche concernée pour une correction manuelle.
+- **Boîte "Partage"** : le bouton "Créer un lien de partage privé" est retiré de cette boîte
+  (centralisé dans "État de diffusion" — un seul point d'entrée par transition, jamais deux boutons
+  différents pour la même opération) ; "Régénérer"/"Révoquer" un partage déjà actif y restent
+  inchangés, ainsi que l'affichage de l'URL et de l'état "Visible sur le site" avec un ancien token.
+
 ## 0.30.0 — Lot 1 « Partager & vendre » : ajustement UX/métier, statut de diffusion et sauvegarde
 
 Recette du correctif 0.29.0 : le cheval non public avec token est bien accessible via son lien

@@ -1,5 +1,20 @@
 # Changelog — GWS Starter
 
+## 1.34.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Lot 1 « Partager & vendre » : piloter la diffusion avec le vocabulaire GWS
+  (GWS Equestrian 0.31.0).** La boîte native "Publier" de WordPress (Brouillon/Publier/État/
+  Visibilité) est remplacée, UNIQUEMENT pour le CPT Cheval, par une boîte "État de diffusion" au
+  vocabulaire métier GWS (En préparation/Diffusion privée/Visible sur le site) — `post_status`/
+  `post_password` + token restent la seule source technique sous-jacente, aucun statut personnalisé
+  créé, et jamais le statut natif `private` de WordPress pour implémenter "Diffusion privée" (qui
+  reste `draft` + token GWS). Chaque bouton de transition sauvegarde réellement la fiche avant de
+  l'appliquer (un seul geste, jamais deux opérations séparées), via trois fonctions métier
+  centralisées et réutilisables par un futur écran mobile. Capacité `publish_post` vérifiée avant
+  toute mise en visibilité publique. Nouvel audit non destructif (notice, jamais de migration
+  automatique) pour les fiches existantes utilisant encore `private`/un mot de passe natifs. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.31.0) pour le détail complet.
+
 ## 1.33.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Lot 1 « Partager & vendre » : ajustement UX/métier, statut de diffusion et sauvegarde

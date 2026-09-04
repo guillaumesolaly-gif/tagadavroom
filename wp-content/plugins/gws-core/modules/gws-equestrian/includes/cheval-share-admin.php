@@ -383,6 +383,155 @@ function gwseq_render_horse_share_meta_box($post) {
 }
 
 /* -------------------------------------------------------------------------------------------
+ * Boîte "État de diffusion" (ajustement UX suivant — "piloter la diffusion avec le vocabulaire
+ * GWS") : remplace, UNIQUEMENT pour le CPT Cheval, la boîte native "Publier" de WordPress, qui
+ * exposait directement à l'utilisateur le vocabulaire technique `Brouillon`/`Publier`/`État`/
+ * `Visibilité` (Publique/Protégée par mot de passe/Privée) — deux modèles contradictoires pour la
+ * même donnée, l'un affiché par WordPress, l'autre par la boîte "Partage" du Lot 1. Cette
+ * suppression est SCOPÉE au seul post type Cheval (`remove_meta_box('submitdiv', GWSEQ_CPT_CHEVAL,
+ * 'side')`, le mécanisme natif documenté pour cet usage précis) — jamais un désenregistrement
+ * global : Pages, Actualités, Prestations, Membres et tout autre contenu WordPress conservent leur
+ * boîte "Publier" strictement inchangée.
+ *
+ * `post_status`/`post_password` (mécanismes NATIFS WordPress) restent la source technique sous-
+ * jacente, ainsi que le token (includes/cheval-share.php) — AUCUN statut personnalisé créé
+ * (`register_post_status()` volontairement absent, aucune nécessité démontrée). En particulier, le
+ * statut natif `private` de WordPress N'EST JAMAIS utilisé pour implémenter "Diffusion privée"
+ * (qui reste `draft` + token GWS, exactement comme depuis le Lot 1) : les DEUX notions sont
+ * homonymes mais distinctes, et le mécanisme GWS (token secret, route dédiée) reste seul responsable
+ * de la confidentialité commerciale, jamais un mécanisme de visibilité WordPress natif. De même,
+ * "Protégé par mot de passe" ne devient jamais un quatrième état exposé au client : une fiche avec
+ * un mot de passe résiduel reste classée "En préparation"/"Diffusion privée" par
+ * gwseq_horse_diffusion_state() (qui ne regarde que le statut `publish` et le token, jamais le mot
+ * de passe séparément), et gwseq_horse_diffusion_set_visible_site() lève systématiquement ce mot de
+ * passe en rendant une fiche visible (sans quoi la transition échouerait silencieusement à produire
+ * l'état qu'elle annonce). Voir gwseq_cheval_native_visibility_mismatches() (includes/cheval-
+ * fields.php) pour l'audit, non destructif, des fiches existantes qui utiliseraient encore ces
+ * mécanismes natifs.
+ *
+ * TRANSITIONS CENTRALISÉES (§5, préparation mobile) : cette boîte n'est que de la GLUE d'affichage
+ * — toute la RÈGLE de chaque transition (statut cible, gestion du token) vit dans les trois
+ * fonctions dédiées de includes/cheval-share.php (gwseq_horse_diffusion_set_en_preparation()/
+ * _diffusion_privee()/_visible_site()), réutilisables telles quelles par un futur écran mobile,
+ * qui ne devra jamais manipuler `post_status`/`post_password`/le token directement.
+ *
+ * SAUVEGARDE (§3) : comme les boutons "Créer"/"Régénérer" du Lot 1 (voir gwseq_horse_private_share_
+ * maybe_activate_on_save() plus bas, même principe), chaque bouton de transition est un VRAI
+ * `<button type="submit">` du formulaire d'édition natif — cliquer dessus sauvegarde RÉELLEMENT la
+ * fiche (hook natif save_post_{cpt}) avant d'appliquer la transition, en un seul geste. Jamais deux
+ * opérations séparées ("Enregistrer le brouillon" PUIS changer la diffusion).
+ * ----------------------------------------------------------------------------------------- */
+
+/**
+ * Remplace la boîte "Publier" par la boîte "État de diffusion", uniquement pour Cheval. Appelée
+ * depuis `add_meta_boxes_{$post_type}` (donc APRÈS que WordPress ait enregistré `submitdiv` dans le
+ * gabarit d'édition, cf. wp-admin/edit-form-advanced.php) — le moment exact où `remove_meta_box()`
+ * doit être appelé pour retirer une boîte native déjà enregistrée par le cœur.
+ */
+function gwseq_replace_cheval_publish_box() {
+  remove_meta_box('submitdiv', GWSEQ_CPT_CHEVAL, 'side');
+  add_meta_box('gwseq-cheval-diffusion', __('État de diffusion', 'gws-core'), 'gwseq_render_cheval_diffusion_box', GWSEQ_CPT_CHEVAL, 'side', 'high');
+}
+add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, 'gwseq_replace_cheval_publish_box');
+
+/**
+ * Champ soumis par CHAQUE bouton de transition ci-dessous — sa VALEUR est directement l'une des
+ * trois constantes GWSEQ_HORSE_DIFFUSION_* (includes/cheval-share.php), jamais un verbe d'action
+ * distinct à traduire séparément en état cible : un seul vocabulaire, celui des états eux-mêmes.
+ */
+const GWSEQ_HORSE_DIFFUSION_TRANSITION_FIELD = 'gwseq_diffusion_transition';
+
+/**
+ * Rendu de la boîte "État de diffusion" — §1/§2 de la demande. Un unique bouton neutre "Enregistrer"
+ * (jamais "Enregistrer le brouillon"/"Publier") est TOUJOURS présent (aucune transition : le champ
+ * caché `post_status` préserve le statut WordPress actuel tel quel) ; les boutons de transition
+ * varient selon l'état :
+ *   - En préparation      -> Activer la diffusion privée ; Rendre visible sur le site (si la
+ *     capacité `publish_post` est présente — §4, jamais affiché sinon).
+ *   - Diffusion privée     -> Rendre visible sur le site (idem) ; Repasser en préparation.
+ *   - Visible sur le site -> "Retirer la fiche du site :" puis DEUX actions explicites (jamais un
+ *     "Dépublier" ambigu, §2) : Repasser en préparation OU Activer la diffusion privée — l'utilisateur
+ *     choisit directement l'état cible, sans écran intermédiaire.
+ * Le lien privé et ses actions de gestion (URL, Régénérer, Révoquer) restent dans la boîte
+ * "Partage" (gwseq_render_horse_private_share_controls()) : cette boîte-ci ne pilote que le CHANGEMENT
+ * d'état, jamais la gestion fine d'un token déjà actif.
+ */
+function gwseq_render_cheval_diffusion_box($post) {
+  if (!current_user_can('edit_post', $post->ID)) return;
+
+  $state = gwseq_horse_diffusion_state($post->ID);
+  $can_publish = current_user_can('publish_post', $post->ID);
+
+  echo '<input type="hidden" name="post_status" value="' . esc_attr($post->post_status) . '">';
+  echo '<p><strong>' . esc_html__('État de diffusion :', 'gws-core') . '</strong> ' . esc_html(gwseq_horse_diffusion_state_label($state)) . '</p>';
+
+  $save_label = $state === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION ? __('Enregistrer', 'gws-core') : __('Enregistrer les modifications', 'gws-core');
+  echo '<p><button type="submit" class="button button-primary" style="width:100%;">' . esc_html($save_label) . '</button></p>';
+
+  $transition_button = function ($target, $label) {
+    echo '<p><button type="submit" class="button" style="width:100%;" name="' . esc_attr(GWSEQ_HORSE_DIFFUSION_TRANSITION_FIELD) . '" value="' . esc_attr($target) . '">' . esc_html($label) . '</button></p>';
+  };
+
+  if ($state === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION) {
+    $transition_button(GWSEQ_HORSE_DIFFUSION_PRIVEE, __('Activer la diffusion privée', 'gws-core'));
+    if ($can_publish) {
+      $transition_button(GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE, __('Rendre visible sur le site', 'gws-core'));
+    }
+  } elseif ($state === GWSEQ_HORSE_DIFFUSION_PRIVEE) {
+    if ($can_publish) {
+      $transition_button(GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE, __('Rendre visible sur le site', 'gws-core'));
+    }
+    $transition_button(GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, __('Repasser en préparation', 'gws-core'));
+  } else {
+    echo '<p class="description">' . esc_html__('Retirer la fiche du site :', 'gws-core') . '</p>';
+    $transition_button(GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, __('Repasser en préparation', 'gws-core'));
+    $transition_button(GWSEQ_HORSE_DIFFUSION_PRIVEE, __('Activer la diffusion privée', 'gws-core'));
+  }
+}
+
+/**
+ * Applique la transition demandée — greffée sur le MÊME hook natif save_post_{cpt} que le reste du
+ * module (jamais une seconde requête/un second point d'entrée), après gwseq_save_cheval_meta()
+ * (priorité 20, même convention que gwseq_horse_private_share_maybe_activate_on_save() ci-dessous) :
+ * la fiche est donc déjà réellement enregistrée au moment où la transition s'applique (§3).
+ *
+ * SÉCURITÉ (§4) : `edit_post` pour toute transition (défense en profondeur — post.php a déjà
+ * vérifié ce droit avant même de déclencher save_post) ; en PLUS, `publish_post` spécifiquement
+ * avant de rendre une fiche visible sur le site — la SEULE transition qui l'exige (repasser en
+ * préparation ou activer la diffusion privée, y compris depuis "Visible sur le site", ne rend
+ * jamais rien MOINS visible qu'avant : WordPress n'exige jamais cette capacité pour retirer une
+ * fiche de la publication, seulement pour l'y faire entrer).
+ *
+ * RÉENTRANCE : gwseq_horse_diffusion_set_*() appelle wp_update_post(), qui redéclenche
+ * save_post_{cpt} — ce gestionnaire se désenregistre donc de lui-même le temps de son propre appel
+ * (motif standard WordPress), pour ne jamais boucler indéfiniment ni ré-appliquer deux fois la même
+ * transition.
+ */
+function gwseq_horse_apply_diffusion_transition_on_save($post_id) {
+  if (empty($_POST[GWSEQ_HORSE_DIFFUSION_TRANSITION_FIELD])) return;
+  if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+  if (function_exists('wp_is_post_revision') && wp_is_post_revision($post_id)) return;
+  if (!current_user_can('edit_post', $post_id)) return;
+
+  $target = sanitize_key(wp_unslash($_POST[GWSEQ_HORSE_DIFFUSION_TRANSITION_FIELD]));
+  $valid_targets = array(GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, GWSEQ_HORSE_DIFFUSION_PRIVEE, GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+  if (!in_array($target, $valid_targets, true)) return;
+
+  if ($target === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE && !current_user_can('publish_post', $post_id)) return;
+
+  remove_action('save_post_' . GWSEQ_CPT_CHEVAL, 'gwseq_horse_apply_diffusion_transition_on_save', 20);
+  if ($target === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION) {
+    gwseq_horse_diffusion_set_en_preparation($post_id);
+  } elseif ($target === GWSEQ_HORSE_DIFFUSION_PRIVEE) {
+    gwseq_horse_diffusion_set_diffusion_privee($post_id);
+  } else {
+    gwseq_horse_diffusion_set_visible_site($post_id);
+  }
+  add_action('save_post_' . GWSEQ_CPT_CHEVAL, 'gwseq_horse_apply_diffusion_transition_on_save', 20);
+}
+add_action('save_post_' . GWSEQ_CPT_CHEVAL, 'gwseq_horse_apply_diffusion_transition_on_save', 20);
+
+/* -------------------------------------------------------------------------------------------
  * Partage privé (suite V1 « Partager & vendre », Lot 1) — §2.B de la demande : un cheval que le
  * professionnel ne veut pas exposer publiquement doit pouvoir être envoyé quand même à des
  * acheteurs précis, via un lien secret révocable/régénérable. Toute la logique de token
@@ -449,9 +598,14 @@ const GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD = 'gwseq_partage_prive_submit_activ
  *      un ancien token qui traînerait encore n'est JAMAIS présenté comme le mode principal, seule
  *      l'action "Révoquer" reste proposée (§ ajustement d'architecture, jamais remis en cause ici).
  *   2. Diffusion privée (non public + token actif) -> affiche l'URL privée + Régénérer/Révoquer.
- *   3. En préparation (non public + aucun token)    -> propose "Créer un lien de partage privé".
- * Le libellé de cet état est affiché explicitement en tête de boîte (§3 de l'audit UX/métier :
- * vocabulaire métier, jamais "Brouillon"/"Publié").
+ *   3. En préparation (non public + aucun token)    -> renvoie vers la boîte "État de diffusion"
+ *      (ci-dessous, gwseq_render_cheval_diffusion_box()) pour ACTIVER la diffusion privée — cette
+ *      boîte-ci ne fait plus que GÉRER un partage déjà actif (URL/Régénérer/Révoquer), jamais le
+ *      créer, afin de ne présenter qu'un SEUL point d'entrée par transition (§ ajustement suivant —
+ *      "piloter la diffusion avec le vocabulaire GWS" : centraliser les transitions, jamais deux
+ *      boutons différents pour la même opération).
+ * Le libellé de cet état métier est affiché en tête de la boîte "État de diffusion", pas ici — cette
+ * boîte-ci ne le répète plus (éviter toute ambiguïté entre deux affichages du même état).
  */
 function gwseq_render_horse_private_share_controls($post) {
   if (!current_user_can('edit_post', $post->ID)) return;
@@ -459,7 +613,6 @@ function gwseq_render_horse_private_share_controls($post) {
   $state = gwseq_horse_diffusion_state($post->ID);
   echo '<hr>';
   echo '<p><strong>' . esc_html__('Partage privé', 'gws-core') . '</strong></p>';
-  echo '<p class="description"><strong>' . esc_html__('Statut de diffusion :', 'gws-core') . '</strong> ' . esc_html(gwseq_horse_diffusion_state_label($state)) . '</p>';
 
   if ($state === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE) {
     echo '<p class="description">' . esc_html__('Ce cheval est visible sur le site : le partage utilise la fiche publique du site.', 'gws-core') . '</p>';
@@ -482,9 +635,7 @@ function gwseq_render_horse_private_share_controls($post) {
     echo '</p>';
     echo '<p class="description">' . esc_html__('Enregistre également les modifications en cours de cette fiche.', 'gws-core') . '</p>';
   } else {
-    echo '<p class="description">' . esc_html__('Envoyer ce cheval à des acheteurs précis sans l’afficher publiquement sur le site.', 'gws-core') . '</p>';
-    echo '<p><button type="submit" class="button button-secondary" name="' . esc_attr(GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD) . '" value="1">' . esc_html__('Créer un lien de partage privé', 'gws-core') . '</button></p>';
-    echo '<p class="description">' . esc_html__('Enregistre également les modifications en cours de cette fiche.', 'gws-core') . '</p>';
+    echo '<p class="description">' . esc_html__('Aucun lien de partage privé actif. Utilisez « Activer la diffusion privée » dans la boîte « État de diffusion » ci-dessus pour en créer un.', 'gws-core') . '</p>';
   }
 }
 

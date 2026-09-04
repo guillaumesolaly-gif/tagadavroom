@@ -1266,3 +1266,47 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   neutraliser `gwseq_cheval_admin_list_post_states()` (retour de `$post_states` inchangé) fait
   échouer exactement les trois assertions de remplacement d'état. Intégralité de la suite (21
   fichiers PHP + 3 suites JS runtime) ré-exécutée après chaque restauration : aucune régression.
+- **Lot 1 « Partager & vendre » : piloter la diffusion avec le vocabulaire GWS (0.31.0)** : sans
+  nouveau fichier de test.
+  - `gws-equestrian-cheval-share-logic-test.php` (182 assertions au total, +28) : les trois
+    nouvelles fonctions de transition `gwseq_horse_diffusion_set_en_preparation()`/
+    `_diffusion_privee()`/`_visible_site()` couvertes sur tous les scénarios demandés — nouvel objet
+    = "En préparation" ; préparation -> privé (token créé, statut `draft`, jamais `private` natif) ;
+    privé -> préparation (token révoqué) ; préparation -> public ; privé -> public (token existant
+    JAMAIS révoqué automatiquement) ; public -> préparation (aucun token, statut `draft`) ; public
+    (avec un ancien token) -> privé (le token EXISTANT est réutilisé, jamais régénéré inutilement) ;
+    public -> privé sans ancien token (un nouveau token est créé) ; "rendre public" lève
+    systématiquement un mot de passe résiduel (sans quoi la transition échouerait silencieusement à
+    produire l'état qu'elle annonce) ; un cheval déjà au statut natif `private` reste classé selon
+    son état métier réel (jamais un état séparé), avec ou sans token.
+  - `gws-equestrian-cheval-share-admin-test.php` (163 assertions au total, +37) : boîte "État de
+    diffusion" — `gwseq_replace_cheval_publish_box()` retire bien `submitdiv` scopé au CPT Cheval et
+    enregistre la nouvelle boîte (side/high) ; rendu des trois états (champ caché `post_status`
+    préservant le statut actuel, libellé "Enregistrer"/"Enregistrer les modifications" selon l'état,
+    boutons de transition corrects par état, jamais "Repasser en préparation" depuis "En
+    préparation" ni "Activer la diffusion privée" depuis "Diffusion privée", jamais le vocabulaire
+    "Brouillon"/"Publier"/"Dépublier", section "Retirer la fiche du site" à deux choix explicites
+    pour "Visible sur le site", rien de rendu sans capacité `edit_post`) ; capacité `publish_post`
+    vérifiée côté affichage (bouton absent) ET côté hook `gwseq_horse_apply_diffusion_transition_on_
+    save()` (transition refusée même si le champ est soumis — défense en profondeur) ; garde de
+    réentrance (`remove_action()`/`add_action()` autour de l'appel à `wp_update_post()`, motif
+    standard WordPress pour un hook qui se redéclenche lui-même) vérifiée : le hook reste enregistré
+    exactement une fois après l'opération ; valeur de transition invalide ignorée ; révision et
+    autosave sans effet (autosave testé en tout dernier, même contrainte que le reste de la suite).
+    Nouvelle section pour l'audit non destructif `gwseq_cheval_native_visibility_mismatches()`/
+    `gwseq_cheval_admin_native_visibility_notice()` (includes/cheval-fields.php) : détecte le statut
+    `private` natif ET la protection par mot de passe, jamais un cheval "normal" ; fonction pure
+    (aucune écriture) ; notice affichée uniquement sur la liste Chevaux, jamais ailleurs, jamais si
+    aucune fiche concernée. Boîte "Partage" : les quatre tests d'état existants adaptés (le bouton
+    "Créer" a disparu de cette boîte — centralisé dans "État de diffusion" — remplacé par un renvoi
+    explicite vers cette dernière ; "Régénérer"/"Révoquer" y restent inchangés).
+
+  Quatre correctifs vérifiés par retrait/restauration : retirer le contrôle de capacité
+  `publish_post` du hook de transition fait échouer exactement l'assertion "visible_site REFUSÉE
+  sans la capacité publish_post" ; retirer l'appel à `remove_meta_box('submitdiv', ...)` fait
+  échouer exactement l'assertion de retrait scopé de la boîte "Publier" ; neutraliser
+  `gwseq_cheval_native_visibility_mismatches()` (retour d'un tableau vide) fait échouer exactement
+  les trois assertions qui en dépendent (détection, notice, fiches nommément listées) ; retirer
+  `'post_password' => ''` de `gwseq_horse_diffusion_set_visible_site()` fait échouer exactement les
+  deux assertions du scénario "rendre public une fiche protégée par mot de passe". Intégralité de la
+  suite (24 fichiers) ré-exécutée après chaque restauration : aucune régression.

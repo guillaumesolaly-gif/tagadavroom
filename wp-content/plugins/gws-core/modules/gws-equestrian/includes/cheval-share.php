@@ -330,6 +330,74 @@ function gwseq_horse_private_share_revoke($cheval_id) {
   delete_post_meta((int) $cheval_id, GWSEQ_HORSE_PRIVATE_SHARE_META_KEY);
 }
 
+/* -------------------------------------------------------------------------------------------
+ * Transitions métier de diffusion (ajustement UX suivant — pilotage visuel par le vocabulaire GWS,
+ * §5 : "préparer le mobile"). Chaque fonction encapsule la règle COMPLÈTE d'une transition (statut
+ * WordPress natif + gestion du token) — jamais un second calcul ailleurs. Un futur écran mobile
+ * appelle EXACTEMENT ces trois fonctions, jamais `wp_update_post()`/`gwseq_horse_private_share_
+ * activate()` directement : la même garantie de cohérence qu'ici, sans jamais manipuler les statuts/
+ * la visibilité WordPress bruts (§ complément recette du 04/09 : "le futur écran mobile devra
+ * appeler exactement la même couche de transitions métier et ne jamais manipuler directement ces
+ * états WordPress").
+ *
+ * DÉCOUPLÉES DE WP-ADMIN (§5) : aucune vérification de capability ici — ce sont des opérations
+ * métier pures, réutilisables aussi depuis un contexte qui n'a pas de notion de capability
+ * WordPress (ex. une API mobile avec son propre modèle de permission). La glue wp-admin
+ * (includes/cheval-share-admin.php) vérifie le droit AVANT d'appeler ces fonctions, en particulier
+ * `current_user_can('publish_post', $id)` avant gwseq_horse_diffusion_set_visible_site() — §4 :
+ * "ne jamais rendre public un cheval si l'utilisateur n'a pas la capacité correspondante".
+ *
+ * "PRIVÉ"/"PROTÉGÉ PAR MOT DE PASSE" NATIFS WORDPRESS JAMAIS UTILISÉS (§ complément recette du
+ * 04/09) : "Diffusion privée" reste implémentée par le MÊME mécanisme GWS déjà en place depuis le
+ * Lot 1 (statut `draft` + token, gwseq_horse_private_share_is_active()) — jamais le statut natif
+ * `private` de WordPress, qui resterait un affichage/contrôle natif distinct et confondrait les deux
+ * notions. La confidentialité commerciale reste assurée par GWS (token secret, route dédiée,
+ * exclusion native des surfaces publiques via le statut non-`publish`), jamais par un mécanisme de
+ * visibilité WordPress natif.
+ * ----------------------------------------------------------------------------------------- */
+
+/**
+ * "Repasser en préparation" / mettre_en_preparation() : non public, ET plus aucun canal de partage
+ * (le token est révoqué — c'est la SEULE façon d'atteindre cet état depuis "Diffusion privée",
+ * gwseq_horse_diffusion_state() donnant toujours la priorité au token dès que le cheval n'est pas
+ * public). Statut cible `draft`, jamais `private`/mot de passe (voir note de section ci-dessus).
+ */
+function gwseq_horse_diffusion_set_en_preparation($cheval_id) {
+  $cheval_id = (int) $cheval_id;
+  gwseq_horse_private_share_revoke($cheval_id);
+  wp_update_post(array('ID' => $cheval_id, 'post_status' => 'draft'));
+}
+
+/**
+ * "Activer la diffusion privée" / activer_diffusion_privee() : non public, avec un canal de partage
+ * actif. Réutilise un token DÉJÀ actif s'il en existe un (ex. ancien token laissé valide après un
+ * passage public -> non public, §4 : "public -> non public : token existant conservé") plutôt que
+ * d'en régénérer un inutilement, ce qui casserait un lien déjà envoyé sans nécessité. Statut cible
+ * `draft`, jamais le statut natif `private` de WordPress (voir note de section ci-dessus).
+ */
+function gwseq_horse_diffusion_set_diffusion_privee($cheval_id) {
+  $cheval_id = (int) $cheval_id;
+  if (!gwseq_horse_private_share_is_active($cheval_id)) {
+    gwseq_horse_private_share_activate($cheval_id);
+  }
+  wp_update_post(array('ID' => $cheval_id, 'post_status' => 'draft'));
+}
+
+/**
+ * "Rendre visible sur le site" / rendre_public() : statut `publish`, mot de passe natif
+ * systématiquement levé (une fiche "protégée par mot de passe" n'est PAS "visible sur le site" au
+ * sens de gwseq_horse_is_publicly_viewable() — sans ce nettoyage explicite, cette transition
+ * échouerait silencieusement à produire l'état qu'elle annonce si un mot de passe résiduel existait,
+ * §complément recette du 04/09 : "protégé par mot de passe ne doit pas constituer un quatrième état
+ * métier"). Le token existant n'est jamais révoqué automatiquement (§4 : "passage privé -> public :
+ * ancien token peut rester valide") — gwseq_horse_share_fiche_info() donne de toute façon toujours
+ * la priorité au lien public dès que la fiche est réellement visible.
+ */
+function gwseq_horse_diffusion_set_visible_site($cheval_id) {
+  $cheval_id = (int) $cheval_id;
+  wp_update_post(array('ID' => $cheval_id, 'post_status' => 'publish', 'post_password' => ''));
+}
+
 /**
  * Chemin technique de la route de partage privé — centralisé ICI (jamais reconstruit ailleurs,
  * y compris côté règle de réécriture, voir includes/cheval-share-admin.php, qui réutilise cette

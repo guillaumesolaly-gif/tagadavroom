@@ -714,6 +714,64 @@ function gwseq_cheval_admin_list_post_states($post_states, $post) {
 add_filter('display_post_states', 'gwseq_cheval_admin_list_post_states', 10, 2);
 
 /**
+ * Audit non destructif (complément de recette du 04/09 sur l'ajustement "piloter la diffusion avec
+ * le vocabulaire GWS") : recense les fiches Cheval utilisant encore un mécanisme de visibilité
+ * WordPress NATIF (statut `private`, ou protection par mot de passe) que la boîte "État de
+ * diffusion" ne pilote plus. Elles restent classées SANS RISQUE selon leur état métier réel
+ * (gwseq_horse_diffusion_state(), includes/cheval-share.php, qui ne regarde que le statut `publish`
+ * et le token — jamais `private`/le mot de passe séparément, donc aucune fuite publique possible) :
+ * cette fonction ne fait QUE signaler, jamais migrer — aucune écriture, aucun `wp_update_post()`.
+ */
+function gwseq_cheval_native_visibility_mismatches() {
+  $query = new WP_Query(array(
+    'post_type' => GWSEQ_CPT_CHEVAL,
+    'post_status' => 'any',
+    'fields' => 'ids',
+    'posts_per_page' => -1,
+  ));
+
+  $mismatches = array();
+  foreach ($query->posts as $id) {
+    $post = get_post($id);
+    if ($post && ($post->post_status === 'private' || $post->post_password !== '')) {
+      $mismatches[] = $id;
+    }
+  }
+  return $mismatches;
+}
+
+/**
+ * Notice non bloquante, affichée uniquement sur la liste `Chevaux → Tous les chevaux` — jamais un
+ * blocage, jamais une migration automatique déclenchée par son seul affichage (§ "ne faire aucune
+ * migration destructive ou silencieuse : signaler le traitement retenu").
+ */
+function gwseq_cheval_admin_native_visibility_notice() {
+  $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+  if (!$screen || $screen->id !== 'edit-' . GWSEQ_CPT_CHEVAL) return;
+
+  $ids = gwseq_cheval_native_visibility_mismatches();
+  if (!$ids) return;
+
+  $links = array();
+  foreach ($ids as $id) {
+    $edit_url = get_edit_post_link($id, 'raw');
+    $title = get_the_title($id);
+    $links[] = $edit_url !== '' ? '<a href="' . esc_url($edit_url) . '">' . esc_html($title) . '</a>' : esc_html($title);
+  }
+
+  echo '<div class="notice notice-warning"><p>' . sprintf(
+    esc_html(_n(
+      '%d fiche cheval utilise encore un mécanisme de visibilité WordPress natif (statut « Privé » ou protection par mot de passe), non piloté par la boîte « État de diffusion » : ',
+      '%d fiches cheval utilisent encore un mécanisme de visibilité WordPress natif (statut « Privé » ou protection par mot de passe), non piloté par la boîte « État de diffusion » : ',
+      count($ids),
+      'gws-core'
+    )),
+    count($ids)
+  ) . implode(', ', $links) . '. ' . esc_html__('Elles restent classées sans risque selon leur état métier réel (En préparation/Diffusion privée) — aucune fuite publique possible — mais nous recommandons de les repasser manuellement en Brouillon simple lors de leur prochaine modification.', 'gws-core') . '</p></div>';
+}
+add_action('admin_notices', 'gwseq_cheval_admin_native_visibility_notice');
+
+/**
  * Années de naissance RÉELLEMENT présentes parmi les chevaux (§2 de la demande : "éviter une
  * énorme liste arbitraire d'années inutilisées"), triées décroissant (années récentes en premier).
  * Requête directe (années distinctes, pas un jeu de données borné à l'avance) — jamais un

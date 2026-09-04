@@ -80,6 +80,20 @@ function get_the_title($post) {
 }
 function get_permalink($post_id) { return 'https://example.test/chevaux/cheval-' . (int) $post_id . '/'; }
 function home_url($path = '') { return 'https://example.test' . $path; }
+// Fidèle au strict nécessaire des transitions de diffusion (gwseq_horse_diffusion_set_*(),
+// cheval-share.php) : seuls post_status/post_password sont jamais écrits par ces fonctions, donc
+// les seuls champs que ce stub a besoin de merger — même principe de fusion "champs fournis
+// écrasent, les autres restent" que le vrai wp_update_post().
+function wp_update_post($postarr, $wp_error = false) {
+  $id = (int) ($postarr['ID'] ?? 0);
+  if (!$id || !isset($GLOBALS['__gwseq_test_posts'][$id])) return 0;
+  foreach (array('post_status', 'post_password') as $field) {
+    if (array_key_exists($field, $postarr)) {
+      $GLOBALS['__gwseq_test_posts'][$id][$field] = $postarr[$field];
+    }
+  }
+  return $id;
+}
 
 $GLOBALS['__gwseq_test_context'] = array('is_singular' => false, 'queried_id' => 0, 'query_vars' => array());
 function is_singular($post_type = '') { return $GLOBALS['__gwseq_test_context']['is_singular'] === $post_type; }
@@ -581,6 +595,95 @@ gws_test_make_horse(71, 'Cheval Visible Sans Token'); // publish par défaut, au
 gws_test_assert(gwseq_horse_diffusion_state(71) === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE, 'État de diffusion : cheval publié sans aucun token -> "Visible sur le site"');
 
 gws_test_assert(gwseq_horse_diffusion_state_label('etat_inconnu') === '', 'Libellé métier : un état inconnu ne fabrique jamais un libellé, chaîne vide (défense en profondeur, jamais atteint en pratique)');
+
+// =====================================================================================
+// Ajustement UX suivant — transitions métier centralisées (gwseq_horse_diffusion_set_en_
+// preparation()/_diffusion_privee()/_visible_site()) : chaque fonction encapsule la règle COMPLÈTE
+// (statut WordPress + gestion du token), jamais un second calcul. Ni le statut natif `private`, ni
+// le mot de passe ne sont jamais utilisés pour implémenter "Diffusion privée" (§ complément recette
+// du 04/09) — uniquement `draft` + token GWS, exactement comme depuis le Lot 1.
+// =====================================================================================
+
+// --- Nouvel objet (brouillon fraîchement créé, jamais partagé) = "En préparation" (§7) ---
+gws_test_make_horse(80, 'Cheval Nouvel Objet', array('post_status' => 'draft'));
+gws_test_assert(gwseq_horse_diffusion_state(80) === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, 'Nouvel objet : un cheval en brouillon fraîchement créé, sans token, est bien "En préparation"');
+
+// --- Préparation -> privé (activer_diffusion_privee()) ---
+gwseq_horse_diffusion_set_diffusion_privee(80);
+gws_test_assert($GLOBALS['__gwseq_test_posts'][80]['post_status'] === 'draft', 'Préparation -> privé : le statut WordPress cible est `draft`, JAMAIS le statut natif `private` (§ complément recette du 04/09)');
+gws_test_assert(gwseq_horse_private_share_is_active(80) === true, 'Préparation -> privé : un token est créé');
+gws_test_assert(gwseq_horse_diffusion_state(80) === GWSEQ_HORSE_DIFFUSION_PRIVEE, 'Préparation -> privé : état de diffusion "Diffusion privée"');
+$token_80 = gwseq_horse_private_share_token(80);
+
+// --- Privé -> préparation (mettre_en_preparation()) : le token est révoqué (unique façon
+// d'atteindre "En préparation" depuis "Diffusion privée", le token primant toujours dès que non
+// public) ---
+gwseq_horse_diffusion_set_en_preparation(80);
+gws_test_assert($GLOBALS['__gwseq_test_posts'][80]['post_status'] === 'draft', 'Privé -> préparation : reste `draft` (jamais un statut différent)');
+gws_test_assert(gwseq_horse_private_share_is_active(80) === false, 'Privé -> préparation : le token est révoqué (§ seule façon d’atteindre "En préparation" depuis "Diffusion privée")');
+gws_test_assert(gwseq_horse_private_share_find_cheval_id($token_80) === 0, 'Privé -> préparation : l’ancien token ne retrouve plus aucun cheval');
+gws_test_assert(gwseq_horse_diffusion_state(80) === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, 'Privé -> préparation : état de diffusion "En préparation"');
+
+// --- Préparation -> public (rendre_public()) ---
+gws_test_make_horse(81, 'Cheval Preparation Vers Public', array('post_status' => 'draft'));
+gwseq_horse_diffusion_set_visible_site(81);
+gws_test_assert($GLOBALS['__gwseq_test_posts'][81]['post_status'] === 'publish', 'Préparation -> public : statut `publish`');
+gws_test_assert(gwseq_horse_diffusion_state(81) === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE, 'Préparation -> public : état de diffusion "Visible sur le site"');
+
+// --- Privé -> public : le token existant N’EST PAS révoqué automatiquement (§4 : "passage privé ->
+// public : ancien token peut rester valide") ---
+gws_test_make_horse(82, 'Cheval Prive Vers Public', array('post_status' => 'draft'));
+gwseq_horse_diffusion_set_diffusion_privee(82);
+$token_82 = gwseq_horse_private_share_token(82);
+gwseq_horse_diffusion_set_visible_site(82);
+gws_test_assert($GLOBALS['__gwseq_test_posts'][82]['post_status'] === 'publish', 'Privé -> public : statut `publish`');
+gws_test_assert(gwseq_horse_private_share_is_active(82) === true && gwseq_horse_private_share_token(82) === $token_82, 'Privé -> public : le token existant N’EST PAS révoqué automatiquement, valeur inchangée (§4)');
+gws_test_assert(gwseq_horse_diffusion_state(82) === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE, 'Privé -> public : état de diffusion "Visible sur le site" malgré le token toujours actif (priorité publique jamais remise en cause)');
+
+// --- Public -> préparation : le token existant est CONSERVÉ (§4 : "public -> non public : token
+// existant conservé") — mettre_en_preparation() ne le touche QUE lorsqu'on part de "Diffusion
+// privée" ; ici, il n'y a jamais eu de token pour ce cheval avant son passage public ---
+gws_test_make_horse(83, 'Cheval Public Vers Preparation'); // publish par défaut, aucun token
+gwseq_horse_diffusion_set_en_preparation(83);
+gws_test_assert($GLOBALS['__gwseq_test_posts'][83]['post_status'] === 'draft', 'Public -> préparation : statut `draft`');
+gws_test_assert(gwseq_horse_private_share_is_active(83) === false, 'Public -> préparation : toujours aucun token (aucun n’existait avant ce passage)');
+gws_test_assert(gwseq_horse_diffusion_state(83) === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, 'Public -> préparation : état de diffusion "En préparation"');
+
+// --- Public (avec un ancien token qui traîne) -> privé (activer_diffusion_privee()) : le token
+// EXISTANT est réutilisé, jamais régénéré inutilement (§4 : "public -> non public : token existant
+// conservé" — casser un lien déjà envoyé sans nécessité serait une régression) ---
+gws_test_make_horse(84, 'Cheval Public Avec Ancien Token'); // publish par défaut
+$token_84_ancien = gwseq_horse_private_share_activate(84); // ancien token créé alors que déjà public
+gwseq_horse_diffusion_set_diffusion_privee(84);
+gws_test_assert($GLOBALS['__gwseq_test_posts'][84]['post_status'] === 'draft', 'Public -> privé : statut `draft`');
+gws_test_assert(gwseq_horse_private_share_token(84) === $token_84_ancien, 'Public -> privé : le token EXISTANT est réutilisé tel quel, jamais régénéré inutilement (aucun lien déjà envoyé cassé sans nécessité)');
+gws_test_assert(gwseq_horse_diffusion_state(84) === GWSEQ_HORSE_DIFFUSION_PRIVEE, 'Public -> privé : état de diffusion "Diffusion privée"');
+
+// --- Public -> privé SANS ancien token : un nouveau token est créé (aucun à réutiliser) ---
+gws_test_make_horse(85, 'Cheval Public Sans Ancien Token'); // publish par défaut, aucun token
+gws_test_assert(gwseq_horse_private_share_is_active(85) === false, 'Pré-requis : aucun token pour ce cheval avant la transition');
+gwseq_horse_diffusion_set_diffusion_privee(85);
+gws_test_assert(gwseq_horse_private_share_is_active(85) === true, 'Public -> privé (sans ancien token) : un nouveau token est bien créé');
+gws_test_assert($GLOBALS['__gwseq_test_posts'][85]['post_status'] === 'draft', 'Public -> privé (sans ancien token) : statut `draft`');
+
+// --- rendre_public() lève systématiquement un mot de passe résiduel (§ complément recette du
+// 04/09 : "protégé par mot de passe ne doit pas constituer un quatrième état métier" — sans ce
+// nettoyage, la transition échouerait silencieusement à produire l'état "Visible sur le site"
+// qu'elle annonce) ---
+gws_test_make_horse(86, 'Cheval Protege Vers Public', array('post_status' => 'draft', 'post_password' => 'secret'));
+gws_test_assert(gwseq_horse_diffusion_state(86) === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, 'Pré-requis : un brouillon protégé par mot de passe, sans token, reste classé "En préparation" (jamais un quatrième état)');
+gwseq_horse_diffusion_set_visible_site(86);
+gws_test_assert($GLOBALS['__gwseq_test_posts'][86]['post_password'] === '', 'Rendre public : un mot de passe résiduel est systématiquement levé');
+gws_test_assert(gwseq_horse_diffusion_state(86) === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE, 'Rendre public : état de diffusion "Visible sur le site" atteint, même depuis une fiche protégée par mot de passe');
+
+// --- Un cheval au statut natif `private` (jamais utilisé par GWS mais peut préexister) reste
+// classé selon son état métier réel, jamais un état séparé — confirmation explicite (§ complément
+// recette du 04/09) ---
+gws_test_make_horse(87, 'Cheval Statut Prive Natif', array('post_status' => 'private'));
+gws_test_assert(gwseq_horse_is_publicly_viewable(87) === false, '`private` natif : jamais publiquement visible (seul `publish` l’est)');
+gws_test_assert(gwseq_horse_diffusion_state(87) === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, '`private` natif sans token : classé "En préparation", jamais un état séparé');
+gwseq_horse_private_share_activate(87);
+gws_test_assert(gwseq_horse_diffusion_state(87) === GWSEQ_HORSE_DIFFUSION_PRIVEE, '`private` natif avec token actif : classé "Diffusion privée" (même règle que `draft`), jamais confondu avec le statut natif homonyme');
 
 // --- Open Graph sur la route de partage privé (§4) : fonctionne, og:url pointe vers le lien
 // PRIVÉ effectivement partagé (jamais l'URL publique), et une balise noindex est ajoutée ---
