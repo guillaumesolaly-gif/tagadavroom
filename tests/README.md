@@ -1364,3 +1364,31 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   exactement les sept assertions qui dépendent de la délimitation (cinq fixtures réelles + L'Aganix
   + le test synthétique). Intégralité de la suite (25 fichiers, dont la nouvelle fixture PDF)
   ré-exécutée après chaque restauration : aucune régression.
+- **Correctifs de clôture Lot 1 : libellé du filtre + import IFCE Naisseur (0.33.0)** : deux
+  correctifs indépendants, aucun nouveau fichier de test.
+  - `gws-equestrian-cheval-logic-test.php` : l'assertion du libellé par défaut du filtre "État de
+    diffusion" attend désormais `>Tous les états de diffusion<` (plus `>Tous<`) ; deux nouvelles
+    assertions confirment que le formulaire d'identité affiche bien `>Naisseur<` et plus jamais
+    `>Éleveur<`.
+  - `gws-equestrian-cheval-share-runtime-test.js` (77 assertions, inchangé en nombre) : l'assertion
+    sur les options par défaut des filtres attend désormais "Tous les états de diffusion" pour le
+    sélecteur diffusion (Sexe/Catégorie inchangés : "Tous"/"Toutes les catégories").
+  - `gws-equestrian-ifce-import-test.php` (601 assertions au total) : sur la fixture L'Aganix,
+    nouvelle assertion sur le naisseur correctement extrait ("Docteur Vete Pierre Valette 42600
+    CHALAIN LE COMTAL", document utilisant "Naisseur principal :") plus deux assertions de
+    non-régression pedigree (14 ascendants, père "AGANIX DU SEIGNEUR"). Nouvelle section dédiée :
+    non-régression sur les 4 autres fixtures réelles à "Naisseur :" simple (Asb Conquistador,
+    Cornet Obolensky, Untouchable 27, Iowa Jal) ; exclusion du texte d'opposition SIRE sur la
+    fixture Quaprice Bois Margot (précédemment importé à tort comme un nom de naisseur) ; trois
+    tests unitaires isolés de `gwseq_ifce_is_naisseur_privacy_opt_out()` ; cas synthétique sans
+    naisseur dans le document (champ vide, aucune invention) ; cas synthétique avec un naisseur
+    mentionné uniquement après l'en-tête "Pedigree" (jamais retenu pour le sujet, même
+    délimitation de zone que le correctif indices de la 0.32.0).
+
+  Trois correctifs vérifiés par retrait/restauration : revenir à l'alternative de regex sans le
+  qualificatif "principal" fait échouer exactement l'assertion d'extraction du naisseur de
+  L'Aganix ; retirer la garde d'opposition SIRE (affectation inconditionnelle de la valeur
+  capturée) fait échouer exactement l'assertion d'exclusion Quaprice ; revenir au libellé
+  "Éleveur" dans `cheval-fields.php` fait échouer exactement les deux nouvelles assertions de
+  libellé dans `gws-equestrian-cheval-logic-test.php`. Intégralité de la suite ré-exécutée après
+  chaque restauration : aucune régression.

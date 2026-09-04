@@ -167,7 +167,7 @@
     // exclusivement gwseq_horse_diffusion_state() comme source de vérité") : les options viennent
     // telles quelles de filtersConfig.diffusion (gwseq_horse_share_diffusion_filter_options(),
     // includes/cheval-share-admin.php), jamais un second référentiel codé ici.
-    var diffusionFilter = buildSelect('diffusion', t('diffusionFilterLabel', 'État de diffusion'), t('allDiffusion', 'Tous'), filtersConfig.diffusion);
+    var diffusionFilter = buildSelect('diffusion', t('diffusionFilterLabel', 'État de diffusion'), t('allDiffusion', 'Tous les états de diffusion'), filtersConfig.diffusion);
     filtersRow.appendChild(diffusionFilter.wrapper);
 
     var sexeFilter = buildSelect('sexe', t('sexeFilterLabel', 'Sexe'), t('allSexe', 'Tous'), filtersConfig.sexe);

@@ -1,5 +1,25 @@
 # Changelog — GWS Starter
 
+## 1.36.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctifs de clôture Lot 1 : libellé du filtre + import IFCE Naisseur
+  (GWS Equestrian 0.33.0).** Deux correctifs demandés en recette, aucune nouvelle fonctionnalité.
+  (1) L'option par défaut du filtre "État de diffusion" (`Chevaux → Tous les chevaux` et
+  `Chevaux → Partager`) passe de "Tous" à "Tous les états de diffusion", par cohérence avec les
+  autres filtres de la même barre — libellé uniquement, aucune logique de filtrage modifiée.
+  (2) Correctif d'un bug réel de recette : le naisseur d'une fiche IFCE (L'Aganix d'Aubigny)
+  n'était pas importé car le document utilise "Naisseur principal :" (SIRE déclare plusieurs
+  naisseurs), une variante non reconnue par l'ancienne règle d'extraction. Règle généralisée à
+  partir de l'audit des 7 fixtures réelles du dépôt (aucune règle spécifique à un cheval), et
+  restreinte à la zone de synthèse du cheval sujet (même délimitation que le correctif indices de
+  la 0.32.0). Un second bug, distinct, a été détecté et corrigé pendant cet audit : la mention
+  légale d'opposition à la diffusion (droit SIRE) était importée à tort comme un nom de naisseur
+  (cas réel : Quaprice Bois Margot) — elle est désormais reconnue et traitée comme une absence de
+  donnée. Le libellé du champ correspondant passe d'"Éleveur" à "Naisseur" dans le formulaire
+  d'identité (audit confirmant que la donnée stockée correspond bien au Naisseur IFCE) : aucun
+  renommage de meta ni migration de données, changement de libellé non destructif uniquement. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.33.0) pour le détail complet.
+
 ## 1.35.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Filtre "État de diffusion" sur les listes Chevaux + correctif import IFCE (indices sportifs)

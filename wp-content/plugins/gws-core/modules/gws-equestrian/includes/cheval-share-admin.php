@@ -938,7 +938,7 @@ function gwseq_enqueue_horse_share_admin_assets($hook) {
       'categorieFilterLabel' => __('Catégorie', 'gws-core'),
       'anneeFilterLabel' => __('Année de naissance', 'gws-core'),
       'diffusionFilterLabel' => __('État de diffusion', 'gws-core'),
-      'allDiffusion' => __('Tous', 'gws-core'),
+      'allDiffusion' => __('Tous les états de diffusion', 'gws-core'),
     ),
   ));
 }

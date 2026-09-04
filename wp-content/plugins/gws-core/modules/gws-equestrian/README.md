@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.32.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : la diffusion d'une fiche Cheval est pilotée avec le SEUL vocabulaire métier GWS (boîte "État de diffusion" remplaçant, uniquement pour Cheval, la boîte native "Publier" — `post_status`/`post_password` + token restent la seule source technique, aucun statut personnalisé créé), avec désormais un filtre "Tous/En préparation/Diffusion privée/Visible sur le site" sur `Chevaux → Tous les chevaux` ET `Chevaux → Partager`, cumulable avec les autres filtres (Catégorie/Statut/Sexe/Année/recherche), réutilisant exclusivement `gwseq_horse_diffusion_state()` comme source de vérité (`gwseq_cheval_ids_by_diffusion_state()`, includes/cheval-share.php). Correctif indépendant du même lot de livraison : l'import IFCE n'attribue plus à un cheval importé un indice sportif (ISO/ICC/IDR) ou génétique appartenant en réalité à un ascendant présent dans le pedigree/la production de son document (bug réel constaté sur L'Aganix d'Aubigny, retrouvé sur 5 des 6 fixtures réelles déjà testées) — les indices ne sont plus recherchés que dans la zone de synthèse du cheval sujet, strictement avant la section Pedigree. Visibilité publique et lien de partage privé (`/partage/{token}`, révocable/régénérable) restent DÉCOUPLÉS (0.29.0) ; liste `Chevaux → Tous les chevaux` n'affichant toujours pas "— Visible sur le site" pour ne pas surcharger visuellement la liste (0.30.0), boîte "État de diffusion" et ses transitions centralisées et réutilisables par un futur écran mobile (0.31.0). Voir CHANGELOG.md (0.32.0) pour le détail complet. Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce filtre (navigateur, deux écrans, cumul avec les autres filtres) et de l'import IFCE corrigé (réimport de L'Aganix d'Aubigny) avant d'engager le Lot 2.
+## État actuel : GWS Equestrian 0.33.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : la diffusion d'une fiche Cheval est pilotée avec le SEUL vocabulaire métier GWS (boîte "État de diffusion" remplaçant, uniquement pour Cheval, la boîte native "Publier" — `post_status`/`post_password` + token restent la seule source technique, aucun statut personnalisé créé), avec un filtre "Tous les états de diffusion/En préparation/Diffusion privée/Visible sur le site" sur `Chevaux → Tous les chevaux` ET `Chevaux → Partager`, cumulable avec les autres filtres (Catégorie/Statut/Sexe/Année/recherche), réutilisant exclusivement `gwseq_horse_diffusion_state()` comme source de vérité (`gwseq_cheval_ids_by_diffusion_state()`, includes/cheval-share.php). Toute la suite de recette de ce Lot 1 est validée (transitions En préparation/Diffusion privée/Visible sur le site dans les deux sens, URL publique, token conservé, ancien lien privé bien en 404). Deux correctifs de clôture (0.33.0), demandés après cette recette : (1) le libellé par défaut du filtre passe de "Tous" à "Tous les états de diffusion", par cohérence avec les autres filtres de la barre — libellé uniquement, aucune logique modifiée ; (2) l'import IFCE n'extrayait pas le Naisseur pour les documents utilisant le libellé "Naisseur principal :" (cas réel L'Aganix d'Aubigny) — règle généralisée à partir de l'audit des 7 fixtures réelles du dépôt, restreinte à la zone de synthèse du cheval sujet, et corrigeant au passage un bug distinct détecté pendant l'audit (la mention légale d'opposition SIRE importée à tort comme un nom, cas Quaprice Bois Margot) ; le libellé du champ correspondant passe d'"Éleveur" à "Naisseur" (changement de libellé non destructif, sans renommage de meta ni migration). Correctif indépendant du lot précédent (0.32.0) toujours en vigueur : l'import IFCE n'attribue plus à un cheval importé un indice sportif (ISO/ICC/IDR) ou génétique appartenant en réalité à un ascendant présent dans le pedigree/la production de son document (bug réel constaté sur L'Aganix d'Aubigny, retrouvé sur 5 des 6 fixtures réelles déjà testées) — les indices ne sont plus recherchés que dans la zone de synthèse du cheval sujet, strictement avant la section Pedigree. Visibilité publique et lien de partage privé (`/partage/{token}`, révocable/régénérable) restent DÉCOUPLÉS (0.29.0) ; liste `Chevaux → Tous les chevaux` n'affichant toujours pas "— Visible sur le site" pour ne pas surcharger visuellement la liste (0.30.0), boîte "État de diffusion" et ses transitions centralisées et réutilisables par un futur écran mobile (0.31.0). Voir CHANGELOG.md (0.33.0 et 0.32.0) pour le détail complet. Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -826,6 +826,12 @@ Sexe/Année/recherche texte). Aucun nouveau champ/meta de statut créé. L'affic
 suffixe `— Visible sur le site`, pour ne pas surcharger visuellement la liste. Voir `CHANGELOG.md`
 de ce dossier (0.32.0) pour le détail complet.
 
+**Correctif runtime — libellé du filtre (0.33.0)** : l'option par défaut de ce filtre affichait
+"Tous", ambigu à côté des autres filtres de la même barre qui précisent déjà leur objet ("Toutes
+les catégories") — remplacée par "Tous les états de diffusion" sur les deux écrans. Changement de
+libellé uniquement (`cheval-fields.php`, `cheval-share-admin.php`, `cheval-share-admin.js`) :
+aucune valeur d'option, aucun nom de paramètre, aucune logique de filtrage modifiée.
+
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et
 `tests/gws-equestrian-cheval-share-runtime-test.js` pour la couverture dédiée, et le `CHANGELOG.md`
@@ -1177,7 +1183,8 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
   Appellation mutualisé, `includes/race-referentiel.php` — 154 entrées avec alias historiques,
   voir « Correctif référentiel » plus bas —, sinon "Autre" + texte libre — jamais une valeur
   inventée), sexe, robe (même principe de correspondance que la race), taille (`1m68` → 168 cm),
-  année de naissance, naisseur/éleveur si identifiable clairement, numéro SIRE et UELN si présents.
+  année de naissance, Naisseur (libellé "Naisseur" depuis 0.33.0, voir correctif dédié plus bas),
+  numéro SIRE et UELN si présents.
   **Nom officiel et alias IFCE** (correctif runtime post-livraison, §8-10) : quand la fiche porte un
   alias ("NOM_OFFICIEL Alias NOM_D'USAGE"), c'est le nom d'usage/alias qui devient le nom de la
   fiche GWS (`post_title`) — jamais le mot littéral "Alias", jamais le seul nom officiel qui
@@ -1187,6 +1194,24 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
   IFCE entre parenthèses ("(NLD)", "(BEL)", "(DEU)"...) est retiré du nom via une liste FERMÉE de
   codes ISO 3166-1 alpha-3 reconnus (`gwseq_ifce_country_codes()`) — jamais une suppression aveugle
   de toute parenthèse (un contenu parenthésé qui n'est pas un vrai code pays reste intact).
+  **Correctif runtime — Naisseur (0.33.0)** : le champ (meta `_gwseq_eleveur`, clé interne
+  `eleveur`, alimenté par la saisie manuelle ET par l'import IFCE) n'était pas renseigné pour
+  certaines fiches (constaté sur L'Aganix d'Aubigny) — cause racine : le document IFCE de ce
+  cheval porte le libellé "Naisseur principal :" (SIRE déclare plusieurs naisseurs), une variante
+  non reconnue par l'ancienne règle qui n'acceptait que "Naisseur :"/"Éleveur :" immédiatement
+  suivis du deux-points. Règle généralisée à partir de l'audit des 7 fixtures réelles du dépôt (5
+  utilisent "Naisseur :" simple, 1 utilise "Naisseur principal :") — aucune règle spécifique à un
+  cheval — et restreinte, comme les indices ci-dessous, à la zone de synthèse du cheval SUJET
+  (avant l'en-tête Pedigree) : un naisseur mentionné pour un ascendant n'est jamais retenu pour le
+  sujet. Bug distinct détecté pendant cet audit : la fiche Quaprice Bois Margot porte, à la place
+  d'un nom, la mention légale d'opposition à la diffusion (droit SIRE, "s'oppose à la diffusion des
+  informations le concernant") — désormais reconnue (`gwseq_ifce_is_naisseur_privacy_opt_out()`) et
+  traitée comme une absence de donnée (champ laissé vide), jamais importée comme un nom réel.
+  **Décision de vocabulaire (audit métier)** : la donnée importée correspond au Naisseur au sens
+  IFCE/SIRE (le déclarant officiel à la naissance), une notion distincte de qui a débourré/entraîné
+  le cheval — le libellé du formulaire d'identité passe donc d'"Éleveur" à "Naisseur", SANS
+  renommage de la meta ni de la clé interne, ni migration de données (changement de libellé non
+  destructif uniquement, la donnée déjà stockée représentant bien le Naisseur).
 - **Indices** (§5) : sportifs ISO/ICC/IDR — **le modèle existant a été étendu** pour stocker
   désormais aussi le coefficient de détermination (CD, `_gwseq_{cle}_cd`, jusqu'ici réservé aux
   indices génétiques) puisqu'une fiche IFCE officielle le fournit systématiquement (exemple exact :
@@ -2008,7 +2033,9 @@ parents GWS) :
 **Identité** (meta box « Identité ») : Sexe (Mâle/Femelle/Hongre), Année de naissance (âge
 calculé à la volée, jamais stocké, toujours approximatif — calendaire, jamais au jour près),
 Robe et Race/Stud-book (listes pratiques + « Autre » avec précision libre — aucune logique du
-module ne dépend d'un nom de stud-book précis), Taille en centimètres, Éleveur, Propriétaire,
+module ne dépend d'un nom de stud-book précis), Taille en centimètres, Naisseur (libellé
+"Naisseur" depuis 0.33.0 — voir correctif runtime IFCE plus bas ; meta `_gwseq_eleveur`, clé
+interne `eleveur`, inchangées), Propriétaire,
 UELN et numéro SIRE (texte simple, sans validation de format ni service distant — voir
 « Limitations connues » plus bas). Nom = `post_title`, Photo principale = image à la une native
 (ré-étiquetée, aucun champ dédié) : aucune meta ne duplique jamais ces deux sources de vérité.
@@ -2066,7 +2093,7 @@ plus lisible et prévisible pour une fiche métier à ce stade.
 2. Renseigner Sexe (Hongre), Année de naissance (une année plausible, ex. `2018`) — vérifier que
    l'âge approximatif calculé s'affiche à côté du champ. Renseigner Robe = Autre avec une
    précision libre (ex. « Aubère truité »), Race/Stud-book = un stud-book de la liste, Taille
-   `168`, Éleveur et Propriétaire. Ajouter une image à la une : vérifier que son libellé affiche
+   `168`, Naisseur et Propriétaire. Ajouter une image à la une : vérifier que son libellé affiche
    bien « Photo principale » (pas le texte natif WordPress).
 3. Cocher deux catégories existantes (en créer au moins deux au préalable depuis
    **Chevaux → Catégories** si besoin) : vérifier l'affichage en cases à cocher, l'absence de

@@ -676,6 +676,12 @@ $identite_html = ob_get_clean();
 foreach (array('_gwseq_sexe', '_gwseq_annee_naissance', '_gwseq_robe', '_gwseq_race', '_gwseq_taille_cm', '_gwseq_eleveur', '_gwseq_proprietaire', '_gwseq_ueln', '_gwseq_sire') as $field_name) {
   gws_test_assert(strpos($identite_html, 'name="' . $field_name . '"') !== false, "Meta box Identité : le champ $field_name est réellement rendu");
 }
+// Correctif runtime (audit vocabulaire Éleveur/Naisseur) : le champ reste TECHNIQUEMENT
+// `_gwseq_eleveur` (aucune migration, meta/clé interne inchangées — vérifié juste au-dessus), seul
+// le LIBELLÉ visible change vers le terme métier "Naisseur" (celui du document IFCE source),
+// jamais "Éleveur" qui pourrait laisser croire à une notion différente (qui a débourré/entraîné).
+gws_test_assert(strpos($identite_html, '>Naisseur<') !== false, 'Meta box Identité (correctif runtime) : le libellé visible du champ `_gwseq_eleveur` est désormais "Naisseur", le terme métier exact du document IFCE source');
+gws_test_assert(strpos($identite_html, '>Éleveur<') === false, 'Meta box Identité (correctif runtime) : l’ancien libellé "Éleveur" n’est plus jamais affiché (pour ne pas laisser croire à une notion différente du naisseur)');
 // --- Correctif runtime 0.14.4 : le champ Race (qui imprime un <ul> de résultats) n'est plus jamais
 // enveloppé dans un <p>, ce qui provoquerait sa fermeture implicite par un vrai navigateur avant le
 // <ul> — voir gws_test_assert_no_flow_content_inside_p() ci-dessus pour la règle HTML5 exacte ---
@@ -844,7 +850,7 @@ ob_start();
 gwseq_render_cheval_admin_list_filters(GWSEQ_CPT_CHEVAL);
 $diffusion_filter_html = ob_get_clean();
 gws_test_assert(strpos($diffusion_filter_html, 'name="gwseq_filter_diffusion"') !== false, 'Filtre "État de diffusion" : le sélecteur est bien rendu dans la liste d’administration');
-gws_test_assert(strpos($diffusion_filter_html, '<option value="">Tous</option>') !== false, 'Filtre "État de diffusion" : option "Tous" par défaut, aucun filtre appliqué tant qu’elle est sélectionnée');
+gws_test_assert(strpos($diffusion_filter_html, '<option value="">Tous les états de diffusion</option>') !== false, 'Filtre "État de diffusion" : option "Tous les états de diffusion" par défaut, aucun filtre appliqué tant qu’elle est sélectionnée');
 gws_test_assert(strpos($diffusion_filter_html, '<option value="en_preparation"') !== false && strpos($diffusion_filter_html, 'En préparation') !== false, 'Filtre "État de diffusion" : option "En préparation" présente, avec le libellé métier centralisé (gwseq_horse_diffusion_state_label())');
 gws_test_assert(strpos($diffusion_filter_html, '<option value="diffusion_privee"') !== false && strpos($diffusion_filter_html, 'Diffusion privée') !== false, 'Filtre "État de diffusion" : option "Diffusion privée" présente');
 gws_test_assert(strpos($diffusion_filter_html, '<option value="visible_site"') !== false && strpos($diffusion_filter_html, 'Visible sur le site') !== false, 'Filtre "État de diffusion" : option "Visible sur le site" présente');

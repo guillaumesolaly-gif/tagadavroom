@@ -570,6 +570,58 @@ gws_test_assert(
 gws_test_assert(($aganix['indices']['icc']['valeur'] ?? null) === '' && ($aganix['indices']['idr']['valeur'] ?? null) === '', 'Correctif runtime indices : L’Aganix d’Aubigny n’a également NI ICC NI IDR dans sa propre zone de synthèse (le correctif s’applique structurellement aux trois indices sportifs, pas seulement à l’ISO du bug signalé)');
 gws_test_assert(($aganix['indices']['bso']['valeur'] ?? null) === 16.0 && ($aganix['indices']['bso']['cd'] ?? null) === 0.51, 'Vérification explicite demandée : le BSO +16 (0.51) de L’Aganix d’Aubigny continue d’être extrait correctement — le correctif des indices sportifs ne casse pas les indices génétiques');
 gws_test_assert(($aganix['indices']['bcc']['valeur'] ?? null) === '' && ($aganix['indices']['bdr']['valeur'] ?? null) === '', 'L’Aganix d’Aubigny : ni BCC ni BDR dans sa propre zone de synthèse -> restent vides (seul le BSO y est mentionné)');
+// Correctif runtime (réimport réel après le correctif des indices) : le document porte "Naisseur
+// PRINCIPAL : Docteur Vete Pierre Valette 42600 CHALAIN LE COMTAL" — jamais reconnu par l'ancienne
+// expression, qui exigeait le deux-points immédiatement après le seul mot "Naisseur".
+gws_test_assert(($aganix['identity']['eleveur'] ?? null) === 'Docteur Vete Pierre Valette 42600 CHALAIN LE COMTAL', 'CORRECTIF RUNTIME (réimport réel) : le naisseur de L’Aganix d’Aubigny ("Naisseur principal :", jamais simplement "Naisseur :") est désormais correctement extrait — AVANT ce correctif, il restait vide malgré sa présence explicite sur le document');
+// --- Non-régression pedigree : les 14 ascendants restent reconnus, aucun effet de bord du
+// correctif Naisseur (qui ne touche que l'identité) sur le pedigree ---
+gws_test_assert(($aganix['pedigree']['count'] ?? null) === 14, 'Non-régression : les 14 ascendants du pedigree de L’Aganix d’Aubigny restent reconnus après le correctif Naisseur');
+gws_test_assert(($aganix['pedigree']['father']['name'] ?? null) === 'AGANIX DU SEIGNEUR', 'Non-régression : le père de L’Aganix d’Aubigny reste correctement positionné dans le pedigree');
+
+// =====================================================================================
+// Correctif runtime — Naisseur IFCE, extraction robuste (§ "vérifier sur les fixtures réelles
+// comment le naisseur est présenté, construire une extraction robuste, ne pas créer de règle
+// spécifique à L'Aganix"). Vérifié sur PLUSIEURS fixtures réelles distinctes, avec et sans naisseur
+// exploitable — jamais un cas isolé.
+// =====================================================================================
+
+// --- Plusieurs fixtures réelles avec un naisseur "Naisseur :" simple (déjà correctement extrait
+// AVANT ce correctif — non-régression explicite, la restriction de zone au pedigree ne casse rien) ---
+$asb_naisseur = gws_test_ifce_parse_fixture('ifce-asb-conquistador.pdf');
+gws_test_assert(($asb_naisseur['identity']['eleveur'] ?? null) === 'Bvba Van De Heffinck', 'Non-régression Naisseur : Asb Conquistador ("Naisseur :" simple) reste correctement extrait');
+
+$cornet_naisseur = gws_test_ifce_parse_fixture('ifce-cornet-obolensky.pdf');
+gws_test_assert(($cornet_naisseur['identity']['eleveur'] ?? null) === 'M. Thierry Degraeve', 'Non-régression Naisseur : Cornet Obolensky ("Naisseur :" simple) reste correctement extrait');
+
+$untouchable_naisseur = gws_test_ifce_parse_fixture('ifce-untouchable-27.pdf');
+gws_test_assert(($untouchable_naisseur['identity']['eleveur'] ?? null) === 'M. W. Van Hoof', 'Non-régression Naisseur : Untouchable 27 ("Naisseur :" simple) reste correctement extrait');
+
+$iowa_naisseur = gws_test_ifce_parse_fixture('ifce-iowa-jal.pdf');
+gws_test_assert(strpos($iowa_naisseur['identity']['eleveur'] ?? '', 'Elevage Peuch') !== false, 'Non-régression Naisseur : Iowa Jal ("Naisseur :" simple) reste correctement extrait');
+
+// --- Absence de naisseur EXPLOITABLE -> champ vide, sans invention (§ mention légale
+// d'opposition à la diffusion SIRE, rencontrée sur le vrai document de Quaprice Bois Margot :
+// "Naisseur: s'oppose à la diffusion des informations le concernant") ---
+$quaprice_naisseur = gws_test_ifce_parse_fixture('ifce-quaprice-bois-margot.pdf');
+gws_test_assert(($quaprice_naisseur['identity']['eleveur'] ?? null) === '', 'CORRECTIF RUNTIME Naisseur : Quaprice Bois Margot -> champ vide, jamais la mention légale d’opposition à la diffusion importée comme si c’était un nom réel (AVANT ce correctif, ce texte était importé tel quel)');
+
+// --- gwseq_ifce_is_naisseur_privacy_opt_out() : testé isolément ---
+gws_test_assert(gwseq_ifce_is_naisseur_privacy_opt_out("s'oppose à la diffusion des informations le concernant") === true, 'gwseq_ifce_is_naisseur_privacy_opt_out() : reconnaît la mention légale SIRE réelle');
+gws_test_assert(gwseq_ifce_is_naisseur_privacy_opt_out('Docteur Vete Pierre Valette 42600 CHALAIN LE COMTAL') === false, 'gwseq_ifce_is_naisseur_privacy_opt_out() : un nom de naisseur réel n’est jamais confondu avec la mention légale');
+gws_test_assert(gwseq_ifce_is_naisseur_privacy_opt_out('') === false, 'gwseq_ifce_is_naisseur_privacy_opt_out() : une chaîne vide n’est jamais un opt-out');
+
+// --- Naisseur absent du document (aucune ligne "Naisseur"/"Éleveur" du tout) -> vide, sans
+// invention — texte synthétique, indépendant de la fidélité d’extraction PDF ---
+$synthetic_sans_naisseur = "IFCE - Infos chevaux\nCHEVAL SANS NAISSEUR\nSelle Francais, Mâle, né(e) en 2020\nSaut D'obstacles : BSO +10 (0.50)\n";
+$parsed_sans_naisseur = gwseq_ifce_parse_text($synthetic_sans_naisseur);
+gws_test_assert(($parsed_sans_naisseur['identity']['eleveur'] ?? null) === '', 'Naisseur absent du document -> champ vide, jamais une valeur inventée');
+
+// --- Un naisseur mentionné APRÈS la ligne d'en-tête du pedigree (celui d'un ascendant) n'est
+// jamais retenu pour le cheval sujet — même règle de délimitation que les indices ---
+$synthetic_naisseur_ascendant = "IFCE - Infos chevaux\nCHEVAL SANS NAISSEUR PROPRE\nSelle Francais, Mâle, né(e) en 2020\nSaut D'obstacles : BSO +10 (0.50)\nPedigree\nPERE EXEMPLE SF 2010\nNaisseur: Naisseur De L'Ascendant\n";
+$parsed_naisseur_ascendant = gwseq_ifce_parse_text($synthetic_naisseur_ascendant);
+gws_test_assert(($parsed_naisseur_ascendant['identity']['eleveur'] ?? null) === '', 'Délimitation Naisseur (texte synthétique) : un naisseur mentionné APRÈS "Pedigree" (celui d’un ascendant) n’est jamais retenu pour le cheval sujet, même en l’absence de tout naisseur propre');
 
 // =====================================================================================
 // 2 ter. Délimitation de la zone de recherche des indices — preuve UNITAIRE isolée, sur du texte

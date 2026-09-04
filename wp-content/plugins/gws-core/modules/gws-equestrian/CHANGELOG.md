@@ -5,6 +5,53 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.33.0 — Correctifs de clôture Lot 1 : libellé du filtre + import IFCE (Naisseur)
+
+Deux correctifs demandés en recette après validation du correctif indices sportifs (0.32.0),
+aucune nouvelle fonctionnalité, aucun changement de logique de diffusion.
+
+**1. Libellé du filtre "État de diffusion"** — L'option par défaut du filtre affichait "Tous",
+ambigu à côté des autres filtres de la même barre (sexe, catégorie) qui précisent déjà leur objet
+("Toutes les catégories"). Remplacé par "Tous les états de diffusion" sur les deux écrans où ce
+filtre existe (Chevaux > Tous les chevaux, Chevaux > Partager). Changement de libellé uniquement
+(`cheval-fields.php`, `cheval-share-admin.php`, `cheval-share-admin.js`) : aucune valeur d'option,
+aucun nom de paramètre, aucune logique de filtrage modifiée.
+
+**2. Import IFCE — Naisseur non renseigné (cas L'Aganix)** — Après réimport réel de la fiche
+L'Aganix D'Aubigny pour valider le correctif indices sportifs, le champ Naisseur (libellé
+"Éleveur" jusqu'à cette version) restait vide alors que le document IFCE le renseigne bien.
+
+- *Cause racine* : le document IFCE de L'Aganix utilise le libellé "Naisseur principal :" (SIRE
+  déclare plusieurs naisseurs pour ce cheval) alors que l'extraction ne reconnaissait que
+  "Naisseur :" ou "Éleveur :" suivis immédiatement du deux-points — la présence du qualificatif
+  "principal" entre le mot-clé et le deux-points faisait échouer la correspondance.
+- *Règle d'extraction* : audit des 7 fixtures réelles du dépôt — 5 utilisent "Naisseur :", 1
+  (L'Aganix) utilise "Naisseur principal :" — les deux formes sont désormais reconnues par une
+  seule règle générale (`(?:Naisseur(?:\s+principal)?|[EÉeé]leveur)\s*:\s*(.+)`, insensible à la
+  casse), sans aucune règle spécifique à un cheval. L'extraction est également restreinte à la
+  "zone sujet" du document (avant l'en-tête Pedigree/Généalogie/Origines, même délimitation que le
+  correctif indices sportifs de la 0.32.0) : un naisseur mentionné plus loin dans le document,
+  pour un ascendant, n'est jamais retenu comme celui du cheval sujet.
+- *Bug additionnel détecté pendant l'audit des fixtures* : la fiche Quaprice Bois Margot fait
+  usage du droit d'opposition SIRE — le document affiche la mention légale "s'oppose à la
+  diffusion des informations le concernant" à la place d'un nom de naisseur. Cette mention était
+  jusqu'ici importée telle quelle comme si elle était un nom de naisseur réel. Ajout d'une
+  détection dédiée (`gwseq_ifce_is_naisseur_privacy_opt_out()`) : quand ce cas est identifié, le
+  champ reste vide plutôt que d'importer une donnée invalide.
+- *Décision Éleveur/Naisseur* : audit de l'usage réel du champ (meta `_gwseq_eleveur`, clé interne
+  `eleveur`) : alimenté uniquement par la saisie manuelle et par l'import IFCE, qui y écrit
+  précisément la donnée "Naisseur" du document officiel — jamais une notion distincte de qui a
+  débourré/entraîné le cheval. La donnée stockée correspond donc bien au Naisseur au sens IFCE.
+  Décision : changement du libellé visible "Éleveur" → "Naisseur" dans le formulaire d'identité,
+  sans aucun renommage de meta, de clé interne, ni migration de données (changement non
+  destructif, conforme à la donnée déjà stockée).
+- *Tests* : L'Aganix (naisseur extrait correctement + non-régression indices/pedigree), 4 autres
+  fixtures réelles à "Naisseur :" simple (non-régression), Quaprice (opposition SIRE exclue), tests
+  unitaires de la détection d'opposition, cas synthétique sans naisseur (champ vide, aucune
+  invention), cas synthétique avec naisseur uniquement après l'en-tête Pedigree (jamais retenu
+  pour le sujet). Voir `tests/gws-equestrian-ifce-import-test.php` et
+  `tests/gws-equestrian-cheval-logic-test.php`.
+
 ## 0.32.0 — Filtre "État de diffusion" (Lot 1) + correctif import IFCE (indices sportifs)
 
 Deux correctifs indépendants livrés ensemble.

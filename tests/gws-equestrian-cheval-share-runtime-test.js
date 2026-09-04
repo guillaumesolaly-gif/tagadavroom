@@ -610,7 +610,7 @@ async function run() {
   ok('Filtres : un <label> "Catégorie" existe, associé au sélecteur via for/id', categorieLabel !== null && categorieLabel.textContent === 'Catégorie' && categorieLabel.getAttribute('for') === categorieSelect.id);
   ok('Filtres : un <label> "Année de naissance" existe pour le groupe De/à, associé au premier champ via for/id', anneeLabel !== null && anneeLabel.textContent === 'Année de naissance');
   ok('Filtres : aucun de ces libellés n’est visuellement masqué (screen-reader-text) — ils doivent être VISIBLES à l’écran', [diffusionLabel, sexeLabel, statutLabel, categorieLabel, anneeLabel].every((labelEl) => (labelEl.className || '').split(/\s+/).indexOf('screen-reader-text') === -1));
-  ok('Filtres : les options "Tous"/"Toutes les catégories" restent, elles, le contenu des sélecteurs (inchangé), distinct du libellé du champ', diffusionSelect.children[0].textContent === 'Tous' && sexeSelect.children[0].textContent === 'Tous' && categorieSelect.children[0].textContent === 'Toutes les catégories');
+  ok('Filtres : les options "Tous les états de diffusion"/"Tous"/"Toutes les catégories" restent, elles, le contenu des sélecteurs (inchangé), distinct du libellé du champ', diffusionSelect.children[0].textContent === 'Tous les états de diffusion' && sexeSelect.children[0].textContent === 'Tous' && categorieSelect.children[0].textContent === 'Toutes les catégories');
 
   diffusionSelect.value = 'en_preparation';
   sexeSelect.value = 'female';

@@ -188,6 +188,20 @@ function gwseq_ifce_looks_like_birth_year_segment($text) {
 }
 
 /**
+ * Reconnaît la mention légale SIRE d'opposition à la diffusion des informations d'un naisseur —
+ * rencontrée sur le vrai document de Quaprice Bois Margot : "Naisseur: s'oppose à la diffusion des
+ * informations le concernant", à la place d'un nom. Ce texte n'est PAS un naisseur exploitable :
+ * une correspondance ici doit être traitée exactement comme une absence de mention de naisseur,
+ * jamais importée comme si elle était le nom réel d'une personne/structure. Correspondance sur les
+ * mots-clés ("oppose"/"diffusion") plutôt qu'une chaîne figée : la ponctuation/l'apostrophe exacte
+ * peut varier légèrement d'un export SIRE à l'autre, jamais la substance de cette mention légale
+ * standard.
+ */
+function gwseq_ifce_is_naisseur_privacy_opt_out($text) {
+  return (bool) preg_match('/\boppose\b.*\bdiffusion\b/iu', gwseq_ifce_normalize_plain_text($text));
+}
+
+/**
  * Extraction de l'identité (§4) à partir des lignes de texte déjà découpées — voir la convention
  * de lecture documentée en tête de fichier. Retourne une structure fermée dont TOUS les champs
  * sont potentiellement vides (aucune valeur n'est jamais devinée) ; 'nom' vide signale l'échec de
@@ -313,9 +327,35 @@ function gwseq_ifce_parse_identity_from_lines($lines) {
     $result['annee_naissance'] = (int) $my[1];
   }
 
-  foreach ($lines as $line) {
-    if ($result['eleveur'] === '' && preg_match('/(?:Naisseur|[EÉeé]leveur)\s*:\s*(.+)/u', $line, $me)) {
-      $result['eleveur'] = trim($me[1]);
+  // CORRECTIF RUNTIME (réimport réel de L'AGANIX D'AUBIGNY après le correctif des indices) : le
+  // Naisseur restait vide alors qu'il est bien présent sur le document. CAUSE RACINE — sur le vrai
+  // document, la ligne porte "Naisseur PRINCIPAL :" (jamais simplement "Naisseur :" quand le SIRE
+  // enregistre plusieurs naisseurs pour ce cheval), alors que l'ancienne expression exigeait le
+  // deux-points immédiatement après le seul mot "Naisseur" — un mot intercalé suffisait à annuler
+  // toute correspondance. Vérifié sur les SEPT fixtures réelles de ce dossier : "Naisseur :" seul
+  // (Asb Conquistador, Cornet Obolensky, Iowa Jal, Jamerose de Félines, Untouchable 27) et
+  // "Naisseur principal :" (L'Aganix d'Aubigny) sont les deux seules variantes réellement
+  // rencontrées — toutes deux désormais reconnues, jamais une règle propre à un cheval précis.
+  //
+  // Repéré à cette occasion, sur un HUITIÈME cas réel (Quaprice Bois Margot) : quand le naisseur a
+  // exercé son droit d'opposition SIRE, le document porte, à la place d'un nom, la mention légale
+  // "Naisseur: s'oppose à la diffusion des informations le concernant" — un texte qui matchait déjà
+  // la même expression et aurait été importé À TORT comme si c'était le nom du naisseur. Ce texte
+  // n'est PAS un naisseur exploitable : traité comme une absence de donnée (voir
+  // gwseq_ifce_is_naisseur_privacy_opt_out() ci-dessous), jamais importé tel quel.
+  //
+  // Zone de recherche restreinte à la zone de synthèse du cheval SUJET (même frontière que les
+  // indices, gwseq_ifce_find_pedigree_heading_index() — jamais une seconde détection divergente) :
+  // le pedigree détaille aussi le naisseur de chaque ascendant, jamais celui du cheval importé.
+  $naisseur_zone_heading_index = gwseq_ifce_find_pedigree_heading_index($lines);
+  $naisseur_zone_lines = $naisseur_zone_heading_index === null ? $lines : array_slice($lines, 0, $naisseur_zone_heading_index);
+
+  foreach ($naisseur_zone_lines as $line) {
+    if ($result['eleveur'] === '' && preg_match('/(?:Naisseur(?:\s+principal)?|[EÉeé]leveur)\s*:\s*(.+)/iu', $line, $me)) {
+      $naisseur_value = trim($me[1]);
+      if (!gwseq_ifce_is_naisseur_privacy_opt_out($naisseur_value)) {
+        $result['eleveur'] = $naisseur_value;
+      }
     }
     if ($result['sire'] === '' && preg_match('/\bSIRE\b\s*:?\s*(?:n°?\s*)?([0-9A-Za-z]{5,})/', $line, $ms)) {
       $result['sire'] = trim($ms[1]);

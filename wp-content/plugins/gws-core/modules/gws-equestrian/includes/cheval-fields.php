@@ -502,7 +502,20 @@ function gwseq_render_cheval_identite_box($post) {
     <input type="number" step="1" class="small-text" id="gwseq-cheval-taille" name="_gwseq_taille_cm" value="<?php echo esc_attr($identity['taille_cm']); ?>">
   </p>
   <p>
-    <label for="gwseq-cheval-eleveur"><strong><?php esc_html_e('Éleveur', 'gws-core'); ?></strong></label><br>
+    <?php
+    /**
+     * Libellé "Naisseur" (correctif runtime, audit vocabulaire) — CE CHAMP (meta `_gwseq_eleveur`,
+     * clé interne `eleveur`) reste TECHNIQUEMENT inchangé : aucune migration, aucun renommage de
+     * meta/clé, jamais destructif. Seul le LIBELLÉ visible change, "Éleveur" -> "Naisseur", après
+     * audit de son utilisation réelle : ce champ n'est alimenté que par la saisie manuelle et par
+     * l'import IFCE (gwseq_ifce_parse_identity_from_lines(), includes/ifce-import-parser.php), qui y
+     * écrit très précisément la ligne "Naisseur"/"Naisseur principal" du document officiel IFCE —
+     * jamais une notion distincte d'"Éleveur" au sens de qui a débourré/entraîné le cheval. "Naisseur"
+     * (terme métier exact, celui figurant sur le document source) évite de confondre deux notions
+     * potentiellement différentes dans le monde équestre.
+     */
+    ?>
+    <label for="gwseq-cheval-eleveur"><strong><?php esc_html_e('Naisseur', 'gws-core'); ?></strong></label><br>
     <input type="text" class="regular-text" id="gwseq-cheval-eleveur" name="_gwseq_eleveur" value="<?php echo esc_attr($identity['eleveur']); ?>">
   </p>
   <p>
@@ -827,7 +840,7 @@ function gwseq_render_cheval_admin_list_filters($post_type) {
    */
   ?>
   <select name="gwseq_filter_diffusion">
-    <option value=""><?php esc_html_e('Tous', 'gws-core'); ?></option>
+    <option value=""><?php esc_html_e('Tous les états de diffusion', 'gws-core'); ?></option>
     <?php foreach (gwseq_horse_diffusion_states() as $state) : ?>
       <option value="<?php echo esc_attr($state); ?>" <?php selected($selected_diffusion, $state); ?>><?php echo esc_html(gwseq_horse_diffusion_state_label($state)); ?></option>
     <?php endforeach; ?>
