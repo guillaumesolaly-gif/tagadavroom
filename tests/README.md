@@ -1145,3 +1145,26 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   cheval sans token — confirmant la nécessité réelle de ce garde-fou, pas un test qui se contente de
   lui-même). Intégralité de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée après ce
   lot : aucune régression.
+- **Lot 1 « Partager & vendre » : deux correctifs suite à revue avant recette (0.27.0)** : sans
+  nouveau fichier de test, uniquement `gws-equestrian-cheval-share-admin-test.php` (93 assertions au
+  total) — les deux points corrigés vivent tous les deux dans la glue WordPress de ce fichier.
+  - Exclusion `/wp/v2/search` : `gwseq_horse_private_share_filter_rest_search_query()` testé comme
+    les trois autres filtres d'exclusion déjà en place — la MÊME clause d'exclusion (comparée par
+    référence de valeur, jamais une reconstruction séparée) est ajoutée même quand la requête porte
+    sur plusieurs post types à la fois (`post`/`page`/Cheval mélangés, cas réel de ce contrôleur
+    sans `subtype` explicite), et s'AJOUTE à un `meta_query` déjà présent sans jamais l'écraser.
+  - Anti-cache de la route privée : `gwseq_horse_private_share_nocache_header_values()` (données
+    pures) vérifié contenant bien `no-store` dans `Cache-Control` et `Pragma: no-cache` ;
+    `gwseq_horse_private_share_send_nocache_headers()` (l'envoi réel) vérifié via un stub de
+    `nocache_headers()` (comptage d'appels) et `defined('DONOTCACHEPAGE') === true` — sans jamais
+    dépendre de l'état réel des en-têtes HTTP du processus PHP (impossible à inspecter fiablement
+    en CLI une fois que d'autres assertions ont déjà produit du texte sur la sortie standard,
+    d'où la séparation données/envoi). Un appel répété ne tente jamais de redéfinir la constante
+    (capturé via `try`/`catch`, aucune exception attendue).
+
+  Les deux correctifs vérifiés par retrait/restauration (retirer l'enregistrement du filtre
+  `wp_rest_search_query` ; vider les valeurs d'en-têtes anti-cache puis retirer la garde
+  `DONOTCACHEPAGE`) font chacun échouer exactement les assertions dédiées, aucune autre.
+  Intégralité de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée après ce lot : aucune
+  régression. Seuls deux fichiers touchés dans tout le dépôt pour cette correction (le fichier de
+  glue et son test), conformément à la demande de ne rien modifier d'autre dans ce lot.

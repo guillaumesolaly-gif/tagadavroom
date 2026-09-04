@@ -1,5 +1,17 @@
 # Changelog — GWS Starter
 
+## 1.30.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Lot 1 « Partager & vendre » : deux correctifs suite à revue avant recette (GWS Equestrian
+  0.27.0).** Un cheval en partage privé actif resté au statut "publish" pouvait rester découvrable
+  via l'endpoint REST transversal `/wp/v2/search` (point d'entrée distinct des filtres déjà en
+  place) — corrigé par la même clause d'exclusion, réutilisée sur son propre filtre natif. La route
+  `/partage/{token}` n'envoyait aucune directive anti-cache explicite, ce qui aurait pu permettre à
+  un cache plein-page/reverse proxy/CDN de continuer à servir une fiche privée après sa révocation
+  — corrigé par des en-têtes `no-store` explicites et la constante `DONOTCACHEPAGE`, sans toucher au
+  comportement de cache des fiches publiques. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.27.0) pour le détail complet.
+
 ## 1.29.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Suite V1 « Partager & vendre » — Lot 1 : visibilité public/privé, liens, Open Graph (GWS

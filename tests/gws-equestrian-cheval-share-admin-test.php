@@ -71,6 +71,8 @@ function admin_url($path = '') { return 'https://example.test/wp-admin/' . $path
 function home_url($path = '') { return 'https://example.test' . $path; }
 function is_admin() { return false; }
 function get_query_var($var, $default = '') { return $default; }
+$GLOBALS['__gwseq_test_nocache_headers_called'] = 0;
+function nocache_headers() { $GLOBALS['__gwseq_test_nocache_headers_called']++; }
 function add_query_arg($args, $url) {
   $sep = strpos($url, '?') === false ? '?' : '&';
   return $url . $sep . http_build_query($args);
@@ -624,7 +626,7 @@ $GLOBALS['__gwseq_test_security']['current_user_id'] = 2;
 gws_test_assert(gwseq_horse_private_share_user_can_manage(500) === false, 'Permission partage privé : un utilisateur sans edit_others_posts ne peut pas gérer le partage privé du cheval d’un autre auteur (§16)');
 gws_test_reset_security();
 
-// --- Exclusion recherche/sitemap/REST : une seule clause réutilisée aux trois endroits (§16) ---
+// --- Exclusion recherche/sitemap/REST : une seule clause réutilisée aux QUATRE endroits (§16) ---
 $exclusion_clause = gwseq_horse_private_share_exclusion_meta_clause();
 gws_test_assert($exclusion_clause['relation'] === 'OR', 'Exclusion partage privé : clause meta_query à deux branches (méta absente OU vide) — couvre aussi bien un cheval qui n’a jamais eu de partage privé qu’un cheval révoqué');
 
@@ -632,6 +634,17 @@ $rest_args = gwseq_horse_private_share_filter_rest_query(array(), null);
 gws_test_assert(isset($rest_args['meta_query']) && in_array($exclusion_clause, $rest_args['meta_query'], true), 'REST : la clause d’exclusion est bien ajoutée aux arguments de requête de LISTE (jamais une reconstruction séparée de la clause)');
 $rest_args_avec_meta_existante = gwseq_horse_private_share_filter_rest_query(array('meta_query' => array(array('key' => 'autre_chose', 'value' => 'x'))), null);
 gws_test_assert(count($rest_args_avec_meta_existante['meta_query']) === 2, 'REST : la clause d’exclusion s’AJOUTE à un meta_query déjà présent, ne l’écrase jamais');
+
+// --- Correctif de recette : `/wp/v2/search` (contrôleur transversal, y compris avec
+// `subtype=gwseq_cheval`) est un point d'entrée REST SÉPARÉ du contrôleur CRUD ci-dessus — jamais
+// couvert par rest_gwseq_cheval_query/rest_prepare_gwseq_cheval. Il force en dur post_status =>
+// 'publish', ce qui n'exclut PAS un cheval en partage privé actif resté publié (cas volontairement
+// permis par ce module) : la même clause d'exclusion doit donc être injectée sur son propre filtre
+// (`wp_rest_search_query`), sans dupliquer sa définition. ---
+$search_args = gwseq_horse_private_share_filter_rest_search_query(array('post_type' => array('post', 'page', GWSEQ_CPT_CHEVAL)), null);
+gws_test_assert(isset($search_args['meta_query']) && in_array($exclusion_clause, $search_args['meta_query'], true), 'REST /wp/v2/search : la MÊME clause d’exclusion (jamais une reconstruction séparée) est ajoutée à la requête transversale, y compris quand elle porte sur plusieurs post types à la fois');
+$search_args_avec_meta_existante = gwseq_horse_private_share_filter_rest_search_query(array('meta_query' => array(array('key' => 'autre_chose', 'value' => 'x'))), null);
+gws_test_assert(count($search_args_avec_meta_existante['meta_query']) === 2, 'REST /wp/v2/search : la clause d’exclusion s’AJOUTE à un meta_query déjà présent, ne l’écrase jamais');
 
 $sitemap_args_cheval = gwseq_horse_private_share_filter_sitemap_args(array(), GWSEQ_CPT_CHEVAL);
 gws_test_assert(isset($sitemap_args_cheval['meta_query']), 'Sitemap : la clause d’exclusion est appliquée pour le post_type Cheval');
@@ -708,6 +721,28 @@ $meta_box_html_non_autorise = ob_get_clean();
 gws_test_assert(strpos($meta_box_html_non_autorise, 'Partage privé') === false, 'Boîte latérale : aucun contrôle de partage privé affiché à un utilisateur qui ne peut pas éditer cette fiche');
 gws_test_reset_security();
 gwseq_horse_private_share_revoke(510);
+
+// --- Correctif de recette : la route de partage privé ne doit JAMAIS être mise en cache (page
+// cache, reverse proxy, CDN) — sans quoi une révocation/régénération ne serait pas immédiatement
+// effective pour un visiteur servi depuis un cache intermédiaire. Testé en DEUX temps : les
+// DIRECTIVES elles-mêmes (données pures, sans dépendre de l'état réel des en-têtes HTTP du
+// processus PHP), puis que l'envoi réel déclenche bien nocache_headers() + DONOTCACHEPAGE. ---
+$nocache_values = gwseq_horse_private_share_nocache_header_values();
+$cache_control = current(array_filter($nocache_values, function ($h) { return $h[0] === 'Cache-Control'; }));
+gws_test_assert($cache_control !== false && strpos($cache_control[1], 'no-store') !== false, 'Cache privé : l’en-tête Cache-Control envoyé par la route de partage privé contient "no-store" — la seule directive comprise SANS AMBIGUÏTÉ par tout reverse proxy/CDN comme "ne jamais mettre en cache"');
+$pragma = current(array_filter($nocache_values, function ($h) { return $h[0] === 'Pragma'; }));
+gws_test_assert($pragma !== false && $pragma[1] === 'no-cache', 'Cache privé : en-tête Pragma: no-cache également envoyé (compatibilité intermédiaires HTTP/1.0)');
+
+$GLOBALS['__gwseq_test_nocache_headers_called'] = 0;
+gwseq_horse_private_share_send_nocache_headers();
+gws_test_assert($GLOBALS['__gwseq_test_nocache_headers_called'] === 1, 'Cache privé : nocache_headers() native de WordPress est bien appelée en plus de nos propres directives (défense en profondeur)');
+gws_test_assert(defined('DONOTCACHEPAGE') && DONOTCACHEPAGE === true, 'Cache privé : la constante DONOTCACHEPAGE est définie — convention reconnue par la plupart des plugins de cache plein-page WordPress (WP Super Cache, W3 Total Cache, WP Rocket...)');
+
+// Appeler une seconde fois ne doit jamais tenter de redéfinir la constante (PHP lèverait une
+// erreur sur une redéfinition de constante) — vérifie que la garde `!defined(...)` fonctionne.
+$redefinition_erreur = false;
+try { gwseq_horse_private_share_send_nocache_headers(); } catch (\Throwable $e) { $redefinition_erreur = true; }
+gws_test_assert($redefinition_erreur === false, 'Cache privé : un appel répété (ex. plusieurs requêtes dans le même process) ne tente jamais de redéfinir DONOTCACHEPAGE');
 
 // =====================================================================================
 // Assets — uniquement sur l'écran Partager (§7)

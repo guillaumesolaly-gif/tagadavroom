@@ -518,6 +518,44 @@ function gwseq_horse_private_share_block_normal_permalink() {
 }
 add_action('template_redirect', 'gwseq_horse_private_share_block_normal_permalink', 5);
 
+/**
+ * Directives HTTP à envoyer sur TOUTE réponse de la route de partage privé (trouvée ou non) —
+ * correctif de recette : une révocation/régénération doit être immédiate, y compris en présence
+ * d'un cache plein-page, d'un reverse proxy ou d'un CDN placé devant WordPress ; sans directive
+ * explicite, l'un de ces intermédiaires pourrait continuer à servir une fiche PRIVÉE après sa
+ * révocation. `no-store` est la seule directive comprise SANS AMBIGUÏTÉ par absolument tout
+ * intermédiaire HTTP comme "ne jamais mettre en cache cette réponse" — envoyée explicitement ici en
+ * plus de `nocache_headers()` (déjà utilisée par ailleurs dans ce fichier), dont l'exact contenu
+ * peut varier selon la version de WordPress. Retourne des DONNÉES (jamais un side-effect direct) :
+ * reste testable unitairement sans dépendre de l'état réel des en-têtes HTTP du processus — voir
+ * gwseq_horse_private_share_send_nocache_headers() pour l'envoi réel.
+ */
+function gwseq_horse_private_share_nocache_header_values() {
+  return array(
+    array('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0, private'),
+    array('Pragma', 'no-cache'),
+  );
+}
+
+/**
+ * Envoie réellement les directives ci-dessus, PLUS `nocache_headers()` native (en-têtes historiques
+ * que certains outils reconnaissent spécifiquement) et la constante `DONOTCACHEPAGE` — convention
+ * de facto reconnue par la plupart des plugins de cache plein-page WordPress (WP Super Cache,
+ * W3 Total Cache, WP Rocket...) pour exclure une requête précise de leur cache, indépendamment des
+ * en-têtes HTTP eux-mêmes. Jamais appelée pour une fiche PUBLIQUE : uniquement depuis la route
+ * `/partage/{token}` ci-dessous — le comportement de cache d'une fiche publique reste strictement
+ * inchangé.
+ */
+function gwseq_horse_private_share_send_nocache_headers() {
+  if (!defined('DONOTCACHEPAGE')) define('DONOTCACHEPAGE', true);
+  nocache_headers();
+  if (!headers_sent()) {
+    foreach (gwseq_horse_private_share_nocache_header_values() as $header) {
+      header($header[0] . ': ' . $header[1]);
+    }
+  }
+}
+
 function gwseq_horse_private_share_render() {
   $token = get_query_var(GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR, '');
   if ($token === '') return;
@@ -527,7 +565,7 @@ function gwseq_horse_private_share_render() {
     global $wp_query;
     $wp_query->set_404();
     status_header(404);
-    nocache_headers();
+    gwseq_horse_private_share_send_nocache_headers();
     include get_404_template();
     exit;
   }
@@ -547,6 +585,7 @@ function gwseq_horse_private_share_render() {
   $wp_query->max_num_pages = 1;
 
   status_header(200);
+  gwseq_horse_private_share_send_nocache_headers();
   include get_single_template();
   exit;
 }
@@ -587,6 +626,26 @@ function gwseq_horse_private_share_filter_rest_response($response, $post, $reque
   return $response;
 }
 add_filter('rest_prepare_' . GWSEQ_CPT_CHEVAL, 'gwseq_horse_private_share_filter_rest_response', 10, 3);
+
+/**
+ * Le contrôleur transversal `/wp/v2/search` (`WP_REST_Search_Controller`, y compris avec
+ * `subtype=gwseq_cheval`) est un point d'entrée REST COMPLÈTEMENT SÉPARÉ du contrôleur CRUD par
+ * post_type filtré ci-dessus (`rest_{post_type}_query`/`rest_prepare_{post_type}`) : il ne passe
+ * JAMAIS par ces deux filtres, et interroge par défaut TOUS les post types publics interrogeables
+ * (Cheval inclus) même sans `subtype` explicite. Il force en dur `post_status => 'publish'`, ce qui
+ * suffit à exclure un cheval resté en brouillon — mais PAS un cheval en partage privé actif dont le
+ * statut est resté "publish" (cas volontairement permis, voir gwseq_horse_share_fiche_info() : le
+ * partage privé prend le pas sur le statut sans exiger un changement de statut). Même clause
+ * d'exclusion réutilisée ici, correctif de recette (§ "aucune fuite via une surface REST publique
+ * transversale").
+ */
+function gwseq_horse_private_share_filter_rest_search_query($args, $request) {
+  $meta_query = (array) ($args['meta_query'] ?? array());
+  $meta_query[] = gwseq_horse_private_share_exclusion_meta_clause();
+  $args['meta_query'] = $meta_query;
+  return $args;
+}
+add_filter('wp_rest_search_query', 'gwseq_horse_private_share_filter_rest_search_query', 10, 2);
 
 function gwseq_horse_private_share_filter_sitemap_args($args, $post_type) {
   if ($post_type !== GWSEQ_CPT_CHEVAL) return $args;

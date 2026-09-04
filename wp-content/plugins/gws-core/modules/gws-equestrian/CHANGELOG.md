@@ -5,6 +5,38 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.27.0 — Lot 1 « Partager & vendre » : deux correctifs suite à revue avant recette
+
+Revue du ZIP 0.26.0 avant recette réelle (par le professionnel, sans exécution) : deux failles
+potentielles identifiées et corrigées, strictement dans le périmètre déjà livré du Lot 1 — aucune
+autre évolution, Lot 2 toujours pas engagé.
+
+**Fuite possible via `/wp/v2/search` (contrôleur REST transversal WordPress, y compris avec
+`subtype=gwseq_cheval`).** Les filtres déjà en place (`rest_gwseq_cheval_query`/
+`rest_prepare_gwseq_cheval`) ne couvrent que le contrôleur CRUD par post_type
+(`WP_REST_Posts_Controller`) — `/wp/v2/search` est un point d'entrée COMPLÈTEMENT SÉPARÉ
+(`WP_REST_Search_Controller`), qui interroge par défaut tous les post types publics interrogeables
+(Cheval inclus) et force en dur `post_status => 'publish'`. Cette dernière contrainte suffit à
+exclure un brouillon, mais PAS un cheval en partage privé actif resté au statut "publish" (cas
+volontairement permis par ce module : le partage privé prend le pas sur le statut sans exiger de le
+changer). Corrigé par `gwseq_horse_private_share_filter_rest_search_query()`
+(`includes/cheval-share-admin.php`), accroché au filtre natif `wp_rest_search_query` et réutilisant
+la MÊME clause d'exclusion meta_query que les trois autres points d'accroche déjà en place —
+toujours une seule définition de "exclu du public", jamais une reconstruction séparée.
+
+**Absence de directive anti-cache explicite sur la route `/partage/{token}`.** Une révocation ou
+une régénération de lien doit être immédiatement effective — un cache plein-page, un reverse proxy
+ou un CDN placé devant WordPress aurait pu continuer à servir une fiche PRIVÉE déjà révoquée sans
+directive explicite le lui interdisant. Corrigé par `gwseq_horse_private_share_send_nocache_headers()`,
+appelée sur les DEUX issues de `gwseq_horse_private_share_render()` (trouvée ET non trouvée) :
+`nocache_headers()` native de WordPress, un en-tête `Cache-Control: no-store, no-cache,
+must-revalidate, max-age=0, private` explicite (`no-store` étant la seule directive comprise sans
+ambiguïté par tout intermédiaire HTTP comme "ne jamais mettre en cache", indépendamment de la
+version de WordPress), `Pragma: no-cache`, et la constante `DONOTCACHEPAGE` (convention de facto
+reconnue par la plupart des plugins de cache plein-page WordPress — WP Super Cache, W3 Total Cache,
+WP Rocket...). Strictement scopé à la route de partage privé : le comportement de cache d'une fiche
+PUBLIQUE reste totalement inchangé, ce code n'étant jamais appelé pour elle.
+
 ## 0.26.0 — Suite V1 « Partager & vendre » — Lot 1 : visibilité public/privé, liens, Open Graph
 
 Premier lot de la suite « Partager & vendre » (0.25.0 validé en principe : recherche/filtres,

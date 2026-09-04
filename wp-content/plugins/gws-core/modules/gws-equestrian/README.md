@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.26.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : visibilité public/privé (lien de partage privé `/partage/{token}`, révocable/régénérable, exclu recherche/archive/API REST/sitemap), vocabulaire "Inclure le lien vers la fiche" (GWS détermine seul le lien approprié), Open Graph fonctionnel aussi sur la route privée (og:url correct, noindex systématique). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + accès sans compte au lien privé) avant d'engager le Lot 2.
+## État actuel : GWS Equestrian 0.27.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : visibilité public/privé (lien de partage privé `/partage/{token}`, révocable/régénérable, exclu recherche/archive/API REST y compris `/wp/v2/search` transversal/sitemap), vocabulaire "Inclure le lien vers la fiche" (GWS détermine seul le lien approprié), Open Graph fonctionnel aussi sur la route privée (og:url correct, noindex systématique, directives anti-cache explicites pour une révocation immédiatement effective même derrière un cache/CDN). Deux failles identifiées en revue avant recette et corrigées en 0.27.0 (voir CHANGELOG.md). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + accès sans compte au lien privé) avant d'engager le Lot 2.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -719,6 +719,19 @@ mécanisme de sécurité en soi). Voir `CHANGELOG.md` de ce dossier (0.26.0) pou
 compris les limites connues (création du lien privé pas encore intégrée dans l'écran mobile
 Partager lui-même ; un plugin SEO tiers actif peut émettre ses propres balises en plus des nôtres
 sur la route privée).
+
+**Deux correctifs suite à revue avant recette (0.27.0), strictement dans le périmètre du Lot 1.**
+`/wp/v2/search` (contrôleur REST transversal WordPress, y compris `subtype=gwseq_cheval`) est un
+point d'entrée distinct des filtres `rest_gwseq_cheval_query`/`rest_prepare_gwseq_cheval` déjà en
+place — un cheval en partage privé actif resté au statut "publish" pouvait donc y rester
+découvrable. Corrigé par `gwseq_horse_private_share_filter_rest_search_query()`, accroché à
+`wp_rest_search_query` et réutilisant la MÊME clause d'exclusion que les trois autres points
+d'accroche. La route `/partage/{token}` n'envoyait aucune directive anti-cache explicite : un cache
+plein-page, reverse proxy ou CDN aurait pu continuer à servir une fiche privée après sa révocation.
+Corrigé par `gwseq_horse_private_share_send_nocache_headers()` (`Cache-Control: no-store...`,
+`Pragma: no-cache`, constante `DONOTCACHEPAGE`) appelée sur les deux issues de la route privée —
+comportement de cache des fiches publiques strictement inchangé. Voir `CHANGELOG.md` de ce dossier
+(0.27.0) pour le détail complet.
 
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et
