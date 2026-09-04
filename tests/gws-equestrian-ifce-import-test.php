@@ -424,6 +424,13 @@ gws_test_assert(($quaprice['identity']['annee_naissance'] ?? null) === 1998, 'Qu
 gws_test_assert(($quaprice['identity']['robe'] ?? null) === '' && ($quaprice['identity']['robe_autre'] ?? null) === '', 'Quaprice Bois Margot : robe absente du document -> reste vide, jamais devinée ni confondue avec l’année');
 gws_test_assert(($quaprice['identity']['taille_cm'] ?? null) === '', 'Quaprice Bois Margot : taille absente du document -> reste vide');
 gws_test_assert(($quaprice['identity']['race'] ?? null) === 'HOLST', 'Quaprice Bois Margot : race "Holsteiner Warmblut" reconnue et mappée au code canonique "HOLST"');
+// Correctif runtime (indices sportifs du cheval sujet) — AVANT ce correctif, Quaprice Bois Margot
+// se voyait attribuer à tort "ISO 170 (0.94) (2000)" et "ICC 114 (0.25) (2000)", tous deux
+// appartenant en réalité à des ascendants plus loin dans le pedigree/la production (le document ne
+// mentionne, dans sa propre zone de synthèse, que "Saut D'obstacles : BSO +12 (0.48)" — aucun ISO
+// ni ICC pour Quaprice lui-même).
+gws_test_assert(($quaprice['indices']['iso']['valeur'] ?? null) === '' && ($quaprice['indices']['icc']['valeur'] ?? null) === '', 'Correctif runtime indices : Quaprice Bois Margot n’a NI ISO NI ICC dans sa propre zone de synthèse -> restent vides, plus jamais empruntés à un ascendant du pedigree/de la production');
+gws_test_assert(($quaprice['indices']['bso']['valeur'] ?? null) === 12.0 && ($quaprice['indices']['bso']['cd'] ?? null) === 0.48, 'Correctif runtime indices : le BSO +12 (0.48) de Quaprice Bois Margot, lui, reste correctement extrait (dans sa propre zone de synthèse, avant "Pedigree")');
 
 // --- Untouchable 27 : "Kon. Warm Paard Nederland, Mâle, Gris, né(e) en 2001, étalon" — robe
 // présente, taille ABSENTE, mention finale ", étalon" après l'année. AVANT ce correctif : année
@@ -438,6 +445,13 @@ gws_test_assert(($untouchable['identity']['nom'] ?? null) === 'UNTOUCHABLE 27' &
 gws_test_assert(($untouchable['identity']['annee_naissance'] ?? null) === 2001, 'Correctif runtime : l’année de naissance d’Untouchable 27 ("né(e) en 2001", suivie de ", étalon") est désormais correctement extraite — AVANT ce correctif, elle restait vide malgré sa présence explicite dans le document');
 gws_test_assert(($untouchable['identity']['race'] ?? null) === 'KWPN', 'Correctif normalisation croisée : la race "Kon. Warm Paard Nederland" (libellé long de l’identité) résout désormais vers le code canonique "KWPN" — jamais rangée dans "Autre"');
 gws_test_assert(($untouchable['pedigree']['father']['father']['race'] ?? null) === 'SF', 'Untouchable 27 : le pedigree reste correctement mappé (Hors La Loi II, alias SFA -> SF), aucune régression');
+// Correctif runtime (indices sportifs du cheval sujet) — AVANT ce correctif, Untouchable 27 se
+// voyait attribuer à tort "ISO 171 (0.94) (2010)", emprunté à un ascendant plus loin dans le
+// pedigree/la production (sa propre zone de synthèse ne mentionne que "Concours Complet :
+// BCC +17 (0.63)" et "Saut D'obstacles : BSO +19 (0.99)" — aucun ISO/ICC/IDR pour lui-même).
+gws_test_assert(($untouchable['indices']['iso']['valeur'] ?? null) === '', 'Correctif runtime indices : Untouchable 27 n’a AUCUN ISO dans sa propre zone de synthèse -> vide, plus jamais emprunté au pedigree/à la production');
+gws_test_assert(($untouchable['indices']['bcc']['valeur'] ?? null) === 17.0 && ($untouchable['indices']['bcc']['cd'] ?? null) === 0.63, 'Non-régression : le BCC +17 (0.63) d’Untouchable 27, réellement présent dans sa propre zone de synthèse ("Concours Complet"), reste correctement extrait après le correctif');
+gws_test_assert(($untouchable['indices']['bso']['valeur'] ?? null) === 19.0 && ($untouchable['indices']['bso']['cd'] ?? null) === 0.99, 'Non-régression : le BSO +19 (0.99) d’Untouchable 27 reste correctement extrait');
 
 // --- ASB Conquistador (alias de Bush vd Heffinck) : "Belgian Warmblood, Mâle, Bai, né(e) en 2001,
 // étalon" — même structure qu’Untouchable 27 (robe présente, taille absente). ---
@@ -447,6 +461,12 @@ gws_test_assert($asb['valid'] === true, 'Asb Conquistador : document bien reconn
 gws_test_assert(($asb['identity']['nom'] ?? null) === 'ASB CONQUISTADOR' && ($asb['identity']['nom_officiel'] ?? null) === 'BUSH VD HEFFINCK', 'Asb Conquistador : alias retenu comme nom, nom officiel "Bush vd Heffinck" conservé séparément');
 gws_test_assert(($asb['identity']['annee_naissance'] ?? null) === 2001, 'Correctif runtime : l’année de naissance d’Asb Conquistador ("né(e) en 2001, étalon") est désormais correctement extraite');
 gws_test_assert(($asb['identity']['race'] ?? null) === 'BWP', 'Correctif normalisation croisée : la race "Belgian Warmblood" résout désormais vers le code canonique "BWP", jamais "Autre"');
+// Correctif runtime (indices sportifs du cheval sujet) — AVANT ce correctif, Asb Conquistador se
+// voyait attribuer à tort "ISO 146 (0.83) (2011)", emprunté à un ascendant plus loin dans le
+// pedigree/la production (sa propre zone de synthèse ne mentionne que "Saut D'obstacles :
+// BSO +11 (0.90)" — aucun ISO/ICC/IDR pour lui-même).
+gws_test_assert(($asb['indices']['iso']['valeur'] ?? null) === '', 'Correctif runtime indices : Asb Conquistador n’a AUCUN ISO dans sa propre zone de synthèse -> vide, plus jamais emprunté au pedigree/à la production');
+gws_test_assert(($asb['indices']['bso']['valeur'] ?? null) === 11.0 && ($asb['indices']['bso']['cd'] ?? null) === 0.9, 'Non-régression : le BSO +11 (0.90) d’Asb Conquistador reste correctement extrait');
 
 // --- CORRECTIF RUNTIME (recette 0.14.5) : reconstruction du pedigree — la ligne réelle
 // "CORRADO I Alias SAN PATRIGNANO CORRADO" est suivie, dans le VRAI document, d'une ligne DISTINCTE
@@ -485,6 +505,15 @@ gws_test_assert(($cornet['identity']['nom'] ?? null) === 'CORNET OBOLENSKY' && (
 gws_test_assert(($cornet['identity']['annee_naissance'] ?? null) === 1999, 'Non-régression : Cornet Obolensky extrayait déjà correctement son année de naissance (1999) avant ce correctif, toujours vrai après (segments Robe et Taille tous deux présents sur cette fiche)');
 gws_test_assert(($cornet['identity']['taille_cm'] ?? null) === 171, 'Non-régression : la taille ("1m71") reste correctement extraite quand elle est présente, malgré la nouvelle détection dynamique de la position des segments');
 gws_test_assert(($cornet['identity']['race'] ?? null) === 'BWP', 'Correctif normalisation croisée : la race "Belgian Warmblood" de Cornet Obolensky résout également vers "BWP"');
+// Correctif runtime (indices sportifs du cheval sujet) — AVANT ce correctif, Cornet Obolensky se
+// voyait lui aussi attribuer à tort "ISO 146 (0.83) (2011)" emprunté à un ascendant. Sa propre zone
+// de synthèse porte DEUX indices génétiques légitimes ("Saut D'obstacles : BSO +19 (0.99)" ET
+// "Concours Complet : BCC +2 (0.69)") mais AUCUN ISO/ICC/IDR — les deux indices génétiques restent
+// correctement extraits après le correctif, la preuve que restreindre la zone de recherche aux
+// indices sportifs ne casse jamais l'extraction des indices génétiques légitimement présents.
+gws_test_assert(($cornet['indices']['iso']['valeur'] ?? null) === '', 'Correctif runtime indices : Cornet Obolensky n’a AUCUN ISO dans sa propre zone de synthèse -> vide, plus jamais emprunté au pedigree/à la production');
+gws_test_assert(($cornet['indices']['bso']['valeur'] ?? null) === 19.0 && ($cornet['indices']['bso']['cd'] ?? null) === 0.99, 'Non-régression : le BSO +19 (0.99) de Cornet Obolensky reste correctement extrait');
+gws_test_assert(($cornet['indices']['bcc']['valeur'] ?? null) === 2.0 && ($cornet['indices']['bcc']['cd'] ?? null) === 0.69, 'Non-régression : le BCC +2 (0.69) de Cornet Obolensky (second indice génétique légitime de sa propre zone) reste correctement extrait — le correctif des indices sportifs ne casse pas les indices génétiques');
 
 // --- Même correctif runtime que ci-dessus (branche CORRADO), vérifié sur un second document réel
 // distinct — même motif exact ("CORRADO I Alias SAN PATRIGNANO CORRADO" / "(DEU) HOLST 1985" sur
@@ -509,6 +538,66 @@ $iowa = gws_test_ifce_parse_fixture('ifce-iowa-jal.pdf');
 gws_test_assert(empty($iowa['__fixture_missing']), 'Fixture : le vrai PDF de Iowa Jal est bien présent dans tests/fixtures/');
 gws_test_assert($iowa['valid'] === true && ($iowa['identity']['nom'] ?? null) === 'IOWA JAL', 'Non-régression : Iowa Jal (format standard à 5 segments) reste correctement reconnu');
 gws_test_assert(($iowa['identity']['annee_naissance'] ?? null) === 2018 && ($iowa['identity']['taille_cm'] ?? null) === 170 && ($iowa['identity']['race'] ?? null) === 'SF', 'Non-régression : année (2018), taille (170 cm) et race (SF) d’Iowa Jal restent tous corrects après la détection dynamique des segments');
+// --- FIXTURE DE RÉFÉRENCE POUR L'EXTRACTION POSITIVE D'UN ISO (§ "tester au moins une fixture
+// existante d'un cheval possédant réellement un ISO") : la propre zone de synthèse d'Iowa Jal porte
+// "Saut D'obstacles : ISO 112 (0.92) (2025), BSO +9 (0.61)" — AVANT le correctif, il empruntait EN
+// PLUS "ICC 139 (0.83) (2014)" et "BCC +19 (0.46)" à un ascendant plus loin dans le document (il n'a
+// lui-même ni ICC ni BCC) : la restriction de la zone de recherche corrige ce cas également, sans
+// jamais casser l'extraction positive de son propre ISO/BSO.
+gws_test_assert(($iowa['indices']['iso']['valeur'] ?? null) === 112 && ($iowa['indices']['iso']['cd'] ?? null) === 0.92 && ($iowa['indices']['iso']['annee'] ?? null) === 2025, 'Non-régression (extraction positive) : Iowa Jal conserve son ISO 112 (0.92) (2025) réel après le correctif — la restriction de zone ne casse jamais l’extraction d’un indice qui appartient réellement au cheval sujet');
+gws_test_assert(($iowa['indices']['bso']['valeur'] ?? null) === 9.0 && ($iowa['indices']['bso']['cd'] ?? null) === 0.61, 'Non-régression : le BSO +9 (0.61) d’Iowa Jal reste correctement extrait');
+gws_test_assert(($iowa['indices']['icc']['valeur'] ?? null) === '' && ($iowa['indices']['bcc']['valeur'] ?? null) === '', 'Correctif runtime indices : Iowa Jal n’a NI ICC NI BCC dans sa propre zone de synthèse -> restent vides, plus jamais empruntés à un ascendant (AVANT ce correctif, "ICC 139 (0.83) (2014)" et "BCC +19 (0.46)" d’un ascendant lui étaient attribués à tort)');
+
+// =====================================================================================
+// 2 bis. L'AGANIX D'AUBIGNY — bug réel de recette : ISO 154 (CD 0.93) (2024) attribué à tort, alors
+// que ce cheval n'a AUCUN ISO. La valeur appartient en réalité à AMBASSADOR Z, un ascendant présent
+// plus loin dans le pedigree/la production ("2014AMBASSADOR Z (BEL) z, m, bai... ISO 154 (0.93)
+// (2024)BSO +20 (0.55)"). Fixture de RÉFÉRENCE explicite de ce correctif (§ "utiliser la fiche
+// réelle de L'Aganix comme test de non-régression"). Sa propre zone de synthèse ne mentionne que
+// "Saut D'obstacles : BSO +16 (0.51)" — aucun ISO/ICC/IDR pour lui-même.
+// =====================================================================================
+
+$aganix = gws_test_ifce_parse_fixture('ifce-aganix-d-aubigny.pdf');
+gws_test_assert(empty($aganix['__fixture_missing']), 'Fixture : le vrai PDF de L’Aganix d’Aubigny est bien présent dans tests/fixtures/');
+gws_test_assert($aganix['valid'] === true, 'L’Aganix d’Aubigny : document bien reconnu');
+gws_test_assert(($aganix['identity']['nom'] ?? null) === 'L\'AGANIX D\'AUBIGNY', 'L’Aganix d’Aubigny : nom exact (aucun alias sur cette fiche)');
+gws_test_assert(($aganix['identity']['annee_naissance'] ?? null) === 2021, 'L’Aganix d’Aubigny : année de naissance (né(e) en 2021) correctement extraite');
+gws_test_assert(($aganix['identity']['race'] ?? null) === 'SF', 'L’Aganix d’Aubigny : race "Selle Francais" reconnue et mappée au code canonique "SF"');
+gws_test_assert(
+  ($aganix['indices']['iso']['valeur'] ?? null) === '' && ($aganix['indices']['iso']['cd'] ?? null) === '' && ($aganix['indices']['iso']['annee'] ?? null) === '',
+  'CORRECTIF RUNTIME (bug réel de recette) : L’Aganix d’Aubigny n’a plus AUCUN ISO — vide sur les trois composants (valeur/CD/année) — AVANT ce correctif, il héritait à tort de "ISO 154 (0.93) (2024)", en réalité celui d’AMBASSADOR Z, un ascendant présent plus loin dans le document'
+);
+gws_test_assert(($aganix['indices']['icc']['valeur'] ?? null) === '' && ($aganix['indices']['idr']['valeur'] ?? null) === '', 'Correctif runtime indices : L’Aganix d’Aubigny n’a également NI ICC NI IDR dans sa propre zone de synthèse (le correctif s’applique structurellement aux trois indices sportifs, pas seulement à l’ISO du bug signalé)');
+gws_test_assert(($aganix['indices']['bso']['valeur'] ?? null) === 16.0 && ($aganix['indices']['bso']['cd'] ?? null) === 0.51, 'Vérification explicite demandée : le BSO +16 (0.51) de L’Aganix d’Aubigny continue d’être extrait correctement — le correctif des indices sportifs ne casse pas les indices génétiques');
+gws_test_assert(($aganix['indices']['bcc']['valeur'] ?? null) === '' && ($aganix['indices']['bdr']['valeur'] ?? null) === '', 'L’Aganix d’Aubigny : ni BCC ni BDR dans sa propre zone de synthèse -> restent vides (seul le BSO y est mentionné)');
+
+// =====================================================================================
+// 2 ter. Délimitation de la zone de recherche des indices — preuve UNITAIRE isolée, sur du texte
+// synthétique (indépendante de la fidélité de l’extraction PDF réelle) : un ISO placé APRÈS la
+// ligne d’en-tête du pedigree n’est JAMAIS retenu pour le cheval sujet, même en l’absence de tout
+// autre ISO ailleurs dans le document (jamais un fallback sur "le premier indice trouvé ailleurs").
+// =====================================================================================
+
+$synthetic_no_iso = "IFCE - Infos chevaux\nCHEVAL SANS ISO\nSelle Francais, Mâle, né(e) en 2020\nSaut D'obstacles : BSO +10 (0.50)\nPedigree\nPERE EXEMPLE SF 2010\nISO 199 (0.99) (2099)\n";
+$parsed_no_iso = gwseq_ifce_parse_text($synthetic_no_iso);
+gws_test_assert($parsed_no_iso['valid'] === true, 'Délimitation indices (texte synthétique) : document reconnu');
+gws_test_assert(($parsed_no_iso['indices']['iso']['valeur'] ?? null) === '', 'Délimitation indices (texte synthétique) : un ISO placé APRÈS "Pedigree" n’est jamais retenu pour le cheval sujet, même en l’absence de tout autre ISO ailleurs dans le document (aucun fallback)');
+gws_test_assert(($parsed_no_iso['indices']['bso']['valeur'] ?? null) === 10.0, 'Délimitation indices (texte synthétique) : le BSO placé AVANT "Pedigree" reste correctement extrait');
+
+$synthetic_with_iso = "IFCE - Infos chevaux\nCHEVAL AVEC ISO\nSelle Francais, Mâle, né(e) en 2020\nSaut D'obstacles : ISO 120 (0.80) (2022), BSO +10 (0.50)\nPedigree\nPERE EXEMPLE SF 2010\nISO 199 (0.99) (2099)\n";
+$parsed_with_iso = gwseq_ifce_parse_text($synthetic_with_iso);
+gws_test_assert(($parsed_with_iso['indices']['iso']['valeur'] ?? null) === 120, 'Délimitation indices (texte synthétique) : un ISO placé AVANT "Pedigree" (le cheval sujet) est bien retenu, jamais un ISO placé après qui pourrait sembler "plus proche du début" une fois cette ligne franchie');
+
+$synthetic_no_pedigree_heading = "IFCE - Infos chevaux\nCHEVAL SANS SECTION ASCENDANCE\nSelle Francais, Mâle, né(e) en 2020\nSaut D'obstacles : ISO 130 (0.85) (2021)\n";
+$parsed_no_heading = gwseq_ifce_parse_text($synthetic_no_pedigree_heading);
+gws_test_assert(($parsed_no_heading['indices']['iso']['valeur'] ?? null) === 130, 'Délimitation indices (texte synthétique) : en l’absence de toute ligne d’en-tête pedigree, la totalité du texte reste la zone de recherche (repli explicite) — l’ISO du cheval sujet reste donc extrait');
+
+// --- gwseq_ifce_find_pedigree_heading_index() : même frontière réutilisée par le pedigree et les
+// indices, jamais deux détections divergentes ---
+gws_test_assert(gwseq_ifce_find_pedigree_heading_index(array('a', 'b', 'Pedigree', 'c')) === 2, 'gwseq_ifce_find_pedigree_heading_index() : trouve l’index exact de la ligne d’en-tête');
+gws_test_assert(gwseq_ifce_find_pedigree_heading_index(array('a', 'Généalogie', 'c')) === 1, 'gwseq_ifce_find_pedigree_heading_index() : reconnaît aussi "Généalogie" (avec ou sans accent)');
+gws_test_assert(gwseq_ifce_find_pedigree_heading_index(array('a', 'Origines', 'c')) === 1, 'gwseq_ifce_find_pedigree_heading_index() : reconnaît aussi "Origines"');
+gws_test_assert(gwseq_ifce_find_pedigree_heading_index(array('a', 'b', 'c')) === null, 'gwseq_ifce_find_pedigree_heading_index() : renvoie null si aucune ligne d’en-tête n’est trouvée, jamais un index fabriqué');
 
 // =====================================================================================
 // 3. Documents non reconnus (§10) — jamais un import "best effort"

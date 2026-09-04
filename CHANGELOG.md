@@ -1,5 +1,20 @@
 # Changelog — GWS Starter
 
+## 1.35.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Filtre "État de diffusion" sur les listes Chevaux + correctif import IFCE (indices sportifs)
+  (GWS Equestrian 0.32.0).** Deux correctifs indépendants. (1) Nouveau filtre "Tous/En préparation/
+  Diffusion privée/Visible sur le site" sur `Chevaux → Tous les chevaux` et `Chevaux → Partager`,
+  cumulable avec les filtres existants (Catégorie/Statut/Sexe/Année/recherche), réutilisant
+  exclusivement `gwseq_horse_diffusion_state()` comme source de vérité — aucun nouveau champ/meta
+  de statut créé. (2) Correctif d'un bug réel de recette : l'import IFCE attribuait à tort un ISO
+  appartenant à un ascendant (trouvé dans le pedigree/la production du document) au cheval importé
+  lui-même dès que celui-ci n'avait aucun ISO propre — cas réel constaté sur L'Aganix d'Aubigny, et
+  retrouvé sur 5 des 6 fixtures réelles déjà couvertes par les tests. Les indices sportifs et
+  génétiques ne sont désormais plus jamais recherchés au-delà de la zone de synthèse du cheval
+  sujet (avant la section Pedigree). Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.32.0) pour le détail complet.
+
 ## 1.34.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Lot 1 « Partager & vendre » : piloter la diffusion avec le vocabulaire GWS

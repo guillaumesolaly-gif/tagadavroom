@@ -333,6 +333,28 @@ function gwseq_ifce_parse_identity_from_lines($lines) {
  * demande "ISO 115 (0.70) (2023)". Génétiques (BSO/BCC/BDR) : valeur + CD, jamais d'année, ex.
  * exact "BSO +12 (0.59)". Chaque composant reste structuré séparément (§5 : "ne jamais stocker une
  * chaîne unique lorsque les composants peuvent rester structurés").
+ *
+ * CORRECTIF RUNTIME (bug réel constaté sur L'AGANIX D'AUBIGNY, importé à tort avec "ISO 154 — CD
+ * 0,93 — 2024" alors qu'il n'a AUCUN ISO) — CAUSE RACINE : cette fonction recevait auparavant le
+ * texte ENTIER du document, sans aucune frontière. Sur une vraie fiche IFCE, la section Pedigree
+ * qui suit la zone de synthèse du cheval sujet contient, pour chaque ascendant, un détail de sa
+ * PRODUCTION (ses propres produits, avec LEURS PROPRES indices ISO/ICC/IDR/BSO/BCC/BDR) — "première
+ * occurrence dans le texte" n'a donc jamais garanti "première occurrence dans la zone du cheval
+ * sujet" dès que celui-ci n'a lui-même AUCUN indice sportif : le premier ISO rencontré, quelque part
+ * dans le pedigree/la production d'un ascendant, était alors silencieusement attribué au cheval
+ * importé. Audit confirmé sur 5 des 6 fixtures réelles de ce dossier (asb-conquistador,
+ * cornet-obolensky, iowa-jal, quaprice-bois-margot, untouchable-27) : toutes portaient au moins un
+ * indice erroné avant ce correctif.
+ *
+ * RÈGLE DE DÉLIMITATION RETENUE : cette fonction ne reçoit plus JAMAIS que $text déjà RESTREINT par
+ * l'appelant (gwseq_ifce_parse_text()) à la zone AVANT la ligne d'en-tête du pedigree
+ * (gwseq_ifce_find_pedigree_heading_index(), même frontière que le pedigree lui-même — jamais une
+ * seconde regex qui pourrait diverger) : jamais le pedigree, les ascendants, les produits, ni la
+ * production. Sur les six fixtures réelles, cette zone correspond exactement à la ligne "Saut
+ * D'obstacles : ..."/"Concours Complet : ..." (ou équivalent) qui précède toujours "Pedigree".
+ * L'absence d'un indice y reste une donnée valide (§ "ne jamais utiliser comme fallback le premier
+ * indice trouvé ailleurs") : structurellement, plus aucun texte hors de cette zone n'est jamais
+ * examiné, donc plus aucun fallback n'est possible.
  */
 function gwseq_ifce_parse_indices_from_text($text) {
   $result = array();
@@ -343,11 +365,9 @@ function gwseq_ifce_parse_indices_from_text($text) {
     $result[$key] = array('valeur' => '', 'cd' => '');
   }
 
-  // PREMIÈRE occurrence uniquement pour chaque indice (jamais la dernière) : un vrai document
-  // multi-pages peut répéter le même sigle d'indice pour un ASCENDANT plus loin dans le texte
-  // (production détaillée, hors périmètre V1, §14) — seule la mention la plus proche du début,
-  // dans la zone de synthèse du cheval lui-même, doit être retenue ; ne jamais laisser un indice
-  // d'un autre cheval écraser silencieusement celui de la fiche importée.
+  // PREMIÈRE occurrence uniquement pour chaque indice (jamais la dernière) — la zone déjà restreinte
+  // par l'appelant ne devrait normalement contenir qu'une seule mention par indice, mais ce choix
+  // reste une défense en profondeur si jamais elle en contenait plusieurs.
   if (preg_match_all('/\b(ISO|ICC|IDR)\s+([+-]?\d+(?:[.,]\d+)?)\s*\(\s*([0-9]+(?:[.,][0-9]+)?)\s*\)\s*\(\s*(\d{4})\s*\)/i', (string) $text, $matches, PREG_SET_ORDER)) {
     foreach ($matches as $m) {
       $key = strtolower($m[1]);
@@ -502,6 +522,25 @@ function gwseq_ifce_looks_like_pedigree_continuation_line($line) {
 }
 
 /**
+ * Index de la ligne d'en-tête introduisant la section pedigree ("Généalogie"/"Pedigree"/"Origines")
+ * — correctif runtime (indices sportifs du cheval sujet) : cette même frontière délimite aussi la
+ * fin de la ZONE DE SYNTHÈSE du cheval sujet lui-même (identité, discipline, indices, naisseur...),
+ * réutilisée telle quelle par gwseq_ifce_parse_text() pour ne JAMAIS laisser
+ * gwseq_ifce_parse_indices_from_text() chercher au-delà (pedigree, ascendants, production —
+ * §"le parseur ne doit jamais continuer sa recherche dans ces sections"). Extraite ici en fonction
+ * dédiée pour que cette frontière ne soit calculée qu'à UN SEUL endroit, jamais recalculée en double
+ * avec une regex qui pourrait diverger entre le pedigree et les indices.
+ */
+function gwseq_ifce_find_pedigree_heading_index($lines) {
+  foreach ($lines as $i => $line) {
+    if (preg_match('/g[eé]n[eé]alogie|pedigree|origines/iu', $line)) {
+      return $i;
+    }
+  }
+  return null;
+}
+
+/**
  * Extraction du pedigree (§6) — voir la convention de lecture documentée en tête de fichier.
  * Retourne {father, mother, count} : 'count' est le nombre d'ascendants reconnus (utilisé tel quel
  * par la prévisualisation, §9 : "Pedigree : 14 ascendants détectés"), 'father'/'mother' les arbres
@@ -510,13 +549,7 @@ function gwseq_ifce_looks_like_pedigree_continuation_line($line) {
 function gwseq_ifce_parse_pedigree_from_lines($lines) {
   $result = array('father' => null, 'mother' => null, 'count' => 0);
 
-  $heading_index = null;
-  foreach ($lines as $i => $line) {
-    if (preg_match('/g[eé]n[eé]alogie|pedigree|origines/iu', $line)) {
-      $heading_index = $i;
-      break;
-    }
-  }
+  $heading_index = gwseq_ifce_find_pedigree_heading_index($lines);
   if ($heading_index === null) return $result;
 
   // Bloc CONTIGU de lignes non vides (voir convention de lecture en tête de fichier) : on ignore
@@ -570,6 +603,14 @@ function gwseq_ifce_parse_pedigree_from_lines($lines) {
  * Point d'entrée unique du parseur — texte brut vers structure normalisée fermée. `valid` à false
  * signifie un document non reconnu (§10) : le code appelant (ifce-import-admin.php) n'écrit alors
  * strictement rien et affiche un message explicite, jamais un import "best effort".
+ *
+ * CORRECTIF RUNTIME (indices sportifs du cheval sujet, voir gwseq_ifce_parse_indices_from_text()) :
+ * les indices ne sont plus jamais recherchés dans $text en entier, mais uniquement dans la zone
+ * STRICTEMENT AVANT la ligne d'en-tête du pedigree (gwseq_ifce_find_pedigree_heading_index(), même
+ * frontière que celle qui délimite déjà le pedigree lui-même) — jamais le pedigree, les ascendants,
+ * les produits, ni la production. En l'absence de cette ligne d'en-tête (document sans section
+ * pedigree reconnue), la totalité du texte reste la zone de recherche, par repli explicite — jamais
+ * un comportement différent selon la présence ou non du pedigree pour cette seule raison technique.
  */
 function gwseq_ifce_parse_text($text) {
   if (!gwseq_ifce_detect_document($text)) {
@@ -582,10 +623,13 @@ function gwseq_ifce_parse_text($text) {
     return array('valid' => false);
   }
 
+  $pedigree_heading_index = gwseq_ifce_find_pedigree_heading_index($lines);
+  $subject_zone_lines = $pedigree_heading_index === null ? $lines : array_slice($lines, 0, $pedigree_heading_index);
+
   return array(
     'valid' => true,
     'identity' => $identity,
-    'indices' => gwseq_ifce_parse_indices_from_text($text),
+    'indices' => gwseq_ifce_parse_indices_from_text(implode("\n", $subject_zone_lines)),
     'pedigree' => gwseq_ifce_parse_pedigree_from_lines($lines),
   );
 }

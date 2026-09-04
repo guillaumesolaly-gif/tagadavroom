@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.31.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : la diffusion d'une fiche Cheval est désormais pilotée avec le SEUL vocabulaire métier GWS. La boîte native "Publier" de WordPress est remplacée, UNIQUEMENT pour Cheval, par une boîte "État de diffusion" (En préparation/Diffusion privée/Visible sur le site) — `post_status`/`post_password` + token restent la seule source technique sous-jacente (aucun statut personnalisé créé, et jamais le statut natif `private` de WordPress pour "Diffusion privée", qui reste `draft` + token GWS). Chaque bouton de transition (Enregistrer, Activer la diffusion privée, Rendre visible sur le site, Repasser en préparation, ou choisir entre les deux pour retirer une fiche du site — jamais un "Dépublier" ambigu) sauvegarde réellement la fiche avant de l'appliquer, en un seul geste, via trois fonctions métier centralisées (`gwseq_horse_diffusion_set_en_preparation()`/`_diffusion_privee()`/`_visible_site()`, includes/cheval-share.php) réutilisables telles quelles par un futur écran mobile. Capacité `publish_post` vérifiée avant toute mise en visibilité publique (affichage ET hook de sauvegarde). Nouvel audit non destructif (notice sur la liste Chevaux, jamais de migration automatique) pour les fiches existantes utilisant encore un statut `private`/un mot de passe natifs. Visibilité publique et lien de partage privé (`/partage/{token}`, révocable/régénérable) restent DÉCOUPLÉS (0.29.0) ; liste `Chevaux → Tous les chevaux` n'affichant plus "— Brouillon" pour une fiche en Diffusion privée (0.30.0). Ajustement UX suite à recette (voir CHANGELOG.md 0.31.0), après l'ajustement UX/métier du statut de diffusion (0.30.0), l'ajustement d'architecture (0.29.0) et un correctif bloquant sur la création d'un lien privé (0.28.0). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + boîte "État de diffusion", chaque transition, capacité publish_post) avant d'engager le Lot 2.
+## État actuel : GWS Equestrian 0.32.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : la diffusion d'une fiche Cheval est pilotée avec le SEUL vocabulaire métier GWS (boîte "État de diffusion" remplaçant, uniquement pour Cheval, la boîte native "Publier" — `post_status`/`post_password` + token restent la seule source technique, aucun statut personnalisé créé), avec désormais un filtre "Tous/En préparation/Diffusion privée/Visible sur le site" sur `Chevaux → Tous les chevaux` ET `Chevaux → Partager`, cumulable avec les autres filtres (Catégorie/Statut/Sexe/Année/recherche), réutilisant exclusivement `gwseq_horse_diffusion_state()` comme source de vérité (`gwseq_cheval_ids_by_diffusion_state()`, includes/cheval-share.php). Correctif indépendant du même lot de livraison : l'import IFCE n'attribue plus à un cheval importé un indice sportif (ISO/ICC/IDR) ou génétique appartenant en réalité à un ascendant présent dans le pedigree/la production de son document (bug réel constaté sur L'Aganix d'Aubigny, retrouvé sur 5 des 6 fixtures réelles déjà testées) — les indices ne sont plus recherchés que dans la zone de synthèse du cheval sujet, strictement avant la section Pedigree. Visibilité publique et lien de partage privé (`/partage/{token}`, révocable/régénérable) restent DÉCOUPLÉS (0.29.0) ; liste `Chevaux → Tous les chevaux` n'affichant toujours pas "— Visible sur le site" pour ne pas surcharger visuellement la liste (0.30.0), boîte "État de diffusion" et ses transitions centralisées et réutilisables par un futur écran mobile (0.31.0). Voir CHANGELOG.md (0.32.0) pour le détail complet. Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce filtre (navigateur, deux écrans, cumul avec les autres filtres) et de l'import IFCE corrigé (réimport de L'Aganix d'Aubigny) avant d'engager le Lot 2.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -812,6 +812,20 @@ jamais les migrer automatiquement. Boîte "Partage" : le bouton "Créer" est ret
 "État de diffusion") ; "Régénérer"/"Révoquer" un partage déjà actif y restent inchangés. Voir
 `CHANGELOG.md` de ce dossier (0.31.0) pour le détail complet.
 
+**Filtre "État de diffusion" sur les listes Chevaux (0.32.0).** Ajouté aux deux écrans qui listent
+des chevaux : `Chevaux → Tous les chevaux` (nouveau sélecteur dans les filtres déjà existants,
+`gwseq_render_cheval_admin_list_filters()`/`gwseq_apply_cheval_admin_list_filters()`, includes/
+cheval-fields.php) et `Chevaux → Partager` (même sélecteur, réutilisant la logique de recherche/
+filtres déjà existante, includes/cheval-share-admin.php + assets/cheval-share-admin.js). Réutilise
+EXCLUSIVEMENT `gwseq_horse_diffusion_state()` comme source de vérité (nouvelle fonction
+`gwseq_cheval_ids_by_diffusion_state()`, includes/cheval-share.php) — cet état étant dérivé (statut
+WordPress + présence d'un token), jamais exprimable par un `meta_query`/`tax_query` direct, le
+filtre restreint la requête via `post__in`, cumulable avec les autres filtres (Catégorie/Statut/
+Sexe/Année/recherche texte). Aucun nouveau champ/meta de statut créé. L'affichage des suffixes
+`— En préparation`/`— Diffusion privée` dans la liste (0.30.0) reste inchangé — toujours pas de
+suffixe `— Visible sur le site`, pour ne pas surcharger visuellement la liste. Voir `CHANGELOG.md`
+de ce dossier (0.32.0) pour le détail complet.
+
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et
 `tests/gws-equestrian-cheval-share-runtime-test.js` pour la couverture dédiée, et le `CHANGELOG.md`
@@ -1179,6 +1193,14 @@ affiche un message explicite ; la création manuelle reste toujours disponible e
   « ISO 115 (0.70) (2023) » → valeur 115, CD 0.70, année 2023) ; génétiques BSO/BCC/BDR — valeur +
   CD, jamais d'année (exemple exact : « BSO +12 (0.59) »). Chaque composant reste structuré
   séparément, jamais une chaîne unique.
+  **Correctif runtime (bug réel de recette, 0.32.0)** : les six indices ne sont plus jamais
+  recherchés que dans la zone de synthèse du cheval SUJET — strictement AVANT la ligne d'en-tête du
+  pedigree (`gwseq_ifce_find_pedigree_heading_index()`, même frontière que le pedigree lui-même,
+  jamais deux détections divergentes) — jamais dans le pedigree, les ascendants, les produits, ni
+  la production, qui portent leurs propres indices pour d'autres chevaux. AVANT ce correctif, un
+  cheval sans ISO propre pouvait se voir attribuer à tort le premier ISO rencontré n'importe où
+  dans le document (constaté sur L'Aganix d'Aubigny — voir `CHANGELOG.md`, 0.32.0 — et sur 5 des 6
+  fixtures réelles déjà testées). L'absence d'un indice reste une donnée valide, jamais un fallback.
 - **Pedigree** (§6, objectif principal) : reconstruction automatique de l'arbre Père/Mère sur 3
   générations (14 ascendants) à partir du tableau généalogique du PDF, réutilisant directement
   `gwseq_sanitize_external_ancestor_tree()` / `gwseq_set_horse_parent()` /

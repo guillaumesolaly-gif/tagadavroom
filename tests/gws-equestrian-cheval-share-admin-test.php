@@ -261,6 +261,7 @@ class WP_Query {
     $limit = $args['posts_per_page'] ?? -1;
     $meta_query = $args['meta_query'] ?? null;
     $tax_query = $args['tax_query'] ?? null;
+    $post__in = $args['post__in'] ?? null;
 
     $results = array();
     foreach ($GLOBALS['__gwseq_test_posts'] as $id => $post) {
@@ -276,6 +277,7 @@ class WP_Query {
       if ($search !== '' && mb_strpos(mb_strtolower($post['post_title']), $search) === false) continue;
       if ($meta_query && !gws_test_meta_query_matches($id, $meta_query)) continue;
       if ($tax_query && !gws_test_tax_query_matches($id, $tax_query)) continue;
+      if (is_array($post__in) && !in_array($id, $post__in, true)) continue;
       $results[] = $id;
     }
     if ($limit > 0) $results = array_slice($results, 0, $limit);
@@ -496,6 +498,43 @@ $args_categorie = gwseq_horse_share_filters_to_query_args(array('categorie' => '
 gws_test_assert($args_categorie['tax_query'][0]['taxonomy'] === GWSEQ_TAX_CATEGORIE_CHEVAL && $args_categorie['tax_query'][0]['terms'] === 'chevaux_de_sport', 'Filtres : catégorie transformée en tax_query sur la taxonomie déjà existante');
 $args_vides = gwseq_horse_share_filters_to_query_args(array());
 gws_test_assert(!isset($args_vides['meta_query']) && !isset($args_vides['tax_query']), 'Filtres : aucun filtre actif -> aucune contrainte meta_query/tax_query ajoutée à la requête');
+
+// --- Filtre "État de diffusion" (audit UX/métier suivant, §"réutiliser la logique de recherche
+// déjà existante") — mêmes trois valeurs que gwseq_horse_diffusion_states(), jamais un second
+// vocabulaire ---
+gws_test_assert(
+  gwseq_sanitize_horse_share_filters(array('diffusion' => 'diffusion_privee'))['diffusion'] === 'diffusion_privee',
+  'Filtres : état de diffusion valide conservé'
+);
+gws_test_assert(
+  gwseq_sanitize_horse_share_filters(array('diffusion' => 'etat-invente'))['diffusion'] === '',
+  'Filtres : un état de diffusion hors des trois valeurs connues est ignoré, jamais propagé à la requête'
+);
+gws_test_assert(gwseq_sanitize_horse_share_filters(array())['diffusion'] === '', 'Filtres : état de diffusion absent -> chaîne vide ("Tous"), jamais une erreur');
+
+// État de diffusion dérivé (statut + token) : jamais exprimable par un meta_query/tax_query direct
+// -> restreint la requête via post__in, à partir de gwseq_cheval_ids_by_diffusion_state() (seule
+// source de vérité, includes/cheval-share.php).
+gws_test_make_horse(216, 'Cheval Filtre Diffusion Prive', 1, array('post_status' => 'draft'));
+gwseq_horse_private_share_activate(216);
+gws_test_make_horse(217, 'Cheval Filtre Diffusion Publiee'); // publish par défaut
+$args_diffusion = gwseq_horse_share_filters_to_query_args(array('sexe' => '', 'statut' => '', 'annee_min' => 0, 'annee_max' => 0, 'categorie' => '', 'diffusion' => 'diffusion_privee'));
+gws_test_assert(isset($args_diffusion['post__in']) && in_array(216, $args_diffusion['post__in'], true) && !in_array(217, $args_diffusion['post__in'], true), 'Filtres : "État de diffusion" transformé en restriction post__in (état dérivé, jamais exprimable par un meta_query direct) — ne retient que le cheval réellement dans l’état demandé');
+$args_sans_diffusion = gwseq_horse_share_filters_to_query_args(array('sexe' => '', 'statut' => '', 'annee_min' => 0, 'annee_max' => 0, 'categorie' => '', 'diffusion' => ''));
+gws_test_assert(!isset($args_sans_diffusion['post__in']), 'Filtres : "Tous" (valeur vide) n’ajoute aucune restriction post__in');
+
+// --- Cumul réel via l'AJAX de recherche : État de diffusion + Sexe, jamais l’un n’écrase l’autre ---
+gws_test_make_horse(222, 'Jument En Preparation', 1, array('post_status' => 'draft', 'identity' => array('_gwseq_sexe' => 'female')));
+gws_test_make_horse(223, 'Etalon En Preparation', 1, array('post_status' => 'draft', 'identity' => array('_gwseq_sexe' => 'male')));
+gws_test_make_horse(224, 'Jument Diffusion Privee', 1, array('post_status' => 'draft', 'identity' => array('_gwseq_sexe' => 'female')));
+gwseq_horse_private_share_activate(224);
+
+$_POST = array('nonce' => 'valid', 's' => '', 'filters' => array('diffusion' => 'en_preparation', 'sexe' => 'female'));
+$json = null;
+try { gwseq_ajax_partager_search_cheval(); } catch (Gws_Test_Json_Exit $e) { $json = $GLOBALS['__gwseq_test_json_response']; }
+$ids_diffusion_filtres = array_column($json['data']['resultats'], 'id');
+gws_test_assert($ids_diffusion_filtres === array(222), 'Filtre "État de diffusion" (cumulé avec Sexe) : seule la jument réellement "En préparation" est retournée — jamais l’étalon (sexe différent) ni la jument en "Diffusion privée" (état différent)');
+$_POST = array();
 
 // --- Cumul réel via l'AJAX de recherche : sexe + statut + plage d'année + catégorie + texte ---
 gws_test_make_horse(210, 'Jument Filtrée', 1, array('identity' => array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2019)));

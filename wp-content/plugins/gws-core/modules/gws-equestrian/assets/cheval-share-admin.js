@@ -163,6 +163,13 @@
     var filtersConfig = config.filters || {};
     var filtersRow = el('div', 'gwseq-partager-filters');
 
+    // Audit UX/métier suivant — même vocabulaire que la liste d'administration (§ "réutiliser
+    // exclusivement gwseq_horse_diffusion_state() comme source de vérité") : les options viennent
+    // telles quelles de filtersConfig.diffusion (gwseq_horse_share_diffusion_filter_options(),
+    // includes/cheval-share-admin.php), jamais un second référentiel codé ici.
+    var diffusionFilter = buildSelect('diffusion', t('diffusionFilterLabel', 'État de diffusion'), t('allDiffusion', 'Tous'), filtersConfig.diffusion);
+    filtersRow.appendChild(diffusionFilter.wrapper);
+
     var sexeFilter = buildSelect('sexe', t('sexeFilterLabel', 'Sexe'), t('allSexe', 'Tous'), filtersConfig.sexe);
     filtersRow.appendChild(sexeFilter.wrapper);
 
@@ -235,6 +242,7 @@
       ajaxPost('gwseq_partager_search_cheval', {
         s: input.value,
         filters: {
+          diffusion: diffusionFilter.select.value,
           sexe: sexeFilter.select.value,
           statut: statutFilter.select.value,
           categorie: categorieFilter.select.value,
@@ -254,6 +262,7 @@
 
     resetButton.addEventListener('click', function () {
       input.value = '';
+      diffusionFilter.select.value = '';
       sexeFilter.select.value = '';
       statutFilter.select.value = '';
       categorieFilter.select.value = '';

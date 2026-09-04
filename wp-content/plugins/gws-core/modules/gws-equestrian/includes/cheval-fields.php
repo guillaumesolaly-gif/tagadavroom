@@ -807,6 +807,7 @@ function gwseq_render_cheval_admin_list_filters($post_type) {
   $selected_statut = isset($_GET['gwseq_filter_statut']) ? sanitize_key(wp_unslash($_GET['gwseq_filter_statut'])) : '';
   $selected_annee = isset($_GET['gwseq_filter_annee']) ? sanitize_text_field(wp_unslash($_GET['gwseq_filter_annee'])) : '';
   $selected_sexe = isset($_GET['gwseq_filter_sexe']) ? sanitize_key(wp_unslash($_GET['gwseq_filter_sexe'])) : '';
+  $selected_diffusion = isset($_GET['gwseq_filter_diffusion']) ? sanitize_key(wp_unslash($_GET['gwseq_filter_diffusion'])) : '';
 
   $terms = get_terms(array('taxonomy' => GWSEQ_TAX_CATEGORIE_CHEVAL, 'hide_empty' => false));
   ?>
@@ -814,6 +815,21 @@ function gwseq_render_cheval_admin_list_filters($post_type) {
     <option value=""><?php esc_html_e('Toutes les catégories', 'gws-core'); ?></option>
     <?php foreach ((is_array($terms) ? $terms : array()) as $term) : ?>
       <option value="<?php echo esc_attr($term->slug); ?>" <?php selected($selected_categorie, $term->slug); ?>><?php echo esc_html($term->name); ?></option>
+    <?php endforeach; ?>
+  </select>
+  <?php
+  /**
+   * Filtre "État de diffusion" (audit UX/métier suivant) — Tous/En préparation/Diffusion privée/
+   * Visible sur le site. Réutilise EXCLUSIVEMENT gwseq_horse_diffusion_state()/_label() comme
+   * source de vérité (includes/cheval-share.php) — jamais un second vocabulaire ni un recalcul de
+   * l'état à partir de post_status ici. Cumulable avec les autres filtres, voir
+   * gwseq_apply_cheval_admin_list_filters() ci-dessous.
+   */
+  ?>
+  <select name="gwseq_filter_diffusion">
+    <option value=""><?php esc_html_e('Tous', 'gws-core'); ?></option>
+    <?php foreach (gwseq_horse_diffusion_states() as $state) : ?>
+      <option value="<?php echo esc_attr($state); ?>" <?php selected($selected_diffusion, $state); ?>><?php echo esc_html(gwseq_horse_diffusion_state_label($state)); ?></option>
     <?php endforeach; ?>
   </select>
   <select name="gwseq_filter_statut">
@@ -885,6 +901,20 @@ function gwseq_apply_cheval_admin_list_filters($query) {
   if (!empty($meta_query)) {
     if (count($meta_query) > 1 && !isset($meta_query['relation'])) $meta_query['relation'] = 'AND';
     $query->set('meta_query', $meta_query);
+  }
+
+  // Filtre "État de diffusion" (audit UX/métier suivant) — cet état est DÉRIVÉ (statut WordPress +
+  // présence d'un token), jamais exprimable par un meta_query/tax_query direct : restreint donc la
+  // requête principale via `post__in`, à partir de la liste calculée par gwseq_cheval_ids_by_
+  // diffusion_state() (includes/cheval-share.php, seule source de vérité). Reste cumulable avec les
+  // autres filtres ci-dessus : `post__in` s'applique en ET logique avec meta_query/tax_query/`s`,
+  // exactement comme WordPress combine nativement tous les critères d'une même requête.
+  if (!empty($_GET['gwseq_filter_diffusion'])) {
+    $diffusion = sanitize_key(wp_unslash($_GET['gwseq_filter_diffusion']));
+    if (in_array($diffusion, gwseq_horse_diffusion_states(), true)) {
+      $ids = gwseq_cheval_ids_by_diffusion_state($diffusion);
+      $query->set('post__in', $ids ?: array(0));
+    }
   }
 }
 add_action('pre_get_posts', 'gwseq_apply_cheval_admin_list_filters');

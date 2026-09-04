@@ -138,12 +138,19 @@ function gwseq_sanitize_horse_share_filters($raw) {
   $categorie = isset($raw['categorie']) ? sanitize_title(wp_unslash($raw['categorie'])) : '';
   if ($categorie !== '' && !term_exists($categorie, GWSEQ_TAX_CATEGORIE_CHEVAL)) $categorie = '';
 
+  // Filtre "État de diffusion" (audit UX/métier suivant, §"réutiliser la logique de recherche déjà
+  // existante") — mêmes trois valeurs que gwseq_horse_diffusion_states() (includes/cheval-share.php,
+  // seule source de vérité), jamais un second vocabulaire.
+  $diffusion = isset($raw['diffusion']) ? sanitize_key(wp_unslash($raw['diffusion'])) : '';
+  if ($diffusion !== '' && !in_array($diffusion, gwseq_horse_diffusion_states(), true)) $diffusion = '';
+
   return array(
     'sexe' => $sexe,
     'statut' => $statut,
     'annee_min' => $annee_min,
     'annee_max' => $annee_max,
     'categorie' => $categorie,
+    'diffusion' => $diffusion,
   );
 }
 
@@ -153,7 +160,7 @@ function gwseq_sanitize_horse_share_filters($raw) {
  */
 function gwseq_horse_share_filters_to_query_args($filters) {
   $filters = wp_parse_args(is_array($filters) ? $filters : array(), array(
-    'sexe' => '', 'statut' => '', 'annee_min' => 0, 'annee_max' => 0, 'categorie' => '',
+    'sexe' => '', 'statut' => '', 'annee_min' => 0, 'annee_max' => 0, 'categorie' => '', 'diffusion' => '',
   ));
   $args = array();
 
@@ -174,6 +181,15 @@ function gwseq_horse_share_filters_to_query_args($filters) {
 
   if ($filters['categorie'] !== '') {
     $args['tax_query'] = array(array('taxonomy' => GWSEQ_TAX_CATEGORIE_CHEVAL, 'field' => 'slug', 'terms' => $filters['categorie']));
+  }
+
+  // État de diffusion — dérivé (statut WordPress + token), jamais exprimable par un meta_query/
+  // tax_query direct (même raisonnement que le filtre équivalent de la liste d'administration, voir
+  // gwseq_apply_cheval_admin_list_filters(), includes/cheval-fields.php) : restreint via `post__in`,
+  // à partir de gwseq_cheval_ids_by_diffusion_state() — seule source de vérité, jamais recalculée.
+  if ($filters['diffusion'] !== '') {
+    $ids = gwseq_cheval_ids_by_diffusion_state($filters['diffusion']);
+    $args['post__in'] = $ids ?: array(0);
   }
 
   return $args;
@@ -213,6 +229,19 @@ function gwseq_horse_share_sexe_filter_options() {
   $options = array();
   foreach (array_keys(gwseq_cheval_sexe_options()) as $sexe) {
     $options[$sexe] = gwseq_horse_share_sexe_commercial_label($sexe);
+  }
+  return $options;
+}
+
+/**
+ * Libellés du filtre "État de diffusion" (audit UX/métier suivant) — réutilise EXCLUSIVEMENT
+ * gwseq_horse_diffusion_states()/gwseq_horse_diffusion_state_label() (includes/cheval-share.php)
+ * comme source de vérité, jamais un second vocabulaire ni un recalcul de l'état.
+ */
+function gwseq_horse_share_diffusion_filter_options() {
+  $options = array();
+  foreach (gwseq_horse_diffusion_states() as $state) {
+    $options[$state] = gwseq_horse_diffusion_state_label($state);
   }
   return $options;
 }
@@ -868,6 +897,10 @@ function gwseq_enqueue_horse_share_admin_assets($hook) {
       'categories' => gwseq_horse_share_categorie_filter_options(),
       'anneeMin' => GWSEQ_CHEVAL_ANNEE_MIN,
       'anneeMax' => gwseq_cheval_annee_naissance_max(),
+      // Audit UX/métier suivant — même vocabulaire que la liste d'administration (§ "réutiliser
+      // exclusivement gwseq_horse_diffusion_state() comme source de vérité") : jamais un second
+      // référentiel de libellés.
+      'diffusion' => gwseq_horse_share_diffusion_filter_options(),
     ),
     'i18n' => array(
       'searchPlaceholder' => __('Rechercher un cheval...', 'gws-core'),
@@ -904,6 +937,8 @@ function gwseq_enqueue_horse_share_admin_assets($hook) {
       'statutFilterLabel' => __('Statut commercial', 'gws-core'),
       'categorieFilterLabel' => __('Catégorie', 'gws-core'),
       'anneeFilterLabel' => __('Année de naissance', 'gws-core'),
+      'diffusionFilterLabel' => __('État de diffusion', 'gws-core'),
+      'allDiffusion' => __('Tous', 'gws-core'),
     ),
   ));
 }

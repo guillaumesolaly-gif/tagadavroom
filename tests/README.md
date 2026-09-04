@@ -1310,3 +1310,57 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   `'post_password' => ''` de `gwseq_horse_diffusion_set_visible_site()` fait échouer exactement les
   deux assertions du scénario "rendre public une fiche protégée par mot de passe". Intégralité de la
   suite (24 fichiers) ré-exécutée après chaque restauration : aucune régression.
+- **Filtre "État de diffusion" sur les listes Chevaux + correctif import IFCE (indices sportifs)
+  (0.32.0)** : deux correctifs indépendants, aucun nouveau fichier de test PHP.
+  - `gws-equestrian-cheval-share-logic-test.php` : nouvelle fonction `gwseq_cheval_ids_by_diffusion_
+    state()` testée sur les trois états (seul le cheval réellement dans l'état demandé apparaît dans
+    la liste correspondante) et sur une transition (déplacement immédiat d'une liste à l'autre,
+    jamais une liste figée).
+  - `gws-equestrian-cheval-logic-test.php` (requiert désormais aussi `cheval-share.php`, ainsi que
+    de nouveaux stubs `get_post()`/`WP_Query` minimaux) : le sélecteur "État de diffusion" est bien
+    rendu dans `gwseq_render_cheval_admin_list_filters()` avec les trois options au libellé métier
+    centralisé (`gwseq_horse_diffusion_state_label()`, jamais un second vocabulaire) et l'option
+    "Tous" par défaut ; persistance de la valeur sélectionnée ; `gwseq_apply_cheval_admin_list_
+    filters()` restreint bien la requête via `post__in` à partir de l'état demandé ; "Tous" (valeur
+    vide) n'ajoute aucune restriction ; une valeur invalide est ignorée ; cumulable avec le filtre
+    Sexe existant (post__in ET meta_query coexistent sur la même requête, jamais l'un n'écrase
+    l'autre).
+  - `gws-equestrian-cheval-share-admin-test.php` (+13 assertions) : `gwseq_sanitize_horse_share_
+    filters()` accepte/rejette la nouvelle clé `diffusion` (même trois valeurs que
+    `gwseq_horse_diffusion_states()`) ; `gwseq_horse_share_filters_to_query_args()` la transforme en
+    `post__in` (état dérivé, jamais exprimable par un meta_query direct) ; "Tous" n'ajoute aucune
+    restriction ; cumul réel via l'AJAX de recherche (`filters.diffusion` + `filters.sexe`) : seul le
+    cheval correspondant aux DEUX critères à la fois est retourné.
+  - `gws-equestrian-cheval-share-runtime-test.js` (+9 assertions, 77 au total) : le sélecteur "État
+    de diffusion" est rendu avec les trois options et son `<label>` visible associé via for/id (même
+    exigence d'accessibilité que les filtres existants) ; transmis dans le même appel de recherche
+    que les autres filtres et le texte libre (cumulatifs) ; réinitialisé par "Réinitialiser les
+    filtres" comme les autres sélecteurs.
+  - `gws-equestrian-ifce-import-test.php` (548 assertions au total) : nouvelle fixture réelle
+    `tests/fixtures/ifce-aganix-d-aubigny.pdf` — document bien reconnu, ISO/ICC/IDR tous vides (le
+    document ne mentionne aucun indice sportif pour ce cheval), BSO +16 (0.51) correctement extrait
+    (vérification explicite demandée : le correctif des indices sportifs ne casse pas les indices
+    génétiques). Les cinq autres fixtures réelles déjà présentes (`ifce-asb-conquistador`,
+    `ifce-cornet-obolensky`, `ifce-untouchable-27`, `ifce-quaprice-bois-margot`, `ifce-iowa-jal`)
+    complétées avec des assertions sur leurs indices : chacune s'est avérée porter au moins un ISO ou
+    un indice génétique erroné AVANT ce correctif (audité explicitement pendant le développement),
+    tous corrigés ; `ifce-iowa-jal` sert de fixture de référence pour l'extraction POSITIVE d'un ISO
+    réel (ISO 112 (0.92) (2025) reste correctement extrait, alors que son ICC/BCC erronés
+    disparaissent) ; `ifce-cornet-obolensky` prouve qu'un cheval avec DEUX indices génétiques
+    légitimes dans sa propre zone (BSO et BCC) les conserve tous les deux. Trois assertions
+    unitaires isolées sur du texte synthétique (indépendantes de la fidélité d'extraction PDF) :
+    un ISO placé après "Pedigree" n'est jamais retenu, même sans aucun autre ISO ailleurs (aucun
+    fallback) ; un ISO placé avant reste retenu ; en l'absence de toute ligne d'en-tête pedigree, la
+    totalité du texte reste la zone de recherche (repli explicite). Nouvelle fonction
+    `gwseq_ifce_find_pedigree_heading_index()` testée isolément (index exact, reconnaît aussi
+    "Généalogie"/"Origines", renvoie `null` si aucune ligne d'en-tête).
+
+  Cinq correctifs vérifiés par retrait/restauration : neutraliser `gwseq_cheval_ids_by_diffusion_
+  state()` (retour d'un tableau vide) fait échouer exactement les assertions qui en dépendent dans
+  LES TROIS fichiers PHP qui l'utilisent (logic-test, cheval-logic-test, admin-test) ; retirer
+  l'application du filtre dans `gwseq_apply_cheval_admin_list_filters()` fait échouer exactement les
+  trois assertions de restriction `post__in`/cumul de la liste d'administration ; recroiser
+  `gwseq_ifce_parse_text()` sur le texte ENTIER (au lieu de la zone restreinte) fait échouer
+  exactement les sept assertions qui dépendent de la délimitation (cinq fixtures réelles + L'Aganix
+  + le test synthétique). Intégralité de la suite (25 fichiers, dont la nouvelle fixture PDF)
+  ré-exécutée après chaque restauration : aucune régression.

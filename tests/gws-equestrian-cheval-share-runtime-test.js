@@ -257,6 +257,7 @@ function buildSandbox(options) {
       nonce: 'test-nonce',
       recents: options.recents || [],
       filters: options.filters || {
+        diffusion: { en_preparation: 'En préparation', diffusion_privee: 'Diffusion privée', visible_site: 'Visible sur le site' },
         sexe: { female: 'Jument', male: 'Étalon', gelding: 'Hongre' },
         statut: { not_offered: 'Non proposé', for_sale: 'À vendre', reserved: 'Réservé', sold: 'Vendu' },
         categories: { chevaux_de_sport: 'Chevaux de sport', poulains: 'Poulains' },
@@ -578,9 +579,14 @@ async function run() {
   await wait(20); // le rendu initial déclenche déjà un premier appel avec des filtres vides
 
   const filtersRoot = partsFilters.root;
+  const diffusionSelect = filtersRoot.querySelector('#gwseq-partager-filter-diffusion');
   const sexeSelect = filtersRoot.querySelector('#gwseq-partager-filter-sexe');
   const statutSelect = filtersRoot.querySelector('#gwseq-partager-filter-statut');
   const categorieSelect = filtersRoot.querySelector('#gwseq-partager-filter-categorie');
+  // Audit UX/métier suivant — même vocabulaire que la liste d'administration (§ "réutiliser
+  // exclusivement gwseq_horse_diffusion_state() comme source de vérité") : les options viennent
+  // telles quelles de la configuration serveur, jamais un second référentiel côté JS.
+  ok('Filtres : le sélecteur "État de diffusion" propose bien les trois états métier connus', diffusionSelect !== null && diffusionSelect.children.some((o) => o.value === 'en_preparation' && o.textContent === 'En préparation') && diffusionSelect.children.some((o) => o.value === 'diffusion_privee' && o.textContent === 'Diffusion privée') && diffusionSelect.children.some((o) => o.value === 'visible_site' && o.textContent === 'Visible sur le site'));
   ok('Filtres : le sélecteur Sexe propose bien les options du référentiel Cheval existant (vocabulaire commercial de cet écran)', sexeSelect !== null && sexeSelect.children.some((o) => o.value === 'female' && o.textContent === 'Jument'));
   ok('Filtres : le sélecteur Statut commercial utilise exactement les valeurs internes existantes', statutSelect !== null && statutSelect.children.some((o) => o.value === 'for_sale'));
   ok('Filtres : le sélecteur Catégorie propose les catégories réellement configurées (aucune nouvelle catégorie créée)', categorieSelect !== null && categorieSelect.children.some((o) => o.value === 'chevaux_de_sport' && o.textContent === 'Chevaux de sport'));
@@ -593,17 +599,20 @@ async function run() {
   // -------------------------------------------------------------------------------------------
   const allFilterLabels = filtersRoot.querySelectorAll('label');
   const findLabelFor = (forId) => allFilterLabels.filter((labelEl) => labelEl.getAttribute('for') === forId)[0] || null;
+  const diffusionLabel = findLabelFor('gwseq-partager-filter-diffusion');
   const sexeLabel = findLabelFor('gwseq-partager-filter-sexe');
   const statutLabel = findLabelFor('gwseq-partager-filter-statut');
   const categorieLabel = findLabelFor('gwseq-partager-filter-categorie');
   const anneeLabel = findLabelFor('gwseq-partager-filter-annee-min');
+  ok('Filtres : un <label> "État de diffusion" existe, associé au sélecteur via for/id', diffusionLabel !== null && diffusionLabel.textContent === 'État de diffusion' && diffusionLabel.getAttribute('for') === diffusionSelect.id);
   ok('Filtres : un <label> "Sexe" existe, associé au sélecteur via for/id', sexeLabel !== null && sexeLabel.textContent === 'Sexe' && sexeLabel.getAttribute('for') === sexeSelect.id);
   ok('Filtres : un <label> "Statut commercial" existe, associé au sélecteur via for/id', statutLabel !== null && statutLabel.textContent === 'Statut commercial' && statutLabel.getAttribute('for') === statutSelect.id);
   ok('Filtres : un <label> "Catégorie" existe, associé au sélecteur via for/id', categorieLabel !== null && categorieLabel.textContent === 'Catégorie' && categorieLabel.getAttribute('for') === categorieSelect.id);
   ok('Filtres : un <label> "Année de naissance" existe pour le groupe De/à, associé au premier champ via for/id', anneeLabel !== null && anneeLabel.textContent === 'Année de naissance');
-  ok('Filtres : aucun de ces libellés n’est visuellement masqué (screen-reader-text) — ils doivent être VISIBLES à l’écran', [sexeLabel, statutLabel, categorieLabel, anneeLabel].every((labelEl) => (labelEl.className || '').split(/\s+/).indexOf('screen-reader-text') === -1));
-  ok('Filtres : les options "Tous"/"Toutes les catégories" restent, elles, le contenu des sélecteurs (inchangé), distinct du libellé du champ', sexeSelect.children[0].textContent === 'Tous' && categorieSelect.children[0].textContent === 'Toutes les catégories');
+  ok('Filtres : aucun de ces libellés n’est visuellement masqué (screen-reader-text) — ils doivent être VISIBLES à l’écran', [diffusionLabel, sexeLabel, statutLabel, categorieLabel, anneeLabel].every((labelEl) => (labelEl.className || '').split(/\s+/).indexOf('screen-reader-text') === -1));
+  ok('Filtres : les options "Tous"/"Toutes les catégories" restent, elles, le contenu des sélecteurs (inchangé), distinct du libellé du champ', diffusionSelect.children[0].textContent === 'Tous' && sexeSelect.children[0].textContent === 'Tous' && categorieSelect.children[0].textContent === 'Toutes les catégories');
 
+  diffusionSelect.value = 'en_preparation';
   sexeSelect.value = 'female';
   statutSelect.value = 'for_sale';
   categorieSelect.value = 'chevaux_de_sport';
@@ -618,6 +627,7 @@ async function run() {
 
   const lastSearchCall = partsFilters.state.searchCalls[partsFilters.state.searchCalls.length - 1];
   ok('Filtres : la recherche texte ET les filtres sont bien transmis ENSEMBLE dans le même appel (cumulatifs, §4)', formValue(lastSearchCall, 's') === 'jument');
+  ok('Filtres : état de diffusion transmis', formValue(lastSearchCall, 'filters[diffusion]') === 'en_preparation');
   ok('Filtres : sexe transmis', formValue(lastSearchCall, 'filters[sexe]') === 'female');
   ok('Filtres : statut commercial transmis', formValue(lastSearchCall, 'filters[statut]') === 'for_sale');
   ok('Filtres : catégorie transmise', formValue(lastSearchCall, 'filters[categorie]') === 'chevaux_de_sport');
@@ -629,10 +639,10 @@ async function run() {
   await wait(20);
 
   ok('Réinitialisation : le champ de recherche texte est bien vidé', searchInput.value === '');
-  ok('Réinitialisation : tous les sélecteurs reviennent sur "Tous"/"Toutes les catégories"', sexeSelect.value === '' && statutSelect.value === '' && categorieSelect.value === '');
+  ok('Réinitialisation : tous les sélecteurs reviennent sur "Tous"/"Toutes les catégories"', diffusionSelect.value === '' && sexeSelect.value === '' && statutSelect.value === '' && categorieSelect.value === '');
   ok('Réinitialisation : la plage d’année est bien vidée', yearInputs[0].value === '' && yearInputs[1].value === '');
   const searchCallAfterReset = partsFilters.state.searchCalls[partsFilters.state.searchCalls.length - 1];
-  ok('Réinitialisation : une nouvelle recherche est bien relancée immédiatement, sans aucun filtre actif', formValue(searchCallAfterReset, 's') === '' && formValue(searchCallAfterReset, 'filters[sexe]') === '' && formValue(searchCallAfterReset, 'filters[categorie]') === '');
+  ok('Réinitialisation : une nouvelle recherche est bien relancée immédiatement, sans aucun filtre actif', formValue(searchCallAfterReset, 's') === '' && formValue(searchCallAfterReset, 'filters[diffusion]') === '' && formValue(searchCallAfterReset, 'filters[sexe]') === '' && formValue(searchCallAfterReset, 'filters[categorie]') === '');
 
   if (failureCount > 0) {
     console.log('\n' + failureCount + ' assertion(s) EN ÉCHEC sur ' + assertionCount + '.');

@@ -317,6 +317,39 @@ function gwseq_horse_diffusion_state_label($state) {
 }
 
 /**
+ * Les trois états connus, dans un ordre d'affichage stable — réutilisé par tout sélecteur de filtre
+ * "État de diffusion" (liste d'administration, écran Partager) : UNE SEULE énumération, jamais
+ * recopiée ailleurs.
+ */
+function gwseq_horse_diffusion_states() {
+  return array(GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, GWSEQ_HORSE_DIFFUSION_PRIVEE, GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+}
+
+/**
+ * Filtre métier "État de diffusion" (audit UX/métier suivant) : identifiants des chevaux dont l'état
+ * courant correspond exactement à $state. Réutilise EXCLUSIVEMENT gwseq_horse_diffusion_state()
+ * comme source de vérité pour chaque cheval — jamais un recalcul direct à partir de `post_status`
+ * (meta_query/tax_query ne peuvent pas exprimer cet état dérivé, qui dépend à la fois du statut
+ * WordPress ET de la présence d'un token) : ce filtre s'applique donc en restreignant la requête
+ * principale via `post__in` (voir cheval-fields.php pour la liste, includes/cheval-share-admin.php
+ * pour l'écran Partager), jamais en dupliquant la logique d'état elle-même.
+ */
+function gwseq_cheval_ids_by_diffusion_state($state) {
+  $query = new WP_Query(array(
+    'post_type' => GWSEQ_CPT_CHEVAL,
+    'post_status' => 'any',
+    'fields' => 'ids',
+    'posts_per_page' => -1,
+  ));
+
+  $ids = array();
+  foreach ($query->posts as $id) {
+    if (gwseq_horse_diffusion_state($id) === $state) $ids[] = $id;
+  }
+  return $ids;
+}
+
+/**
  * Crée OU régénère le partage privé d'un cheval — toujours la même opération (voir le commentaire
  * de section ci-dessus) : un appelant n'a jamais besoin de distinguer les deux cas.
  */

@@ -597,6 +597,34 @@ gws_test_assert(gwseq_horse_diffusion_state(71) === GWSEQ_HORSE_DIFFUSION_VISIBL
 gws_test_assert(gwseq_horse_diffusion_state_label('etat_inconnu') === '', 'Libellé métier : un état inconnu ne fabrique jamais un libellé, chaîne vide (défense en profondeur, jamais atteint en pratique)');
 
 // =====================================================================================
+// Filtre métier "État de diffusion" (audit UX/métier suivant) — gwseq_cheval_ids_by_diffusion_
+// state() : réutilise EXCLUSIVEMENT gwseq_horse_diffusion_state() comme source de vérité, jamais un
+// recalcul direct à partir de post_status.
+// =====================================================================================
+
+gws_test_assert(gwseq_horse_diffusion_states() === array(GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, GWSEQ_HORSE_DIFFUSION_PRIVEE, GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE), 'gwseq_horse_diffusion_states() : les trois états connus, dans un ordre stable');
+
+gws_test_make_horse(90, 'Cheval Filtre En Preparation', array('post_status' => 'draft'));
+gws_test_make_horse(91, 'Cheval Filtre Diffusion Privee', array('post_status' => 'draft'));
+gwseq_horse_private_share_activate(91);
+gws_test_make_horse(92, 'Cheval Filtre Visible'); // publish par défaut
+
+$ids_en_preparation = gwseq_cheval_ids_by_diffusion_state(GWSEQ_HORSE_DIFFUSION_EN_PREPARATION);
+gws_test_assert(in_array(90, $ids_en_preparation, true), 'Filtre "État de diffusion" : un cheval "En préparation" apparaît bien dans la liste correspondante');
+gws_test_assert(!in_array(91, $ids_en_preparation, true) && !in_array(92, $ids_en_preparation, true), 'Filtre "État de diffusion" : un cheval "Diffusion privée" ou "Visible sur le site" n’apparaît jamais dans la liste "En préparation"');
+
+$ids_diffusion_privee = gwseq_cheval_ids_by_diffusion_state(GWSEQ_HORSE_DIFFUSION_PRIVEE);
+gws_test_assert(in_array(91, $ids_diffusion_privee, true) && !in_array(90, $ids_diffusion_privee, true) && !in_array(92, $ids_diffusion_privee, true), 'Filtre "État de diffusion" : seul le cheval réellement en "Diffusion privée" apparaît dans cette liste');
+
+$ids_visible = gwseq_cheval_ids_by_diffusion_state(GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_assert(in_array(92, $ids_visible, true) && !in_array(90, $ids_visible, true) && !in_array(91, $ids_visible, true), 'Filtre "État de diffusion" : seul le cheval réellement "Visible sur le site" apparaît dans cette liste');
+
+// --- Une transition change bien l'appartenance à chaque liste (jamais une liste figée/mise en
+// cache) ---
+gwseq_horse_diffusion_set_visible_site(90);
+gws_test_assert(in_array(90, gwseq_cheval_ids_by_diffusion_state(GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE), true) && !in_array(90, gwseq_cheval_ids_by_diffusion_state(GWSEQ_HORSE_DIFFUSION_EN_PREPARATION), true), 'Filtre "État de diffusion" : une transition déplace immédiatement le cheval d’une liste à l’autre');
+
+// =====================================================================================
 // Ajustement UX suivant — transitions métier centralisées (gwseq_horse_diffusion_set_en_
 // preparation()/_diffusion_privee()/_visible_site()) : chaque fonction encapsule la règle COMPLÈTE
 // (statut WordPress + gestion du token), jamais un second calcul. Ni le statut natif `private`, ni

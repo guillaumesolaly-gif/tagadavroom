@@ -5,6 +5,46 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.32.0 — Filtre "État de diffusion" (Lot 1) + correctif import IFCE (indices sportifs)
+
+Deux correctifs indépendants livrés ensemble.
+
+**1. Filtre métier "État de diffusion" sur les listes Chevaux concernées (Lot 1).** Ajouté aux
+deux écrans qui listent des chevaux : `Chevaux → Tous les chevaux` (nouveau sélecteur "Tous/En
+préparation/Diffusion privée/Visible sur le site" dans les filtres déjà existants,
+`gwseq_render_cheval_admin_list_filters()`/`gwseq_apply_cheval_admin_list_filters()`, includes/
+cheval-fields.php) et `Chevaux → Partager` (même sélecteur, réutilisant la logique de recherche/
+filtres déjà existante — `gwseq_sanitize_horse_share_filters()`/`gwseq_horse_share_filters_to_
+query_args()`, includes/cheval-share-admin.php). Réutilise EXCLUSIVEMENT `gwseq_horse_diffusion_
+state()` comme source de vérité (nouvelle fonction `gwseq_cheval_ids_by_diffusion_state()`,
+includes/cheval-share.php) — cet état étant dérivé (statut WordPress + présence d'un token), jamais
+exprimable par un `meta_query`/`tax_query` direct, le filtre restreint la requête via `post__in`,
+cumulable avec les autres filtres (Catégorie/Statut/Sexe/Année/recherche texte). Aucun nouveau
+champ/meta de statut créé. L'affichage des suffixes `— En préparation`/`— Diffusion privée` dans la
+liste (introduit au 0.30.0) reste inchangé — toujours pas de suffixe `— Visible sur le site` pour ne
+pas surcharger visuellement la liste.
+
+**2. Correctif — Import IFCE : indices sportifs du cheval sujet.** Bug réel de recette constaté sur
+L'AGANIX D'AUBIGNY, importé à tort avec "ISO 154 — CD 0,93 — 2024" alors qu'il n'a AUCUN ISO — la
+valeur appartenait en réalité à AMBASSADOR Z, un ascendant présent plus loin dans le pedigree/la
+production de son document. **Cause racine** : `gwseq_ifce_parse_indices_from_text()`
+(includes/ifce-import-parser.php) recevait le texte ENTIER du document, sans aucune frontière — sur
+une vraie fiche IFCE, la section Pedigree qui suit la zone de synthèse du cheval sujet détaille la
+production de chaque ascendant, avec LEURS PROPRES indices ISO/ICC/IDR/BSO/BCC/BDR ; "première
+occurrence dans le texte" ne garantissait donc jamais "première occurrence dans la zone du cheval
+sujet" dès que celui-ci n'avait lui-même aucun indice sportif. Audit confirmé sur 5 des 6 fixtures
+réelles déjà présentes dans `tests/fixtures/` : toutes portaient au moins un indice erroné avant ce
+correctif. **Règle de délimitation retenue** : les indices ne sont plus jamais recherchés que dans
+la zone STRICTEMENT AVANT la ligne d'en-tête du pedigree (nouvelle fonction `gwseq_ifce_find_
+pedigree_heading_index()`, réutilisée à l'identique par `gwseq_ifce_parse_pedigree_from_lines()` —
+une seule frontière, jamais deux détections divergentes) ; en l'absence de cette ligne, la totalité
+du texte reste la zone de recherche (repli explicite). Appliqué structurellement aux SIX indices
+(ISO/ICC/IDR sportifs ET BSO/BCC/BDR génétiques), pas seulement à l'ISO du bug signalé. L'absence
+d'un indice reste une donnée valide (aucun fallback sur un indice trouvé ailleurs). Vérifié
+explicitement que le BSO +16 (0,51) de L'Aganix continue d'être extrait correctement. Fixture
+réelle ajoutée : `tests/fixtures/ifce-aganix-d-aubigny.pdf`. Aucune migration automatique : le
+cheval L'Aganix déjà importé, le cas échéant, devra être corrigé manuellement/réimporté en recette.
+
 ## 0.31.0 — Lot 1 « Partager & vendre » : piloter la diffusion avec le vocabulaire GWS
 
 Recette du 0.30.0 concluante (sauvegarde implicite, état "Diffusion privée" bien dérivé), mais

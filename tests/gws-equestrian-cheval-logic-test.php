@@ -139,7 +139,30 @@ function get_post_field($field, $post_id) { return $GLOBALS['__gwseq_test_post_f
 // nécessaire auparavant dans ce fichier, qui ne testait aucune requête traversant les post types ---
 $GLOBALS['__gwseq_test_posts'] = array();
 function gws_test_make_post($id, $post_type, $title, $status = 'publish') {
-  $GLOBALS['__gwseq_test_posts'][$id] = array('post_type' => $post_type, 'post_status' => $status, 'post_title' => $title);
+  $GLOBALS['__gwseq_test_posts'][$id] = array('post_type' => $post_type, 'post_status' => $status, 'post_title' => $title, 'post_password' => '');
+}
+// --- Requis par le filtre "État de diffusion" (gwseq_horse_diffusion_state(), cheval-share.php,
+// qui lit post_status/post_password via get_post()) et par gwseq_cheval_ids_by_diffusion_state()
+// (qui interroge tous les chevaux via WP_Query) — jamais nécessaires auparavant dans ce fichier.
+function get_post($post_id) {
+  if (!isset($GLOBALS['__gwseq_test_posts'][$post_id])) return null;
+  $p = $GLOBALS['__gwseq_test_posts'][$post_id];
+  return (object) array('ID' => $post_id, 'post_type' => $p['post_type'], 'post_status' => $p['post_status'], 'post_password' => $p['post_password'] ?? '');
+}
+class WP_Query {
+  public $posts = array();
+  public function __construct($args = array()) {
+    $post_type = $args['post_type'] ?? 'post';
+    $limit = $args['posts_per_page'] ?? -1;
+    $results = array();
+    foreach ($GLOBALS['__gwseq_test_posts'] as $id => $post) {
+      if ($post['post_type'] !== $post_type) continue;
+      if (($post['post_status'] ?? '') === 'trash') continue;
+      $results[] = $id;
+    }
+    if ($limit > 0) $results = array_slice($results, 0, $limit);
+    $this->posts = $results;
+  }
 }
 $GLOBALS['__gwseq_test_terms'] = array();
 function get_the_terms($post_id, $taxonomy) { return $GLOBALS['__gwseq_test_terms'][$post_id] ?? false; }
@@ -252,6 +275,11 @@ require $module_dir . 'includes/race-referentiel.php';
 require $module_dir . 'includes/cheval-fields.php';
 require $module_dir . 'includes/cheval-editor.php';
 require $module_dir . 'includes/cheval-categories.php';
+// Requis par le filtre "État de diffusion" de la liste d'administration (gwseq_render_cheval_admin_
+// list_filters()/gwseq_apply_cheval_admin_list_filters(), cheval-fields.php), qui réutilise
+// exclusivement gwseq_horse_diffusion_state()/_label()/gwseq_cheval_ids_by_diffusion_state()
+// (cheval-share.php) comme source de vérité — jamais un second calcul ici.
+require $module_dir . 'includes/cheval-share.php';
 
 // =====================================================================================
 // Identité — sexe, année de naissance, âge calculé, robe, race/stud-book, taille, éleveur,
@@ -799,6 +827,71 @@ $query_other_post_type = new Gws_Test_Query(array('post_type' => 'gwseq_prestati
 $_GET = array('gwseq_filter_sexe' => 'female');
 gwseq_apply_cheval_admin_list_filters($query_other_post_type);
 gws_test_assert(empty($query_other_post_type->get('meta_query')), 'Filtres admin : jamais appliqués sur la liste d’un autre post type');
+
+// =====================================================================================
+// Filtre métier "État de diffusion" (audit UX/métier suivant) — Tous/En préparation/Diffusion
+// privée/Visible sur le site. Réutilise EXCLUSIVEMENT gwseq_horse_diffusion_state() (cheval-
+// share.php) comme source de vérité, jamais un recalcul à partir de post_status ici.
+// =====================================================================================
+
+gws_test_make_post(830, GWSEQ_CPT_CHEVAL, 'Cheval Diffusion En Preparation', 'draft');
+gws_test_make_post(831, GWSEQ_CPT_CHEVAL, 'Cheval Diffusion Privee', 'draft');
+update_post_meta(831, GWSEQ_HORSE_PRIVATE_SHARE_META_KEY, 'a1b2c3');
+gws_test_make_post(832, GWSEQ_CPT_CHEVAL, 'Cheval Diffusion Visible', 'publish');
+
+$_GET = array();
+ob_start();
+gwseq_render_cheval_admin_list_filters(GWSEQ_CPT_CHEVAL);
+$diffusion_filter_html = ob_get_clean();
+gws_test_assert(strpos($diffusion_filter_html, 'name="gwseq_filter_diffusion"') !== false, 'Filtre "État de diffusion" : le sélecteur est bien rendu dans la liste d’administration');
+gws_test_assert(strpos($diffusion_filter_html, '<option value="">Tous</option>') !== false, 'Filtre "État de diffusion" : option "Tous" par défaut, aucun filtre appliqué tant qu’elle est sélectionnée');
+gws_test_assert(strpos($diffusion_filter_html, '<option value="en_preparation"') !== false && strpos($diffusion_filter_html, 'En préparation') !== false, 'Filtre "État de diffusion" : option "En préparation" présente, avec le libellé métier centralisé (gwseq_horse_diffusion_state_label())');
+gws_test_assert(strpos($diffusion_filter_html, '<option value="diffusion_privee"') !== false && strpos($diffusion_filter_html, 'Diffusion privée') !== false, 'Filtre "État de diffusion" : option "Diffusion privée" présente');
+gws_test_assert(strpos($diffusion_filter_html, '<option value="visible_site"') !== false && strpos($diffusion_filter_html, 'Visible sur le site') !== false, 'Filtre "État de diffusion" : option "Visible sur le site" présente');
+
+$_GET = array('gwseq_filter_diffusion' => 'diffusion_privee');
+ob_start();
+gwseq_render_cheval_admin_list_filters(GWSEQ_CPT_CHEVAL);
+$diffusion_filter_html_selected = ob_get_clean();
+gws_test_assert(preg_match('/value="diffusion_privee"\s+selected/', $diffusion_filter_html_selected) === 1, 'Filtre "État de diffusion" (persistance) : la valeur déjà sélectionnée reste affichée dans le contrôle');
+
+// --- Application réelle : restreint la requête aux chevaux dans l'état demandé, via post__in ---
+$query_diffusion = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_CHEVAL));
+$_GET = array('gwseq_filter_diffusion' => 'en_preparation');
+gwseq_apply_cheval_admin_list_filters($query_diffusion);
+$applied_post_in = $query_diffusion->get('post__in');
+gws_test_assert(is_array($applied_post_in) && in_array(830, $applied_post_in, true) && !in_array(831, $applied_post_in, true) && !in_array(832, $applied_post_in, true), 'Filtre "État de diffusion" : "En préparation" restreint bien la requête au seul cheval réellement dans cet état (post__in)');
+
+$query_diffusion_privee = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_CHEVAL));
+$_GET = array('gwseq_filter_diffusion' => 'diffusion_privee');
+gwseq_apply_cheval_admin_list_filters($query_diffusion_privee);
+$applied_post_in_privee = $query_diffusion_privee->get('post__in');
+gws_test_assert(is_array($applied_post_in_privee) && $applied_post_in_privee === array(831), 'Filtre "État de diffusion" : "Diffusion privée" restreint bien la requête au seul cheval réellement en diffusion privée');
+
+// --- "Tous" (valeur vide) -> aucune restriction post__in ajoutée ---
+$query_diffusion_tous = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_CHEVAL));
+$_GET = array('gwseq_filter_diffusion' => '');
+gwseq_apply_cheval_admin_list_filters($query_diffusion_tous);
+gws_test_assert($query_diffusion_tous->get('post__in') === '', 'Filtre "État de diffusion" : "Tous" (valeur vide) n’ajoute aucune restriction post__in');
+
+// --- Valeur invalide/trafiquée -> ignorée, jamais propagée telle quelle ---
+$query_diffusion_invalide = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_CHEVAL));
+$_GET = array('gwseq_filter_diffusion' => 'valeur-inventee');
+gwseq_apply_cheval_admin_list_filters($query_diffusion_invalide);
+gws_test_assert($query_diffusion_invalide->get('post__in') === '', 'Filtre "État de diffusion" : une valeur hors des trois états connus est ignorée, jamais propagée telle quelle dans la requête');
+
+// --- Cumulable avec les autres filtres (§ "les filtres doivent rester cumulables") : le filtre
+// diffusion et le filtre sexe s'appliquent simultanément, sans que l'un efface l'autre ---
+gws_test_make_post(833, GWSEQ_CPT_CHEVAL, 'Cheval Diffusion En Preparation Femelle', 'draft');
+$GLOBALS['__gwseq_test_meta'][833]['_gwseq_sexe'] = 'female';
+$query_cumule = new Gws_Test_Query(array('post_type' => GWSEQ_CPT_CHEVAL));
+$_GET = array('gwseq_filter_diffusion' => 'en_preparation', 'gwseq_filter_sexe' => 'female');
+gwseq_apply_cheval_admin_list_filters($query_cumule);
+$applied_post_in_cumule = $query_cumule->get('post__in');
+$applied_meta_query_cumule = $query_cumule->get('meta_query');
+gws_test_assert(is_array($applied_post_in_cumule) && in_array(830, $applied_post_in_cumule, true) && in_array(833, $applied_post_in_cumule, true), 'Filtre "État de diffusion" : reste cumulable avec le filtre Sexe — post__in ET meta_query coexistent sur la même requête, jamais l’un n’écrase l’autre');
+gws_test_assert(is_array($applied_meta_query_cumule) && in_array('_gwseq_sexe', array_column(array_filter($applied_meta_query_cumule, 'is_array'), 'key'), true), 'Filtre "État de diffusion" : le filtre Sexe reste bien présent dans le meta_query en plus du post__in du filtre diffusion');
+$_GET = array();
 
 $_GET = array();
 
