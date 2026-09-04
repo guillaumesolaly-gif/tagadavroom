@@ -1452,3 +1452,53 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   préexistants mis à jour (le nouveau CPT interne porte le nombre total de post types métier GWS
   de quatre à cinq) : `gws-equestrian-foundations-test.php` et
   `gws-equestrian-actualites-logic-test.php`.
+- **Correctif URL de suppression + Lot 2B, Sélection de chevaux (0.35.0)** — un nouveau fichier de
+  test (rendu de la page destinataire), les trois fichiers existants étendus.
+  - `gws-equestrian-cheval-selection-logic-test.php` : `gwseq_selection_update()` (titre seul sans
+    toucher à la liste et inversement, token STRICTEMENT identique après modification, un cheval
+    déjà présent devenu "En préparation" conservé tant qu'il est toujours soumis, un cheval "En
+    préparation" JAMAIS présent avant rejeté même explicitement soumis, retrait explicite
+    fonctionnel, cible inexistante/mauvais CPT refusée) ; `gwseq_selection_delete()` (passage en
+    corbeille, lien immédiatement inaccessible, cheval référencé jamais touché, cible
+    inexistante/mauvais CPT refusée) ; `gwseq_selection_get_public_card()`/`get_public_view()`
+    (identité/accroche/prix/photo/lien de fiche réutilisant EXCLUSIVEMENT les fonctions déjà
+    testées de `cheval-share.php`, statut "Non proposé" sans prix ni accroche inventée, seuls les
+    chevaux réellement présentables produisent une carte — jamais "En préparation"/inexistant —,
+    ordre conforme à l'ordre stocké, état vide propre sans erreur, libellé neutre de repli).
+  - `gws-equestrian-cheval-selection-admin-test.php` : AJAX lecture (`gwseq_selection_get`, titre
+    BRUT jamais le libellé de repli, chevaux dans l'ordre avec indicateur `displayable`, un cheval
+    devenu non diffusable reste renvoyé, sélection d'un autre auteur refusée) et modification
+    (`gwseq_selection_update`, token strictement identique, vider entièrement la liste refusé comme
+    à la création, une requête refusée ne modifie rien, sélection d'un autre auteur refusée, nonce
+    invalide rejeté) ; URL de suppression (remplace régénérer/révoquer) et son prédicat de
+    permission ; ligne d'administration sans plus aucune trace de token/régénérer/révoquer.
+    **Test de RÉGRESSION dédié** (demande explicite : "contrôler l'URL réellement exploitable par
+    le navigateur, pas seulement une chaîne HTML considérée correcte isolément") : absence des
+    entités `&amp;`/`&#038;` littérales, comptage exact des vrais séparateurs `&`, et
+    `parse_url()`/`parse_str()` (exactement ce qu'un navigateur fait à la navigation) retrouvant
+    les trois paramètres (action/selection_id/_wpnonce) séparés et correctement valorisés — le
+    stub `wp_nonce_url()` de ce fichier a été rendu fidèle au comportement réel de WordPress
+    (échappement HTML de son résultat) pour que cette régression soit réellement détectable.
+  - `gws-equestrian-cheval-selection-front-test.php` (NOUVEAU) : enregistrement de la route
+    (`add_rewrite_tag`/`add_rewrite_rule`), chargement conditionnel des assets (dashicons + CSS
+    minimal, uniquement sur cette route précise), en-têtes anti-cache (mêmes stubs que la route de
+    partage privé Cheval), et le rendu HTML lui-même — document complet, `noindex` systématique,
+    titre affiché, une carte par cheval présentable, échappement HTML de l'accroche commerciale
+    (sécurité XSS), lien de fiche public ET privé dans une même sélection, placeholder média
+    réutilisé, un cheval repassé "En préparation" disparaît du rendu sans jamais toucher à la liste
+    stockée, état vide propre sans erreur technique, libellé neutre de repli.
+  - `gws-equestrian-cheval-selection-runtime-test.js` (47 assertions, +15 par rapport à 0.34.0) :
+    liste sans plus aucune trace de "Régénérer"/"Révoquer" (uniquement "Supprimer", confirmation
+    obligatoire), titre de chaque sélection rendu comme un bouton actionnable qui déclenche un
+    appel AJAX `gwseq_selection_get` puis ouvre la vue éditeur en mode modification (titre et
+    chevaux déjà enregistrés pré-remplissant le panneau dans l'ordre stocké, badge "actuellement
+    non diffusable" sur un cheval devenu "En préparation", bouton "Enregistrer les modifications"
+    plutôt que "Créer la sélection"), retrait puis enregistrement transmettant bien `gwseq_
+    selection_update` (jamais `gwseq_selection_create`) avec l'identifiant de la sélection et la
+    liste finale, échec de modification affichant un message d'erreur sans redirection.
+
+  Correctif vérifié par retrait/restauration : revenir à la construction de l'URL via
+  `wp_nonce_url()` (l'ancien bug) fait échouer exactement les deux assertions de régression
+  dédiées (entité HTML présente, `parse_str()` ne retrouvant plus les paramètres correctement),
+  aucune autre assertion affectée. Intégralité de la suite (24 fichiers PHP + 4 suites JS runtime)
+  ré-exécutée après restauration : aucune régression.

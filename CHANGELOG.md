@@ -1,5 +1,23 @@
 # Changelog — GWS Starter
 
+## 1.38.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif URL de suppression + Lot 2B, Sélection de chevaux (GWS Equestrian 0.35.0).**
+  Correctif bloquant de recette : l'action "Révoquer" du Lot 2A aboutissait à "Le lien suivi est
+  expiré" — `wp_nonce_url()` échappe son résultat en HTML par conception, incompatible avec une URL
+  transmise en JSON puis assignée à `.href` en JavaScript (le navigateur ne décode alors jamais
+  l'entité HTML résiduelle). Corrigé en construisant le nonce sans passer par cette fonction,
+  aucune protection retirée ; nouveau test de régression qui contrôle l'URL réellement navigable
+  par le navigateur. Ajustement de modèle demandé en recette : "Révoquer"/"Régénérer" disparaissent
+  de l'interface — une sélection existante est active tant qu'elle existe, y mettre fin se fait en
+  la supprimant (corbeille WordPress, jamais les chevaux référencés touchés). Lot 2B : une
+  sélection existante peut désormais être rouverte et modifiée (ajout/retrait/ordre/titre) sans
+  jamais régénérer son token — le lien déjà envoyé reste identique ; et la page destinataire
+  publique `/selection/{token}/` est construite (accessible sans compte, noindex, une carte par
+  cheval réellement diffusable, réutilisant exclusivement les fonctions déjà existantes du partage
+  individuel). Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.35.0) pour
+  le détail complet.
+
 ## 1.37.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Suite V1 « Partager & vendre », Lot 2A : modèle et persistance de la Sélection de chevaux

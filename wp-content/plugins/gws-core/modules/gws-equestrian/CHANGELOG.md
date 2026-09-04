@@ -5,6 +5,55 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.35.0 — Correctif URL de suppression + Lot 2B (Sélection : modification + page destinataire)
+
+Recette du Lot 2A : la création fonctionne et conserve bien les chevaux sélectionnés. Trois
+constats ont amené un correctif immédiat et un ajustement de modèle avant d'engager le Lot 2B.
+
+**Correctif bloquant — URL de révocation cassée.** Cliquer sur "Révoquer" aboutissait à "Le lien
+suivi est expiré". Cause racine : `wp_nonce_url()` (WordPress core) échappe son résultat en HTML
+par conception (prévu pour un attribut `href="..."` imprimé côté serveur, où le navigateur décode
+nativement l'entité au moment de PARSER le document) — mais cette URL transitait en JSON
+(`wp_localize_script()`) puis était assignée directement à la propriété JS `.href`, un contexte qui
+n'effectue jamais ce décodage : l'entité `&amp;`/`&#038;` restait littéralement dans l'URL
+réellement soumise par le navigateur, cassant le nonce. Corrigé en construisant le nonce
+manuellement (`add_query_arg('_wpnonce', wp_create_nonce(...), $url)`), sans jamais passer par
+`wp_nonce_url()` — aucune protection retirée (capacité, ID de sélection, nonce spécifique, type de
+post). Nouveau test de régression qui contrôle l'URL RÉELLEMENT exploitable par le navigateur
+(absence d'entité HTML, `parse_url()`/`parse_str()`), pas seulement une sous-chaîne HTML isolée.
+
+**Ajustement de modèle — abandon de "Révoquer".** Pour une sélection, la révocation sans
+suppression n'apportait pas de valeur métier et introduisait un état confus. Nouveau
+fonctionnement : une sélection existante EST active, avec un lien stable tant qu'elle existe.
+Mettre fin à une sélection se fait en la SUPPRIMANT (`gwseq_selection_delete()`, `wp_trash_post()`
+— stratégie WordPress native, jamais une perte immédiate irréversible), ce qui rend son
+`/selection/{token}/` immédiatement inaccessible sans jamais toucher au moindre cheval référencé.
+"Révoquer"/"Régénérer"/"Activer" disparaissent entièrement de l'interface ; le token reste un
+mécanisme technique interne (`gwseq_selection_activate()`/`_revoke()` toujours utilisés en
+coulisses, par ex. à la création).
+
+**Lot 2B — Modification d'une sélection existante.** Le titre d'une sélection dans la liste
+l'ouvre désormais pour modification (`gwseq_selection_update()`) : ajouter/retirer un cheval,
+réordonner, changer le titre, enregistrer — sans JAMAIS régénérer le token (le lien déjà envoyé
+reste strictement identique). Un cheval déjà présent devenu "En préparation" reste affiché
+(signalé non diffusable) tant qu'il n'est pas explicitement retiré, jamais disparu silencieusement
+(même principe qu'à la création : un cheval réellement NOUVEAU doit, lui, être éligible).
+
+**Lot 2B — Page destinataire `/selection/{token}/`.** Nouvelle route publique (nouveau fichier
+`includes/cheval-selection-front.php`, même architecture que `/partage/{token}` pour Cheval) :
+accessible sans compte, `noindex` systématique, aucune mise en cache. Affiche le titre et une
+carte par cheval RÉELLEMENT présentable (nom, identité, accroche, prix si le statut commercial
+l'autorise, lien de fiche public ou privé selon le cas), en réutilisant EXCLUSIVEMENT les fonctions
+déjà existantes (`gwseq_horse_share_identite_label()`, `gwseq_horse_share_prix_label()`,
+`gwseq_horse_share_fiche_url()`) — jamais un second calcul. Un cheval "En préparation" disparaît
+simplement du rendu sans jamais modifier la liste stockée ; si plus aucun cheval n'est présentable,
+un état vide propre s'affiche (jamais une erreur technique). Rendu minimal et réutilisable — pas de
+gabarit graphique figé, `wp_head()`/`wp_footer()` appelés normalement pour que le thème puisse un
+jour cibler ces mêmes classes stables.
+
+Toujours volontairement absent : message de partage/Open Graph/WhatsApp-SMS-Copier/PDF/QR code/
+catalogue/mobile/refonte graphique générale du BO.
+
 ## 0.34.0 — Suite V1 « Partager & vendre », Lot 2A : modèle et persistance de la Sélection de chevaux
 
 Première étape du Lot 2 (sélection multi-chevaux), développée par petits lots avec recette réelle

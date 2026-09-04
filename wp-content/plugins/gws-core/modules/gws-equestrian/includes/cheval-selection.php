@@ -62,11 +62,21 @@
  * aboutirait aujourd'hui à un simple 404 (aucun gabarit de rendu) n'apporte rien à la recette de
  * ce lot et anticiperait sur le rendu public explicitement exclu du périmètre 2A.
  *
- * LOT 2A — PÉRIMÈTRE EXPLICITE : modèle métier, persistance, création d'une sélection, gestion de
- * son token (générer/activer/régénérer/révoquer/URL/recherche inverse). Volontairement ABSENT de
- * ce fichier (développements ultérieurs, non validés) : modification d'une sélection existante
- * (ajout/retrait/réordonnancement/titre après création — Lot 2B, §14 de la demande), rendu public
- * de la page destinataire (Lot 2B, §9), composition du message de partage/Open Graph (§11-12).
+ * LOT 2B — AJUSTEMENT DE MODÈLE (recette 2A) : le token n'est plus jamais révoqué/régénéré depuis
+ * l'interface — une sélection existante EST une sélection active, avec un lien stable. Mettre fin
+ * à une sélection se fait désormais en la SUPPRIMANT (corbeille WordPress native,
+ * `gwseq_selection_delete()` plus bas), jamais en vidant son token ; gwseq_selection_activate()/
+ * _revoke() restent des primitives techniques internes (utilisées par gwseq_selection_create() et
+ * disponibles pour un futur besoin de support), mais plus aucun point d'entrée BO ne les expose.
+ * Modifier une sélection (titre/liste/ordre, gwseq_selection_update() plus bas) NE TOUCHE JAMAIS au
+ * token : le lien déjà envoyé reste strictement identique après une modification.
+ *
+ * LOT 2B — PÉRIMÈTRE : modèle/persistance/création/token (2A) + modification d'une sélection
+ * existante (ajout/retrait/réordonnancement/titre, jamais de régénération de token) + composition
+ * des données de la page destinataire (gwseq_selection_get_public_view() plus bas — le RENDU HTML
+ * lui-même et sa route web vivent dans includes/cheval-selection-front.php, jamais mêlés à cette
+ * couche métier pure). Toujours volontairement absent : message de partage/Open Graph/WhatsApp-
+ * SMS-Copier/PDF/catalogue/mobile.
  *
  * PRÉPARATION MOBILE (§16) : toutes les fonctions ci-dessous sont volontairement INDÉPENDANTES de
  * wp-admin (aucun `current_user_can()`, aucun nonce ici) — un futur écran mobile pourra les
@@ -326,4 +336,117 @@ function gwseq_selection_create($args) {
   gwseq_selection_activate($selection_id);
 
   return $selection_id;
+}
+
+/* -------------------------------------------------------------------------------------------
+ * Modification (Lot 2B, §2 de l'ajustement de recette) — jamais de régénération de token : le
+ * lien déjà envoyé reste strictement identique après une modification.
+ * ----------------------------------------------------------------------------------------- */
+
+/**
+ * `$args['title']`/`$args['cheval_ids']` sont chacun INDÉPENDAMMENT facultatifs (`null` = ne pas
+ * toucher à ce champ) — modifier uniquement le titre ne touche jamais à la liste de chevaux, et
+ * inversement.
+ *
+ * RÈGLE D'ÉLIGIBILITÉ (même principe que gwseq_selection_create(), §5/§6 — jamais remis en cause
+ * ici) : un cheval DÉJÀ présent dans la sélection reste conservé tel quel quel que soit son état
+ * de diffusion ACTUEL (§6 : jamais retiré silencieusement par un simple changement d'état — seul
+ * un retrait EXPLICITE, en l'absence de son ID dans $args['cheval_ids'], l'enlève). Un cheval
+ * NOUVELLEMENT ajouté (absent de la liste actuelle avant modification) doit, lui, être éligible
+ * (§5 : jamais "En préparation") — défense en profondeur, un appelant ne peut jamais introduire un
+ * cheval "En préparation" dans une sélection, que ce soit à la création ou par une modification
+ * ultérieure.
+ */
+function gwseq_selection_update($selection_id, $args) {
+  $selection_id = (int) $selection_id;
+  if ($selection_id <= 0 || get_post_type($selection_id) !== GWSEQ_CPT_SELECTION) return false;
+
+  $args = wp_parse_args(is_array($args) ? $args : array(), array(
+    'title' => null,
+    'cheval_ids' => null,
+  ));
+
+  if ($args['title'] !== null) {
+    wp_update_post(array('ID' => $selection_id, 'post_title' => gws_core_field_sanitize('text', $args['title'])));
+  }
+
+  if ($args['cheval_ids'] !== null) {
+    $current_ids = gwseq_selection_get_cheval_ids($selection_id);
+    $submitted_ids = gwseq_selection_sanitize_cheval_ids($args['cheval_ids']);
+    $final_ids = array();
+    foreach ($submitted_ids as $id) {
+      if (in_array($id, $current_ids, true) || gwseq_selection_horse_is_eligible($id)) {
+        $final_ids[] = $id;
+      }
+    }
+    gwseq_selection_set_cheval_ids($selection_id, $final_ids);
+  }
+
+  return true;
+}
+
+/**
+ * Met fin à une sélection (Lot 2B, ajustement de recette §1) — REMPLACE l'ancienne révocation de
+ * token comme seule façon de "terminer" une sélection : tant qu'une sélection existe, elle est
+ * active, avec un lien stable (plus d'état intermédiaire "révoquée mais conservée"). `wp_trash_
+ * post()` est la stratégie WordPress native pour supprimer un contenu (corbeille avant purge
+ * définitive, jamais une perte immédiate et irréversible) : rend instantanément
+ * gwseq_selection_find_by_token() incapable de la résoudre (celui-ci exige `post_status =
+ * publish`) et la retire de gwseq_selection_query_ids() (même exigence), sans jamais toucher à un
+ * quelconque cheval référencé.
+ */
+function gwseq_selection_delete($selection_id) {
+  $selection_id = (int) $selection_id;
+  if ($selection_id <= 0 || get_post_type($selection_id) !== GWSEQ_CPT_SELECTION) return false;
+  return (bool) wp_trash_post($selection_id);
+}
+
+/* -------------------------------------------------------------------------------------------
+ * Données de la page destinataire (Lot 2B, §3 de l'ajustement) — composition PURE, consommée par
+ * includes/cheval-selection-front.php pour le rendu HTML lui-même (jamais mêlé à cette couche
+ * métier). Réutilise EXCLUSIVEMENT les fonctions déjà existantes de includes/cheval-share.php pour
+ * chaque donnée de carte (identité/prix/lien de fiche) — jamais un second calcul.
+ * ----------------------------------------------------------------------------------------- */
+
+/**
+ * Une carte par cheval — jamais une donnée inventée pour combler un champ absent (identité/
+ * accroche/prix restent chacun indépendamment facultatifs, même principe que
+ * gwseq_get_horse_shareable_data()). La règle prix (statuts "À vendre"/"Réservé" uniquement) est
+ * réutilisée telle quelle depuis gwseq_horse_share_prix_label() — jamais une nouvelle règle
+ * implicite pour ce nouveau contexte de rendu.
+ */
+function gwseq_selection_get_public_card($cheval_id) {
+  $identity = gwseq_get_cheval_identity($cheval_id);
+  $commercial = gwseq_get_cheval_commercial($cheval_id);
+  $editorial = gwseq_get_cheval_editorial($cheval_id);
+
+  return array(
+    'id' => $cheval_id,
+    'nom' => gwseq_format_horse_name_display(gwseq_horse_share_decode_title(get_the_title($cheval_id))),
+    'photo_url' => wp_get_attachment_image_url(gwseq_get_cheval_photo_principale_id($cheval_id), 'medium') ?: '',
+    'identite_label' => gwseq_horse_share_identite_label($identity),
+    'accroche' => trim((string) ($editorial['accroche_commerciale'] ?? '')),
+    'prix_label' => gwseq_horse_share_prix_label($commercial),
+    'fiche_url' => gwseq_horse_share_fiche_url($cheval_id),
+  );
+}
+
+/**
+ * Vue complète de la page destinataire (§3) : titre affiché + cartes des SEULS chevaux
+ * actuellement présentables (jamais "En préparation", jamais un cheval supprimé/en corbeille —
+ * réutilise gwseq_selection_resolve_cheval() comme seule source de vérité pour ce filtre, jamais
+ * un second calcul de diffusion). Une liste de cartes vide est un résultat parfaitement valide
+ * (§3 : "si tous les chevaux deviennent non diffusables, la sélection reste accessible... état
+ * vide propre") — jamais une erreur, jamais un repli inventé.
+ */
+function gwseq_selection_get_public_view($selection_id) {
+  $cards = array();
+  foreach (gwseq_selection_get_cheval_ids($selection_id) as $cheval_id) {
+    if (!gwseq_selection_resolve_cheval($cheval_id)['displayable']) continue;
+    $cards[] = gwseq_selection_get_public_card($cheval_id);
+  }
+  return array(
+    'titre' => gwseq_selection_display_title($selection_id),
+    'cartes' => $cards,
+  );
 }

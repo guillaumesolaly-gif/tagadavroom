@@ -1,0 +1,96 @@
+/**
+ * Page destinataire publique `/selection/{token}/` (Lot 2B) — MINIMAL utilitaire, jamais un
+ * habillage graphique élaboré (§9 de la demande initiale : "il ne faut pas construire maintenant
+ * un énorme template graphique figé"). Assure une lisibilité de base en attendant que le thème
+ * cible ces mêmes classes stables avec son propre design.
+ */
+
+.gwseq-selection-page {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #1d2327;
+  background: #f6f7f7;
+}
+
+.gwseq-selection-page__main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+
+.gwseq-selection-page__title {
+  font-size: 28px;
+  margin: 0 0 24px;
+}
+
+.gwseq-selection-page__empty {
+  color: #646970;
+  font-size: 16px;
+}
+
+.gwseq-selection-page__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.gwseq-selection-page__card {
+  background: #fff;
+  border: 1px solid #dcdcde;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.gwseq-selection-page__card-media {
+  aspect-ratio: 4 / 3;
+  background: #f0f0f1;
+}
+
+.gwseq-selection-page__card-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gwseq-selection-page__card-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gwseq-selection-page__card-nom {
+  font-size: 18px;
+  margin: 0;
+}
+
+.gwseq-selection-page__card-identite,
+.gwseq-selection-page__card-accroche,
+.gwseq-selection-page__card-prix {
+  margin: 0;
+  font-size: 14px;
+  color: #3c434a;
+}
+
+.gwseq-selection-page__card-prix {
+  font-weight: 600;
+}
+
+.gwseq-selection-page__card-lien {
+  margin-top: 8px;
+  display: inline-block;
+  padding: 8px 14px;
+  background: #2271b1;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 14px;
+  text-align: center;
+}

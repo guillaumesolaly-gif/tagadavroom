@@ -1,13 +1,15 @@
 /**
  * Test d'EXÉCUTION RÉELLE de assets/cheval-selection-admin.js — l'écran « Chevaux → Sélections »
- * (Suite V1 « Partager & vendre », Lot 2A).
+ * (Suite V1 « Partager & vendre », Lot 2B).
  *
  * Même méthodologie que tests/gws-equestrian-cheval-share-runtime-test.js (DOM minimal fait main,
  * aucune dépendance npm, exécution RÉELLE du fichier JS via le module `vm` de Node) : vérifie le
  * CÂBLAGE réel (recherche/filtres réutilisés, case à cocher <-> sélection en cours, ordre Monter/
- * Descendre, compteur, activation/désactivation du bouton de création, appel de création avec les
- * bons identifiants dans le bon ordre, redirection après succès, rendu de la liste des sélections
- * existantes, confirmation avant régénérer/révoquer) — jamais une revalidation de la logique déjà
+ * Descendre, compteur, activation/désactivation du bouton de soumission, appel de création/
+ * modification avec les bons identifiants dans le bon ordre, redirection après succès, rendu de la
+ * liste des sélections existantes, le TITRE qui ouvre la modification, la vue MODIFICATION
+ * pré-remplie par un appel AJAX réel, confirmation avant SUPPRESSION — plus de "Révoquer"/
+ * "Régénérer" depuis l'ajustement de recette 2A -> 2B) — jamais une revalidation de la logique déjà
  * testée côté PHP (recherche/éligibilité/persistance).
  *
  * Exécution : node tests/gws-equestrian-cheval-selection-runtime-test.js
@@ -134,16 +136,25 @@ function formValue(formData, key) {
 const RESULT_A = { id: 10, nom: 'Jamerose de Felines', photo_url: '', sous_titre: 'Jument Selle Français — 7 ans', statut: 'À vendre' };
 const RESULT_B = { id: 11, nom: 'Untouchable 27', photo_url: 'https://example.test/photo-11.jpg', sous_titre: 'Étalon Selle Français — 12 ans', statut: '' };
 
-const EXISTING_ROW_ACTIVE = {
+const EXISTING_ROW_A = {
   id: 500, titre: 'Chevaux pour Guillaume', date: '2026-09-04', total_chevaux: 3, chevaux_diffusables: 2,
-  token_actif: true, url: 'https://example.test/selection/aaaa/', url_regenerer: 'https://example.test/wp-admin/admin-post.php?action=gwseq_selection_regenerer&selection_id=500',
-  url_revoquer: 'https://example.test/wp-admin/admin-post.php?action=gwseq_selection_revoquer&selection_id=500',
+  url: 'https://example.test/selection/aaaa/',
+  url_modifier: 'https://example.test/wp-admin/edit.php?post_type=gwseq_cheval&page=gwseq-selections&vue=modifier&selection_id=500',
+  url_supprimer: 'https://example.test/wp-admin/admin-post.php?action=gwseq_selection_supprimer&selection_id=500&_wpnonce=nonce',
 };
-const EXISTING_ROW_REVOKED = {
+const EXISTING_ROW_B = {
   id: 501, titre: 'Sélection de chevaux', date: '2026-09-03', total_chevaux: 1, chevaux_diffusables: 1,
-  token_actif: false, url: '', url_regenerer: 'https://example.test/wp-admin/admin-post.php?action=gwseq_selection_regenerer&selection_id=501',
-  url_revoquer: 'https://example.test/wp-admin/admin-post.php?action=gwseq_selection_revoquer&selection_id=501',
+  url: 'https://example.test/selection/bbbb/',
+  url_modifier: 'https://example.test/wp-admin/edit.php?post_type=gwseq_cheval&page=gwseq-selections&vue=modifier&selection_id=501',
+  url_supprimer: 'https://example.test/wp-admin/admin-post.php?action=gwseq_selection_supprimer&selection_id=501&_wpnonce=nonce',
 };
+
+// Chevaux déjà présents dans la sélection 500, tels que renvoyés par gwseq_ajax_selection_get() —
+// le second est devenu "En préparation" depuis (§6 : reste affiché, signalé non "displayable").
+const EDIT_CHEVAUX = [
+  { id: 10, nom: 'Jamerose de Felines', photo_url: '', sous_titre: 'Jument Selle Français — 7 ans', displayable: true },
+  { id: 12, nom: 'Cheval Retiré De La Diffusion', photo_url: '', sous_titre: '', displayable: false },
+];
 
 function fakeServerResponse(formData, state) {
   const action = formValue(formData, 'action');
@@ -154,6 +165,15 @@ function fakeServerResponse(formData, state) {
   if (action === 'gwseq_selection_create') {
     state.createCalls.push(formData);
     if (state.createShouldFail) return { success: false, data: { message: 'Erreur de test' } };
+    return { success: true, data: { redirect: 'https://example.test/wp-admin/edit.php?post_type=gwseq_cheval&page=gwseq-selections' } };
+  }
+  if (action === 'gwseq_selection_get') {
+    state.getCalls.push(formData);
+    return { success: true, data: { id: formValue(formData, 'selection_id'), titre: 'Chevaux pour Guillaume', chevaux: EDIT_CHEVAUX } };
+  }
+  if (action === 'gwseq_selection_update') {
+    state.updateCalls.push(formData);
+    if (state.updateShouldFail) return { success: false, data: { message: 'Erreur de modification' } };
     return { success: true, data: { redirect: 'https://example.test/wp-admin/edit.php?post_type=gwseq_cheval&page=gwseq-selections' } };
   }
   return { success: false };
@@ -178,8 +198,11 @@ function buildSandbox(options) {
   const state = {
     searchCalls: [],
     createCalls: [],
+    getCalls: [],
+    updateCalls: [],
     searchResults: options.searchResults || [RESULT_A, RESULT_B],
     createShouldFail: !!options.createShouldFail,
+    updateShouldFail: !!options.updateShouldFail,
   };
 
   const confirmCalls = [];
@@ -228,6 +251,8 @@ function runScript(sandboxParts) {
   (sandboxParts.documentListeners.DOMContentLoaded || []).forEach((fn) => fn());
 }
 
+function itemName(item) { return item.querySelector('strong').textContent; }
+
 async function run() {
   /* --- Vue liste : vide --- */
   const emptyParts = buildSandbox({ existantes: [] });
@@ -236,44 +261,91 @@ async function run() {
   ok('Liste vide : jamais de tableau vide affiché', emptyParts.root.querySelectorAll('table').length === 0);
 
   /* --- Vue liste : sélections existantes --- */
-  const listParts = buildSandbox({ existantes: [EXISTING_ROW_ACTIVE, EXISTING_ROW_REVOKED] });
+  const listParts = buildSandbox({ existantes: [EXISTING_ROW_A, EXISTING_ROW_B] });
   runScript(listParts);
-  const rows = listParts.root.querySelectorAll('tr').filter((tr) => tr.tagName === 'tr' && tr.children.length && tr.children[0].tagName === 'td');
+  const rows = listParts.root.querySelectorAll('tr').filter((tr) => tr.children.length && tr.children[0].tagName === 'td');
   ok('Liste : une ligne par sélection existante', rows.length === 2);
 
   const linkInputs = listParts.root.querySelectorAll('.gwseq-selections-link-input');
-  ok('Liste : le lien actif est affiché dans un champ (copiable)', linkInputs.length === 1 && linkInputs[0].value === EXISTING_ROW_ACTIVE.url);
+  ok('Liste : le lien de CHAQUE sélection est affiché dans un champ copiable (plus jamais de lien "révoqué", le token ne se révoque plus depuis l’interface)', linkInputs.length === 2 && linkInputs[0].value === EXISTING_ROW_A.url);
 
-  const revokeLinks = listParts.root.querySelectorAll('a.button');
-  const revokeLink = revokeLinks.filter((a) => a.href === EXISTING_ROW_ACTIVE.url_revoquer)[0];
-  const regenerateLink = revokeLinks.filter((a) => a.href === EXISTING_ROW_REVOKED.url_regenerer)[0];
-  ok('Liste : action "Révoquer" proposée pour la sélection au token actif', !!revokeLink);
-  ok('Liste : action "Régénérer" proposée pour la sélection révoquée (jamais "Révoquer" sur un lien déjà mort)', !!regenerateLink);
+  // Le titre est un bouton qui OUVRE la sélection pour modification (§2 de l'ajustement de
+  // recette), jamais un simple texte ni un lien de partage.
+  const titleButtons = listParts.root.querySelectorAll('.gwseq-selections-title-link');
+  ok('Liste : le titre de chaque sélection est un bouton actionnable (ouvre la modification)', titleButtons.length === 2 && titleButtons[0].textContent === 'Chevaux pour Guillaume');
 
-  // Confirmation AVANT toute action destructive/impactante (§13/§14) — un clic annulé par
+  // Plus aucune trace de "Régénérer"/"Révoquer" — seule l'action "Supprimer" reste.
+  const actionLinks = listParts.root.querySelectorAll('a.button');
+  ok('Liste : plus AUCUN lien "Régénérer"/"Révoquer" (ajustement de recette 2A -> 2B)', actionLinks.every((a) => a.textContent !== 'Régénérer' && a.textContent !== 'Révoquer'));
+  ok('Liste : action "Supprimer" proposée pour chaque sélection', actionLinks.filter((a) => a.textContent === 'Supprimer').length === 2);
+
+  // Confirmation AVANT suppression (§1 de l'ajustement de recette) — un clic annulé par
   // l'utilisateur ne doit jamais déclencher la navigation vers admin-post.php.
-  const cancelledParts = buildSandbox({ existantes: [EXISTING_ROW_ACTIVE], confirmReturns: false });
+  const cancelledParts = buildSandbox({ existantes: [EXISTING_ROW_A], confirmReturns: false });
   runScript(cancelledParts);
-  const revokeLinkCancel = cancelledParts.root.querySelectorAll('a.button')[0];
-  const evt = revokeLinkCancel.dispatchEvent({ type: 'click' });
-  ok('Liste : révoquer demande confirmation, un refus empêche la navigation (preventDefault appelé)', evt.defaultPrevented === true);
-  ok('Liste : la confirmation a bien été sollicitée avant toute action', cancelledParts.confirmCalls.length === 1);
+  const deleteLinkCancel = cancelledParts.root.querySelectorAll('a.button')[0];
+  const evt = deleteLinkCancel.dispatchEvent({ type: 'click' });
+  ok('Liste : supprimer demande confirmation, un refus empêche la navigation (preventDefault appelé)', evt.defaultPrevented === true);
+  ok('Liste : la confirmation a bien été sollicitée avant toute suppression', cancelledParts.confirmCalls.length === 1);
 
   /* --- Bascule liste <-> création --- */
   const newButton = listParts.root.querySelector('button.button-primary');
   ok('Liste : bouton "+ Nouvelle sélection" présent', newButton !== null);
   newButton.click();
   ok('Bascule : la vue création remplace la liste au clic', listParts.root.querySelector('.gwseq-selections-create') !== null);
+  ok('Bascule : la vue création n’affiche pas le titre "Modifier la sélection" (réservé au mode édition)', listParts.root.querySelectorAll('h2').filter((h) => h.textContent === 'Modifier la sélection').length === 0);
 
   const backButton = listParts.root.querySelector('.gwseq-selections-back');
   backButton.click();
   ok('Bascule : "Retour aux sélections" ramène bien à la vue liste', listParts.root.querySelector('.gwseq-selections-list') !== null);
 
-  /* --- Ouverture directe en mode création (paramètre ?vue=nouvelle, lien "+ Nouvelle sélection"
-     de la vue liste elle-même construit une telle URL) --- */
+  /* --- Ouverture directe en mode création (paramètre ?vue=nouvelle) --- */
   const directCreateParts = buildSandbox({ locationSearch: '?post_type=gwseq_cheval&page=gwseq-selections&vue=nouvelle' });
   runScript(directCreateParts);
   ok('Ouverture directe : la vue création est affichée d’emblée si ?vue=nouvelle', directCreateParts.root.querySelector('.gwseq-selections-create') !== null);
+
+  /* --- Ouverture d'une sélection existante pour MODIFICATION (§2 de l'ajustement de recette),
+     depuis le clic sur son titre dans la liste --- */
+  const editFromListParts = buildSandbox({ existantes: [EXISTING_ROW_A] });
+  runScript(editFromListParts);
+  editFromListParts.root.querySelectorAll('.gwseq-selections-title-link')[0].click();
+  await wait(20);
+  ok('Ouverture pour modification : un appel AJAX "gwseq_selection_get" a bien été émis avec le bon identifiant', editFromListParts.state.getCalls.length === 1 && formValue(editFromListParts.state.getCalls[0], 'selection_id') === '500');
+  ok('Ouverture pour modification : la vue éditeur affiche bien "Modifier la sélection"', editFromListParts.root.querySelectorAll('h2').filter((h) => h.textContent === 'Modifier la sélection').length === 1);
+
+  const editTitleInput = editFromListParts.root.querySelector('#gwseq-selections-title');
+  ok('Ouverture pour modification : le titre déjà enregistré pré-remplit le champ', editTitleInput.value === 'Chevaux pour Guillaume');
+
+  let editSelectedItems = editFromListParts.root.querySelectorAll('.gwseq-selections-selected__item');
+  ok('Ouverture pour modification : les chevaux déjà présents pré-remplissent le panneau, dans l’ordre stocké', editSelectedItems.length === 2 && itemName(editSelectedItems[0]) === 'Jamerose de Felines' && itemName(editSelectedItems[1]) === 'Cheval Retiré De La Diffusion');
+  ok('Ouverture pour modification : un cheval devenu non diffusable reste affiché, signalé par un badge (§6, jamais disparu silencieusement)', editSelectedItems[1].querySelector('.gwseq-selections-selected__badge') !== null);
+  ok('Ouverture pour modification : un cheval TOUJOURS diffusable ne porte aucun badge', editSelectedItems[0].querySelector('.gwseq-selections-selected__badge') === null);
+
+  const saveButton = editFromListParts.root.querySelectorAll('button').filter((b) => b.textContent === 'Enregistrer les modifications')[0];
+  ok('Ouverture pour modification : le bouton de soumission affiche bien "Enregistrer les modifications" (jamais "Créer la sélection" en mode édition)', saveButton !== undefined);
+
+  // Retire le cheval non diffusable, puis enregistre : vérifie le point d'entrée AJAX utilisé
+  // (gwseq_selection_update, jamais gwseq_selection_create) et l'identifiant de la sélection transmis.
+  const removeBadgeItemButton = editSelectedItems[1].querySelectorAll('button')[2]; // Monter, Descendre, Retirer
+  removeBadgeItemButton.click();
+  saveButton.click();
+  await wait(20);
+  ok('Modification : un appel AJAX "gwseq_selection_update" a bien été émis (jamais "gwseq_selection_create")', editFromListParts.state.updateCalls.length === 1 && editFromListParts.state.createCalls.length === 0);
+  const updateCall = editFromListParts.state.updateCalls[0];
+  ok('Modification : l’identifiant de la sélection modifiée est bien transmis', formValue(updateCall, 'selection_id') === '500');
+  ok('Modification : seul le cheval conservé (10) est transmis après retrait du cheval non diffusable', JSON.stringify(formValues(updateCall, 'cheval_ids[]')) === JSON.stringify(['10']));
+  ok('Modification réussie : redirection vers la liste', editFromListParts.fakeWindow.location.href === 'https://example.test/wp-admin/edit.php?post_type=gwseq_cheval&page=gwseq-selections');
+
+  /* --- Échec de modification : message d'erreur affiché, jamais de redirection --- */
+  const failEditParts = buildSandbox({ existantes: [EXISTING_ROW_A], updateShouldFail: true });
+  runScript(failEditParts);
+  failEditParts.root.querySelectorAll('.gwseq-selections-title-link')[0].click();
+  await wait(20);
+  const failSaveButton = failEditParts.root.querySelectorAll('button').filter((b) => b.textContent === 'Enregistrer les modifications' || b.textContent === 'Enregistrement…')[0];
+  failSaveButton.click();
+  await wait(20);
+  ok('Échec de modification : message d’erreur du serveur affiché', failEditParts.root.querySelector('.gwseq-selections-create-error').hidden === false);
+  ok('Échec de modification : jamais de redirection', failEditParts.fakeWindow.location.href === '');
 
   /* --- Vue création : recherche, sélection, ordre, compteur, création --- */
   const parts = buildSandbox({ existantes: [] });
@@ -281,9 +353,6 @@ async function run() {
   parts.root.querySelector('button.button-primary').click(); // "+ Nouvelle sélection"
   const createRoot = parts.root;
 
-  // Le sélecteur ne supporte qu'un seul niveau (voir le DOM minimal ci-dessus) : la case à cocher
-  // est le premier enfant de son <label class="gwseq-selections-checkbox">, jamais interrogée
-  // directement par attribut "checkbox" (fixé via une propriété JS, jamais setAttribute()).
   const resultCheckboxes = createRoot.querySelectorAll('.gwseq-selections-checkbox').map((label) => label.children[0]);
   ok('Création : une case par résultat de recherche (recents)', resultCheckboxes.length === 2);
 
@@ -294,38 +363,30 @@ async function run() {
   const countEl = createRoot.querySelector('.gwseq-selections-selected__count');
   ok('Création : compteur "Aucun cheval sélectionné" au départ', countEl.textContent === 'Aucun cheval sélectionné');
 
-  // Coche le premier résultat (RESULT_A, id 10).
   resultCheckboxes[0].checked = true;
   resultCheckboxes[0].dispatchEvent({ type: 'change' });
   ok('Création : compteur "1 cheval sélectionné" après une case cochée', countEl.textContent === '1 cheval sélectionné');
   ok('Création : bouton "Créer la sélection" activé dès qu’au moins un cheval est sélectionné', createButton.disabled === false);
 
-  // Coche le second résultat (RESULT_B, id 11) -> ordre d'ajout = [10, 11].
   resultCheckboxes[1].checked = true;
   resultCheckboxes[1].dispatchEvent({ type: 'change' });
   ok('Création : compteur "2 chevaux sélectionnés" (pluriel, §7 : indiquer clairement le nombre)', countEl.textContent === '2 chevaux sélectionnés');
 
-  function itemName(item) { return item.querySelector('strong').textContent; }
-
   let selectedItems = createRoot.querySelectorAll('.gwseq-selections-selected__item');
   ok('Création : panneau "sélection en cours" affiche les deux chevaux, dans l’ordre d’ajout', selectedItems.length === 2 && itemName(selectedItems[0]) === 'Jamerose de Felines' && itemName(selectedItems[1]) === 'Untouchable 27');
 
-  // --- Ordre explicite (§8) : "Monter" le second élément le fait passer en premier ---
   const downOrUpButtons = selectedItems[1].querySelectorAll('button');
   const upButtonSecondItem = downOrUpButtons[0]; // premier bouton de contrôle = "Monter" (voir JS)
   upButtonSecondItem.click();
   selectedItems = createRoot.querySelectorAll('.gwseq-selections-selected__item');
   ok('Ordre (§8) : "Monter" le second cheval l’amène en première position', itemName(selectedItems[0]) === 'Untouchable 27' && itemName(selectedItems[1]) === 'Jamerose de Felines');
 
-  // --- Retrait explicite (alternative à décocher directement depuis les résultats) ---
   const removeButtonFirstItem = selectedItems[0].querySelectorAll('button')[2]; // Monter, Descendre, Retirer
   removeButtonFirstItem.click();
   selectedItems = createRoot.querySelectorAll('.gwseq-selections-selected__item');
   ok('Retrait : un clic sur "Retirer" fait disparaître le cheval du panneau', selectedItems.length === 1 && itemName(selectedItems[0]) === 'Jamerose de Felines');
   ok('Retrait : la case correspondante redevient décochée dans les résultats (synchronisation)', resultCheckboxes[1].checked === false);
 
-  // Recoche les deux pour le test de création (ordre : 11 rajouté à la fin, puis retiré, on ne
-  // reteste que la persistance de l'ORDRE final soumis, pas cette manipulation intermédiaire).
   resultCheckboxes[1].checked = true;
   resultCheckboxes[1].dispatchEvent({ type: 'change' });
 
@@ -341,7 +402,7 @@ async function run() {
   ok('Création : les identifiants sont transmis DANS L’ORDRE de la sélection en cours (§8)', JSON.stringify(formValues(createCall, 'cheval_ids[]')) === JSON.stringify(['10', '11']));
   ok('Création réussie : redirection vers la liste (URL renvoyée par le serveur)', parts.fakeWindow.location.href === 'https://example.test/wp-admin/edit.php?post_type=gwseq_cheval&page=gwseq-selections');
 
-  /* --- Échec de création : message d’erreur affiché, bouton réactivé, jamais de redirection --- */
+  /* --- Échec de création : message d'erreur affiché, bouton réactivé, jamais de redirection --- */
   const failParts = buildSandbox({ createShouldFail: true });
   runScript(failParts);
   failParts.root.querySelector('button.button-primary').click();

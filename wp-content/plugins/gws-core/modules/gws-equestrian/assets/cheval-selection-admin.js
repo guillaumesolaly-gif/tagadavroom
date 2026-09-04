@@ -1,14 +1,15 @@
 /**
- * Écran « Chevaux → Sélections » (Suite V1 « Partager & vendre », Lot 2A) — JavaScript natif,
+ * Écran « Chevaux → Sélections » (Suite V1 « Partager & vendre », Lot 2B) — JavaScript natif,
  * aucune dépendance, même architecture que assets/cheval-share-admin.js (helpers dupliqués
- * volontairement : chaque écran BO de ce module charge son propre script indépendant, jamais de
- * module JS partagé entre écrans — cohérent avec le reste du projet).
+ * volontairement : chaque écran BO de ce module charge son propre script indépendant).
  *
- * Deux vues, jamais deux écrans séparés (une seule page `gwseq-selections-app`) : la LISTE des
- * sélections déjà créées (par défaut), et la CRÉATION d'une nouvelle sélection (recherche/filtres
- * réutilisés de l'écran « Partager », sélection multiple, ordre, titre). Après création réussie,
- * rechargement complet de la page (liste) — le serveur reste la seule source de vérité affichée,
- * jamais un état recomposé côté client.
+ * Trois vues, jamais trois écrans séparés (une seule page `gwseq-selections-app`) : la LISTE des
+ * sélections déjà créées (par défaut), la CRÉATION d'une nouvelle sélection, et la MODIFICATION
+ * d'une sélection existante (Lot 2B, §2 de l'ajustement de recette) — les deux dernières partagent
+ * le MÊME écran "éditeur" (recherche/filtres/sélection/ordre/titre), seul le mode change (voir
+ * initEditorView() ci-dessous), pour ne jamais dupliquer cette interface. AJUSTEMENT DE MODÈLE
+ * (recette 2A) : plus de "Révoquer"/"Régénérer" — une sélection existante est active tant qu'elle
+ * existe, y mettre fin se fait en la SUPPRIMANT (confirmation obligatoire, message métier explicite).
  */
 (function () {
   'use strict';
@@ -102,14 +103,18 @@
   }
 
   /* -------------------------------------------------------------------------------------------
-   * Vue liste (§13 de la demande, dans la limite du Lot 2A).
+   * Vue liste (§4 de l'ajustement de recette) : Titre (ouvre la modification) | Date | Chevaux
+   * diffusables | Lien (copier) | Actions (Supprimer uniquement — plus de Révoquer/Régénérer).
    * ----------------------------------------------------------------------------------------- */
 
-  function renderSelectionRow(row) {
+  function renderSelectionRow(row, onOpen) {
     var tr = document.createElement('tr');
 
     var tdTitre = document.createElement('td');
-    tdTitre.appendChild(el('strong', null, row.titre));
+    var titleButton = el('button', 'gwseq-selections-title-link', row.titre);
+    titleButton.type = 'button';
+    titleButton.addEventListener('click', function () { onOpen(row.id); });
+    tdTitre.appendChild(titleButton);
     tr.appendChild(tdTitre);
 
     var tdDate = document.createElement('td');
@@ -121,50 +126,37 @@
     tr.appendChild(tdCompte);
 
     var tdLien = document.createElement('td');
-    if (row.token_actif && row.url) {
-      var linkInput = document.createElement('input');
-      linkInput.type = 'text';
-      linkInput.readOnly = true;
-      linkInput.value = row.url;
-      linkInput.className = 'gwseq-selections-link-input';
-      linkInput.addEventListener('click', function () { linkInput.select(); });
-      tdLien.appendChild(linkInput);
-      var copyButton = el('button', 'button', t('copyLink', 'Copier le lien'));
-      copyButton.type = 'button';
-      copyButton.addEventListener('click', function () {
-        copyTextToClipboard(row.url).then(function () {
-          copyButton.textContent = t('copied', 'Lien copié');
-          window.setTimeout(function () { copyButton.textContent = t('copyLink', 'Copier le lien'); }, 3000);
-        });
+    var linkInput = document.createElement('input');
+    linkInput.type = 'text';
+    linkInput.readOnly = true;
+    linkInput.value = row.url;
+    linkInput.className = 'gwseq-selections-link-input';
+    linkInput.addEventListener('click', function () { linkInput.select(); });
+    tdLien.appendChild(linkInput);
+    var copyButton = el('button', 'button', t('copyLink', 'Copier le lien'));
+    copyButton.type = 'button';
+    copyButton.addEventListener('click', function () {
+      copyTextToClipboard(row.url).then(function () {
+        copyButton.textContent = t('copied', 'Lien copié');
+        window.setTimeout(function () { copyButton.textContent = t('copyLink', 'Copier le lien'); }, 3000);
       });
-      tdLien.appendChild(copyButton);
-    } else {
-      tdLien.appendChild(el('span', 'description', t('revoked', 'Lien révoqué')));
-    }
+    });
+    tdLien.appendChild(copyButton);
     tr.appendChild(tdLien);
 
     var tdActions = document.createElement('td');
-    if (row.token_actif) {
-      var revokeLink = el('a', 'button', t('revoke', 'Révoquer'));
-      revokeLink.href = row.url_revoquer;
-      revokeLink.addEventListener('click', function (event) {
-        if (!window.confirm(t('confirmRevoke', ''))) event.preventDefault();
-      });
-      tdActions.appendChild(revokeLink);
-    } else {
-      var regenerateLink = el('a', 'button button-primary', t('regenerate', 'Régénérer'));
-      regenerateLink.href = row.url_regenerer;
-      regenerateLink.addEventListener('click', function (event) {
-        if (!window.confirm(t('confirmRegenerate', ''))) event.preventDefault();
-      });
-      tdActions.appendChild(regenerateLink);
-    }
+    var deleteLink = el('a', 'button', t('delete', 'Supprimer'));
+    deleteLink.href = row.url_supprimer;
+    deleteLink.addEventListener('click', function (event) {
+      if (!window.confirm(t('confirmDelete', ''))) event.preventDefault();
+    });
+    tdActions.appendChild(deleteLink);
     tr.appendChild(tdActions);
 
     return tr;
   }
 
-  function initListView(root, onCreateNew) {
+  function initListView(root, onCreateNew, onOpen) {
     clearNode(root);
     var wrapper = el('div', 'gwseq-selections-list');
 
@@ -192,7 +184,7 @@
       table.appendChild(thead);
 
       var tbody = document.createElement('tbody');
-      rows.forEach(function (row) { tbody.appendChild(renderSelectionRow(row)); });
+      rows.forEach(function (row) { tbody.appendChild(renderSelectionRow(row, onOpen)); });
       table.appendChild(tbody);
 
       wrapper.appendChild(table);
@@ -202,8 +194,16 @@
   }
 
   /* -------------------------------------------------------------------------------------------
-   * Vue création (§7-8 de la demande) : recherche/filtres réutilisés de l'écran « Partager »,
-   * sélection multiple (case à cocher), ordre explicite (Monter/Descendre), titre facultatif.
+   * Vue éditeur, partagée par CRÉATION et MODIFICATION (§7-8 de la demande initiale, §2 de
+   * l'ajustement de recette) : recherche/filtres réutilisés de l'écran « Partager », sélection
+   * multiple (case à cocher), ordre explicite (Monter/Descendre), titre facultatif.
+   *
+   * `options`:
+   *   mode: 'create' | 'edit'
+   *   selectionId: identifiant de la sélection (mode 'edit' uniquement)
+   *   initialTitle: titre déjà enregistré (chaîne vide si aucun)
+   *   initialChevaux: chevaux déjà présents, dans l'ordre, chacun avec un indicateur `displayable`
+   *     (mode 'edit' — vide en mode 'create')
    * ----------------------------------------------------------------------------------------- */
 
   function buildSelect(idSuffix, labelText, allLabel, options) {
@@ -235,22 +235,30 @@
     return t('selectedCountMany', '%d chevaux sélectionnés').replace('%d', String(count));
   }
 
-  function initCreateView(root, onBackToList) {
+  function initEditorView(root, onBack, options) {
+    options = options || {};
+    var mode = options.mode === 'edit' ? 'edit' : 'create';
     clearNode(root);
     var wrapper = el('div', 'gwseq-selections-create');
 
     var backButton = el('button', 'gwseq-selections-back', t('backToList', '← Retour aux sélections'));
     backButton.type = 'button';
-    backButton.addEventListener('click', onBackToList);
+    backButton.addEventListener('click', onBack);
     wrapper.appendChild(backButton);
 
+    if (mode === 'edit') {
+      wrapper.appendChild(el('h2', null, t('editSelectionTitle', 'Modifier la sélection')));
+    }
+
     // État de la sélection en cours (ordonné, dédoublonné) — l'ordre du tableau EST l'ordre final
-    // envoyé au serveur (§8 : "l'ordre peut avoir une importance commerciale").
-    var selected = []; // [{id, nom, photo_url, sous_titre}]
+    // envoyé au serveur (§8 : "l'ordre peut avoir une importance commerciale"). En mode 'edit',
+    // initialisé avec les chevaux ACTUELLEMENT enregistrés (§6 : un cheval devenu non diffusable
+    // reste affiché tant qu'il n'est pas explicitement retiré, jamais disparu silencieusement).
+    var selected = (options.initialChevaux || []).slice();
 
     // --- Panneau "sélection en cours" ---
     var selectedPanel = el('div', 'gwseq-selections-selected');
-    var selectedCountEl = el('p', 'gwseq-selections-selected__count', formatSelectedCount(0));
+    var selectedCountEl = el('p', 'gwseq-selections-selected__count', formatSelectedCount(selected.length));
     selectedPanel.appendChild(selectedCountEl);
     var selectedList = el('ul', 'gwseq-selections-selected__list');
     selectedPanel.appendChild(selectedList);
@@ -263,17 +271,31 @@
     titleInput.type = 'text';
     titleInput.id = 'gwseq-selections-title';
     titleInput.placeholder = t('titlePlaceholder', '');
+    titleInput.value = options.initialTitle || '';
     titleField.appendChild(titleInput);
     selectedPanel.appendChild(titleField);
 
-    var createButton = el('button', 'button button-primary button-hero', t('createSelection', 'Créer la sélection'));
-    createButton.type = 'button';
-    createButton.disabled = true;
-    selectedPanel.appendChild(createButton);
+    var submitLabel = mode === 'edit' ? t('saveChanges', 'Enregistrer les modifications') : t('createSelection', 'Créer la sélection');
+    var submittingLabel = mode === 'edit' ? t('saving', 'Enregistrement…') : t('creating', 'Création…');
+    var errorLabel = mode === 'edit' ? t('updateError', '') : t('createError', '');
 
-    var createError = el('p', 'gwseq-selections-create-error');
-    createError.hidden = true;
-    selectedPanel.appendChild(createError);
+    var submitButton = el('button', 'button button-primary button-hero', submitLabel);
+    submitButton.type = 'button';
+    submitButton.disabled = selected.length === 0;
+    selectedPanel.appendChild(submitButton);
+
+    var submitError = el('p', 'gwseq-selections-create-error');
+    submitError.hidden = true;
+    selectedPanel.appendChild(submitError);
+
+    var checkboxesByHorseId = {};
+
+    function syncCheckboxes() {
+      var selectedIds = selected.map(function (row) { return row.id; });
+      Object.keys(checkboxesByHorseId).forEach(function (id) {
+        checkboxesByHorseId[id].checked = selectedIds.indexOf(parseInt(id, 10)) !== -1;
+      });
+    }
 
     function renderSelectedList() {
       clearNode(selectedList);
@@ -283,6 +305,9 @@
         var info = el('div', 'gwseq-selections-selected__info');
         info.appendChild(el('strong', null, row.nom));
         if (row.sous_titre) info.appendChild(el('span', 'gwseq-selections-selected__sous-titre', row.sous_titre));
+        if (row.displayable === false) {
+          info.appendChild(el('span', 'gwseq-selections-selected__badge', t('notDisplayable', 'actuellement non diffusable')));
+        }
         li.appendChild(info);
 
         var controls = el('div', 'gwseq-selections-selected__controls');
@@ -324,7 +349,7 @@
       });
 
       selectedCountEl.textContent = formatSelectedCount(selected.length);
-      createButton.disabled = selected.length === 0;
+      submitButton.disabled = selected.length === 0;
     }
 
     // --- Recherche/filtres (repris de l'écran « Partager », §7) ---
@@ -385,15 +410,6 @@
     resultsList.setAttribute('aria-live', 'polite');
     searchWrapper.appendChild(resultsList);
 
-    var checkboxesByHorseId = {};
-
-    function syncCheckboxes() {
-      var selectedIds = selected.map(function (row) { return row.id; });
-      Object.keys(checkboxesByHorseId).forEach(function (id) {
-        checkboxesByHorseId[id].checked = selectedIds.indexOf(parseInt(id, 10)) !== -1;
-      });
-    }
-
     function renderResultRow(row) {
       var li = el('li', 'gwseq-selections-result');
       var checkboxLabel = el('label', 'gwseq-selections-checkbox');
@@ -427,6 +443,7 @@
         return;
       }
       rows.forEach(function (row) { resultsList.appendChild(renderResultRow(row)); });
+      syncCheckboxes();
     }
 
     renderResults(config.recents || []);
@@ -466,21 +483,27 @@
       runSearch();
     });
 
-    createButton.addEventListener('click', function () {
-      createError.hidden = true;
-      createButton.disabled = true;
-      createButton.textContent = t('creating', 'Création…');
-      ajaxPost('gwseq_selection_create', {
+    submitButton.addEventListener('click', function () {
+      submitError.hidden = true;
+      submitButton.disabled = true;
+      submitButton.textContent = submittingLabel;
+      var payload = {
         title: titleInput.value,
         cheval_ids: selected.map(function (row) { return row.id; }),
-      }).then(function (json) {
+      };
+      var action = 'gwseq_selection_create';
+      if (mode === 'edit') {
+        action = 'gwseq_selection_update';
+        payload.selection_id = options.selectionId;
+      }
+      ajaxPost(action, payload).then(function (json) {
         if (json && json.success) {
           window.location.href = (json.data && json.data.redirect) || config.listeUrl;
         } else {
-          createError.textContent = (json && json.data && json.data.message) || t('createError', '');
-          createError.hidden = false;
-          createButton.disabled = selected.length === 0;
-          createButton.textContent = t('createSelection', 'Créer la sélection');
+          submitError.textContent = (json && json.data && json.data.message) || errorLabel;
+          submitError.hidden = false;
+          submitButton.disabled = selected.length === 0;
+          submitButton.textContent = submitLabel;
         }
       });
     });
@@ -503,16 +526,37 @@
     if (!root) return;
 
     function showList() {
-      initListView(root, showCreate);
+      initListView(root, showCreate, showEdit);
     }
 
     function showCreate() {
-      initCreateView(root, showList);
+      initEditorView(root, showList, { mode: 'create' });
+    }
+
+    function showEdit(selectionId) {
+      clearNode(root);
+      root.appendChild(el('p', 'gwseq-selections-loading', t('loading', 'Chargement…')));
+      ajaxPost('gwseq_selection_get', { selection_id: selectionId }).then(function (json) {
+        if (json && json.success) {
+          initEditorView(root, showList, {
+            mode: 'edit',
+            selectionId: selectionId,
+            initialTitle: json.data.titre || '',
+            initialChevaux: json.data.chevaux || [],
+          });
+        } else {
+          clearNode(root);
+          root.appendChild(el('p', 'gwseq-selections-load-error', t('loadError', '')));
+        }
+      });
     }
 
     var params = new window.URLSearchParams(window.location.search);
-    if (params.get('vue') === 'nouvelle') {
+    var vue = params.get('vue');
+    if (vue === 'nouvelle') {
       showCreate();
+    } else if (vue === 'modifier' && params.get('selection_id')) {
+      showEdit(parseInt(params.get('selection_id'), 10));
     } else {
       showList();
     }

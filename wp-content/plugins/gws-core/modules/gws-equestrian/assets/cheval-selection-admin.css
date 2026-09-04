@@ -1,5 +1,5 @@
 /**
- * Écran « Chevaux → Sélections » (Suite V1 « Partager & vendre », Lot 2A) — MOBILE-FIRST, même
+ * Écran « Chevaux → Sélections » (Suite V1 « Partager & vendre », Lot 2B) — MOBILE-FIRST, même
  * convention que assets/cheval-share-admin.css : règles de base pour smartphone, mise en page
  * desktop à deux colonnes (recherche / sélection en cours) à partir de 782px (point de rupture
  * natif de wp-admin).
@@ -9,7 +9,7 @@
   max-width: 960px;
 }
 
-/* --- Liste des sélections (§13) --- */
+/* --- Liste des sélections --- */
 
 .gwseq-selections-table {
   margin-top: 16px;
@@ -20,6 +20,19 @@
   max-width: 320px;
   margin-right: 6px;
   font-size: 13px;
+}
+
+/* Le titre ouvre la sélection pour modification (§2 de l'ajustement de recette) — rendu comme un
+   lien classique, jamais un simple texte, pour signaler clairement que c'est actionnable. */
+.gwseq-selections-title-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #2271b1;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
 }
 
 /* --- Création : disposition --- */
@@ -206,6 +219,19 @@
 .gwseq-selections-selected__sous-titre {
   color: #646970;
   font-size: 12px;
+}
+
+/* Cheval déjà présent devenu "En préparation" (ou supprimé) — jamais retiré silencieusement de la
+   liste (§6), signalé ici pour que l'utilisateur décide lui-même de le retirer ou non. */
+.gwseq-selections-selected__badge {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #fcf0f1;
+  color: #d63638;
+  font-size: 11px;
+  width: fit-content;
 }
 
 .gwseq-selections-selected__controls {

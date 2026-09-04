@@ -1,14 +1,17 @@
 <?php
 /**
  * Vérifie l'écran métier « Chevaux → Sélections » (includes/cheval-selection-admin.php, Suite V1
- * « Partager & vendre », Lot 2A) : accès depuis le menu, réutilisation du moteur de recherche/
- * filtrage de l'écran « Partager » avec l'exclusion supplémentaire des chevaux "En préparation"
- * (§5), le point d'entrée AJAX de création (validation/sanitation serveur des IDs soumis, jamais
- * une confiance dans le client), les URLs de gestion du token (régénérer/révoquer) et leur
- * prédicat de permission, la restriction "mes propres sélections" pour un auteur sans
- * `edit_others_posts`, et le chargement conditionnel des assets. Même méthodologie que le reste de
- * cette suite (notamment gws-equestrian-cheval-share-admin-test.php, dont ce fichier réutilise la
- * même architecture de stubs).
+ * « Partager & vendre », Lot 2A puis 2B) : accès depuis le menu, réutilisation du moteur de
+ * recherche/filtrage de l'écran « Partager » avec l'exclusion supplémentaire des chevaux "En
+ * préparation" (§5), les points d'entrée AJAX de création/lecture/modification (validation/
+ * sanitation serveur des IDs soumis, jamais une confiance dans le client — y compris la
+ * conservation des chevaux déjà présents lors d'une modification, §6), l'URL de SUPPRESSION
+ * (remplace "Révoquer"/"Régénérer" depuis l'ajustement de recette 2A -> 2B) et son prédicat de
+ * permission — avec un test de RÉGRESSION dédié sur l'URL réellement exploitable par le navigateur
+ * (cause du bug bloquant constaté en recette : `&amp;` littéral cassant le nonce), la restriction
+ * "mes propres sélections" pour un auteur sans `edit_others_posts`, et le chargement conditionnel
+ * des assets. Même méthodologie que le reste de cette suite (notamment gws-equestrian-cheval-
+ * share-admin-test.php, dont ce fichier réutilise la même architecture de stubs).
  *
  * Ne fait pas partie des paquets livrés (gws-core.zip / gws-starter.zip).
  */
@@ -46,9 +49,18 @@ function is_wp_error($thing) { return $thing instanceof WP_Error; }
 
 function admin_url($path = '') { return 'https://example.test/wp-admin/' . $path; }
 function home_url($path = '') { return 'https://example.test' . $path; }
-function add_query_arg($args, $url) {
+// Réplique les DEUX signatures réelles de WordPress : add_query_arg($array, $url) ET
+// add_query_arg($key, $value, $url) — gwseq_selection_action_url() (correctif de recette) utilise
+// la seconde forme pour ajouter le nonce sans jamais passer par wp_nonce_url().
+function add_query_arg(...$args) {
+  if (count($args) === 3) {
+    list($key, $value, $url) = $args;
+    $params = array($key => $value);
+  } else {
+    list($params, $url) = $args;
+  }
   $sep = strpos($url, '?') === false ? '?' : '&';
-  return $url . $sep . http_build_query($args);
+  return $url . $sep . http_build_query($params);
 }
 
 const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
@@ -105,10 +117,18 @@ function get_the_date($format, $post_id) { return '2026-09-04'; }
 function wp_update_post($postarr, $wp_error = false) {
   $id = (int) ($postarr['ID'] ?? 0);
   if (!$id || !isset($GLOBALS['__gwseq_test_posts'][$id])) return 0;
-  foreach (array('post_status', 'post_password') as $field) {
+  foreach (array('post_status', 'post_password', 'post_title') as $field) {
     if (array_key_exists($field, $postarr)) $GLOBALS['__gwseq_test_posts'][$id][$field] = $postarr[$field];
   }
   return $id;
+}
+// Fidèle au comportement réel de wp_trash_post() : passe le post en statut "trash" (jamais une
+// suppression immédiate — voir gwseq_selection_delete(), includes/cheval-selection.php).
+function wp_trash_post($post_id) {
+  $post_id = (int) $post_id;
+  if (!isset($GLOBALS['__gwseq_test_posts'][$post_id])) return false;
+  $GLOBALS['__gwseq_test_posts'][$post_id]['post_status'] = 'trash';
+  return true;
 }
 $GLOBALS['__gwseq_test_next_post_id'] = 1000;
 function wp_insert_post($postarr, $wp_error = false) {
@@ -163,9 +183,17 @@ function wp_enqueue_style($handle, ...$rest) { $GLOBALS['__gwseq_enqueued'][] = 
 $GLOBALS['__gwseq_test_localized'] = array();
 function wp_localize_script($handle, $name, $data) { $GLOBALS['__gwseq_test_localized'][$handle][$name] = $data; }
 function wp_create_nonce($action) { return 'nonce-' . $action; }
+// Fidèle au comportement réel de WordPress (wp-includes/functions.php) : wp_nonce_url() échappe
+// son résultat en HTML par conception (prévu pour être imprimé tel quel dans un attribut
+// `href="..."`) — jamais utilisable tel quel pour un contexte JSON/JS. Sans cette fidélité, le
+// bug de recette (URL truffée de "&amp;" littéraux une fois assignée à `.href` en JS) ne serait
+// jamais détectable par cette suite si le code venait à régresser vers cette fonction (voir le
+// correctif dans includes/cheval-selection-admin.php, gwseq_selection_action_url(), qui ne
+// l'utilise d'ailleurs plus du tout).
 function wp_nonce_url($url, $action = -1, $name = '_wpnonce') {
   $sep = strpos($url, '?') === false ? '?' : '&';
-  return $url . $sep . $name . '=' . wp_create_nonce($action);
+  $url = $url . $sep . $name . '=' . wp_create_nonce($action);
+  return str_replace('&', '&amp;', $url);
 }
 
 // --- meta_query/tax_query minimaux (repris de gws-equestrian-cheval-share-admin-test.php) ---
@@ -362,9 +390,74 @@ gws_test_assert($thrown instanceof Gws_Test_Wp_Die_Exception, 'AJAX création : 
 gws_test_reset_security();
 
 // =====================================================================================
-// Gestion du token (régénérer/révoquer) — URL nonce-protégée + prédicat de permission, jamais les
-// fonctions qui appellent réellement exit() (voir gws-equestrian-cheval-share-admin-test.php pour
-// la même convention de test).
+// AJAX — lecture pour modification (Lot 2B, §2 de l'ajustement de recette).
+// =====================================================================================
+
+gws_test_make_horse(210, 'Cheval Édition A', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_make_horse(211, 'Cheval Édition B', GWSEQ_HORSE_DIFFUSION_PRIVEE);
+$selection_edit = gwseq_selection_create(array('title' => 'Sélection à modifier', 'cheval_ids' => array(210, 211), 'author' => 1));
+
+$_POST = array('selection_id' => $selection_edit);
+try { gwseq_ajax_selection_get(); } catch (Gws_Test_Json_Exit $e) {}
+gws_test_assert($GLOBALS['__gwseq_test_json_response']['success'] === true, 'AJAX lecture : requête valide -> succès');
+gws_test_assert($GLOBALS['__gwseq_test_json_response']['data']['titre'] === 'Sélection à modifier', 'AJAX lecture : titre BRUT renvoyé tel quel (jamais le libellé de repli, réservé à l’affichage)');
+$chevaux_edit = $GLOBALS['__gwseq_test_json_response']['data']['chevaux'];
+gws_test_assert(count($chevaux_edit) === 2 && $chevaux_edit[0]['id'] === 210 && $chevaux_edit[1]['id'] === 211, 'AJAX lecture : chevaux renvoyés dans l’ordre stocké');
+gws_test_assert($chevaux_edit[0]['displayable'] === true && $chevaux_edit[1]['displayable'] === true, 'AJAX lecture : indicateur "displayable" correct pour des chevaux actuellement diffusables');
+
+// Un cheval déjà présent devenu "En préparation" reste renvoyé (§6), signalé non displayable.
+gwseq_horse_diffusion_set_en_preparation(210);
+$_POST = array('selection_id' => $selection_edit);
+try { gwseq_ajax_selection_get(); } catch (Gws_Test_Json_Exit $e) {}
+$chevaux_edit_apres = $GLOBALS['__gwseq_test_json_response']['data']['chevaux'];
+gws_test_assert(count($chevaux_edit_apres) === 2 && $chevaux_edit_apres[0]['displayable'] === false, 'AJAX lecture : un cheval devenu "En préparation" reste présent dans la liste à modifier, signalé non "displayable" (jamais disparu silencieusement, §6)');
+gwseq_horse_diffusion_set_visible_site(210);
+
+// Sélection d’un AUTRE auteur, sans edit_others_posts -> refusé.
+$selection_edit_other_author = gwseq_selection_create(array('title' => 'Pas la mienne', 'cheval_ids' => array(211), 'author' => 42));
+$GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
+$_POST = array('selection_id' => $selection_edit_other_author);
+try { gwseq_ajax_selection_get(); } catch (Gws_Test_Json_Exit $e) {}
+gws_test_assert($GLOBALS['__gwseq_test_json_response']['success'] === false && $GLOBALS['__gwseq_test_json_response']['status'] === 403, 'AJAX lecture : sélection d’un autre auteur, sans edit_others_posts -> refusée');
+gws_test_reset_security();
+
+// =====================================================================================
+// AJAX — modification (Lot 2B, §2 de l'ajustement de recette) — ne touche JAMAIS au token.
+// =====================================================================================
+
+$token_before_ajax_update = gwseq_selection_token($selection_edit);
+
+$_POST = array('selection_id' => $selection_edit, 'title' => 'Titre modifié', 'cheval_ids' => array(211, 210));
+try { gwseq_ajax_selection_update(); } catch (Gws_Test_Json_Exit $e) {}
+gws_test_assert($GLOBALS['__gwseq_test_json_response']['success'] === true, 'AJAX modification : requête valide -> succès');
+gws_test_assert(get_the_title($selection_edit) === 'Titre modifié', 'AJAX modification : titre mis à jour');
+gws_test_assert(gwseq_selection_get_cheval_ids($selection_edit) === array(211, 210), 'AJAX modification : ordre soumis respecté');
+gws_test_assert(gwseq_selection_token($selection_edit) === $token_before_ajax_update, 'AJAX modification : le token reste STRICTEMENT identique (§2 : "jamais de régénération de token")');
+
+// Vider entièrement la liste -> refusé, comme à la création.
+$_POST = array('selection_id' => $selection_edit, 'title' => 'x', 'cheval_ids' => array());
+try { gwseq_ajax_selection_update(); } catch (Gws_Test_Json_Exit $e) {}
+gws_test_assert($GLOBALS['__gwseq_test_json_response']['success'] === false, 'AJAX modification : vider entièrement la liste de chevaux -> refusé (même règle qu’à la création)');
+gws_test_assert(gwseq_selection_get_cheval_ids($selection_edit) === array(211, 210), 'AJAX modification : une requête refusée ne modifie RIEN de l’état déjà enregistré');
+
+// Sélection d’un autre auteur -> refusée.
+$GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
+$_POST = array('selection_id' => $selection_edit_other_author, 'title' => 'x', 'cheval_ids' => array(200));
+try { gwseq_ajax_selection_update(); } catch (Gws_Test_Json_Exit $e) {}
+gws_test_assert($GLOBALS['__gwseq_test_json_response']['success'] === false && $GLOBALS['__gwseq_test_json_response']['status'] === 403, 'AJAX modification : sélection d’un autre auteur, sans edit_others_posts -> refusée');
+gws_test_reset_security();
+
+// Nonce invalide -> rejeté avant toute exécution, même garde que les autres points d’entrée.
+$GLOBALS['__gwseq_test_security']['nonce_valid'] = false;
+$thrown = null;
+try { gwseq_ajax_selection_update(); } catch (Exception $e) { $thrown = $e; }
+gws_test_assert($thrown instanceof Gws_Test_Wp_Die_Exception, 'AJAX modification : nonce invalide -> rejeté avant toute exécution');
+gws_test_reset_security();
+
+// =====================================================================================
+// Suppression (Lot 2B, §1 de l'ajustement de recette — remplace "Révoquer"/"Régénérer") : URL
+// nonce-protégée + prédicat de permission, jamais la fonction qui appelle réellement exit() (voir
+// gws-equestrian-cheval-share-admin-test.php pour la même convention de test).
 // =====================================================================================
 
 $selection_owned = gwseq_selection_create(array('title' => 'À moi', 'cheval_ids' => array(200), 'author' => 1));
@@ -381,15 +474,34 @@ gws_test_assert(gwseq_selection_user_can_manage($selection_others) === true, 'Pe
 gws_test_assert(gwseq_selection_user_can_manage(999999) === false, 'Permission de gestion : identifiant inexistant -> toujours refusé, jamais une erreur');
 gws_test_assert(gwseq_selection_user_can_manage(200) === false, 'Permission de gestion : un ID d’un AUTRE type de contenu (ici un cheval) -> toujours refusé (§17 : "appartenance au bon CPT")');
 
-$url_regenerer = gwseq_selection_action_url('regenerer', $selection_owned);
-gws_test_assert(strpos($url_regenerer, 'admin-post.php') !== false, 'URL action token : cible bien admin-post.php');
-gws_test_assert(strpos($url_regenerer, 'action=gwseq_selection_regenerer') !== false, 'URL action token : action="regenerer" correcte');
-gws_test_assert(strpos($url_regenerer, 'selection_id=' . $selection_owned) !== false, 'URL action token : identifiant de la sélection correctement transmis');
-gws_test_assert(strpos($url_regenerer, '_wpnonce=') !== false, 'URL action token : nonce présent');
-gws_test_assert(strpos($url_regenerer, 'nonce-gwseq_selection_action_' . $selection_owned) !== false, 'URL action token : nonce généré pour L’ACTION PRÉCISE de cette sélection, jamais un nonce générique réutilisable ailleurs');
+$url_supprimer = gwseq_selection_action_url('supprimer', $selection_owned);
+gws_test_assert(strpos($url_supprimer, 'admin-post.php') !== false, 'URL action suppression : cible bien admin-post.php');
+gws_test_assert(strpos($url_supprimer, 'action=gwseq_selection_supprimer') !== false, 'URL action suppression : action="supprimer" correcte');
+gws_test_assert(strpos($url_supprimer, 'selection_id=' . $selection_owned) !== false, 'URL action suppression : identifiant de la sélection correctement transmis');
+gws_test_assert(strpos($url_supprimer, '_wpnonce=') !== false, 'URL action suppression : nonce présent');
+gws_test_assert(strpos($url_supprimer, 'nonce-gwseq_selection_action_' . $selection_owned) !== false, 'URL action suppression : nonce généré pour L’ACTION PRÉCISE de cette sélection, jamais un nonce générique réutilisable ailleurs');
 
-$url_revoquer = gwseq_selection_action_url('revoquer', $selection_owned);
-gws_test_assert(strpos($url_revoquer, 'action=gwseq_selection_revoquer') !== false, 'URL action token : action="revoquer" correcte, distincte de "regenerer"');
+/**
+ * RÉGRESSION EXPLICITE (bug bloquant de recette 2A : "Le lien suivi est expiré") — ne se contente
+ * PAS de vérifier des sous-chaînes dans le texte de l'URL (une chaîne peut sembler correcte
+ * isolément tout en étant, une fois assignée à `.href` en JS, une URL invalide pour le navigateur
+ * si elle contient des entités HTML littérales). Vérifie ici l'URL RÉELLEMENT exploitable :
+ * aucune entité HTML (`&amp;`/`&#038;`), et un `parse_url()`/`parse_str()` — exactement ce qu'un
+ * navigateur fait au moment de la navigation — retrouve bien les TROIS paramètres attendus,
+ * séparés et décodés correctement.
+ */
+gws_test_assert(strpos($url_supprimer, '&amp;') === false, 'RÉGRESSION URL navigateur : aucune entité HTML "&amp;" littérale dans l’URL (cause exacte du bug de recette sur l’ancien bouton "Révoquer")');
+gws_test_assert(strpos($url_supprimer, '&#038;') === false, 'RÉGRESSION URL navigateur : aucune entité HTML "&#038;" littérale non plus (autre forme possible du même échappement WordPress)');
+gws_test_assert(substr_count($url_supprimer, '&') === 2, 'RÉGRESSION URL navigateur : exactement deux VRAIS séparateurs "&" pour trois paramètres (action, selection_id, _wpnonce), jamais un de plus (entité coupée en deux) ni un de moins');
+
+$parsed_query = parse_url($url_supprimer, PHP_URL_QUERY);
+parse_str($parsed_query, $parsed_params);
+gws_test_assert(
+  ($parsed_params['action'] ?? null) === 'gwseq_selection_supprimer'
+  && ($parsed_params['selection_id'] ?? null) === (string) $selection_owned
+  && !empty($parsed_params['_wpnonce']),
+  'RÉGRESSION URL navigateur : parse_url()/parse_str() (comportement réel du navigateur à la navigation) retrouve bien les trois paramètres distincts et correctement valorisés — jamais un "selection_id" pollué par un "amp;" résiduel'
+);
 
 // =====================================================================================
 // Liste des sélections (§13, restriction "mes propres sélections" — §21 réutilisé tel quel).
@@ -407,8 +519,10 @@ gws_test_reset_security();
 $row = gwseq_selection_admin_row($selection_owned);
 gws_test_assert($row['titre'] === 'À moi', 'Ligne d’administration : titre correct');
 gws_test_assert($row['total_chevaux'] === 1 && $row['chevaux_diffusables'] === 1, 'Ligne d’administration : comptage total/diffusable correct pour un cheval visible sur le site');
-gws_test_assert($row['token_actif'] === true && $row['url'] !== '', 'Ligne d’administration : token actif dès la création, URL exploitable');
-gws_test_assert(strpos($row['url_regenerer'], 'gwseq_selection_regenerer') !== false && strpos($row['url_revoquer'], 'gwseq_selection_revoquer') !== false, 'Ligne d’administration : les deux URLs de gestion du token sont fournies');
+gws_test_assert($row['url'] !== '', 'Ligne d’administration : URL toujours exploitable (le token est actif dès la création et ne se révoque plus jamais depuis l’interface, Lot 2B)');
+gws_test_assert(strpos($row['url_modifier'], 'vue=modifier') !== false && strpos($row['url_modifier'], 'selection_id=' . $selection_owned) !== false, 'Ligne d’administration : URL d’ouverture pour modification fournie (§2 de l’ajustement de recette — le titre doit permettre de rouvrir la sélection)');
+gws_test_assert(strpos($row['url_supprimer'], 'gwseq_selection_supprimer') !== false, 'Ligne d’administration : URL de suppression fournie (remplace "Révoquer"/"Régénérer")');
+gws_test_assert(!array_key_exists('token_actif', $row) && !array_key_exists('url_regenerer', $row) && !array_key_exists('url_revoquer', $row), 'Ligne d’administration : plus aucune trace de "Révoquer"/"Régénérer"/"token actif" (le token est un mécanisme technique interne, jamais exposé, §4 de l’ajustement de recette)');
 
 // Un cheval de la sélection repasse "En préparation" après coup (§6/§19) — la ligne reflète bien
 // 0 diffusable sur 1 total, jamais une erreur, jamais la sélection retirée de la liste.

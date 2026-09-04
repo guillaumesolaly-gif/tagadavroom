@@ -1,29 +1,32 @@
 <?php
 /**
- * Sélection de plusieurs chevaux — écran métier BO (Suite V1 « Partager & vendre », Lot 2A),
+ * Sélection de plusieurs chevaux — écran métier BO (Suite V1 « Partager & vendre », Lot 2B),
  * `Chevaux → Sélections`.
  *
  * Ce fichier ne fait QUE la glue WordPress (menu, sécurité, rendu de l'écran, points d'entrée
- * AJAX, actions de gestion du token) : toute la RÈGLE métier (éligibilité, persistance,
- * résolution d'affichage, token) vit dans includes/cheval-selection.php, jamais dupliquée ici —
- * même séparation que includes/cheval-share.php / includes/cheval-share-admin.php.
+ * AJAX, action de suppression) : toute la RÈGLE métier (éligibilité, persistance, résolution
+ * d'affichage, modification, suppression) vit dans includes/cheval-selection.php, jamais dupliquée
+ * ici — même séparation que includes/cheval-share.php / includes/cheval-share-admin.php.
  *
- * RÉUTILISATION DU MOTEUR DE RECHERCHE (§7 de la demande : "réutiliser le moteur de recherche/
- * filtrage déjà construit pour Partager un cheval") : gwseq_selection_search_chevaux() ci-dessous
- * réutilise EXACTEMENT gwseq_sanitize_horse_share_filters()/gwseq_horse_share_filters_to_query_
- * args()/gwseq_horse_share_query_chevaux()/gwseq_horse_share_lightweight_row() (includes/
- * cheval-share-admin.php) — jamais une seconde implémentation de la recherche/du filtrage. La
- * SEULE différence avec l'écran « Partager » : les chevaux "En préparation" sont systématiquement
- * exclus des résultats (§5 de la demande), quel que soit le filtre "État de diffusion" choisi —
- * une restriction supplémentaire au niveau de la requête, jamais une réécriture du moteur.
+ * RÉUTILISATION DU MOTEUR DE RECHERCHE (§7 de la demande initiale) : gwseq_selection_search_
+ * chevaux() ci-dessous réutilise EXACTEMENT gwseq_sanitize_horse_share_filters()/gwseq_horse_
+ * share_filters_to_query_args()/gwseq_horse_share_query_chevaux()/gwseq_horse_share_lightweight_
+ * row() (includes/cheval-share-admin.php) — jamais une seconde implémentation de la recherche/du
+ * filtrage. La SEULE différence avec l'écran « Partager » : les chevaux "En préparation" sont
+ * systématiquement exclus des résultats (§5), quel que soit le filtre "État de diffusion" choisi.
  *
- * PÉRIMÈTRE LOT 2A : cet écran couvre la CRÉATION d'une sélection (recherche/filtres/sélection
- * multiple/ordre/titre) et la LISTE des sélections déjà créées avec la gestion de leur token
- * (régénérer/révoquer, mêmes mécanismes qu'includes/cheval-share-admin.php pour le partage privé
- * Cheval — liens admin-post.php nonce-protégés, jamais un formulaire imbriqué). La MODIFICATION
- * d'une sélection existante (ajouter/retirer un cheval, réordonner, changer le titre après
- * création — §14 de la demande) est un développement du Lot 2B, volontairement absent ici : aucun
- * bouton "Modifier"/"Ouvrir" n'est donc proposé sur la liste dans cette version.
+ * AJUSTEMENT DE MODÈLE (recette 2A -> Lot 2B) : plus de "Révoquer"/"Régénérer" dans cette
+ * interface — une sélection existante EST une sélection active, avec un lien stable tant qu'elle
+ * existe. Y mettre fin se fait en la SUPPRIMANT (corbeille WordPress, gwseq_selection_delete()) ;
+ * le token reste un mécanisme technique interne (includes/cheval-selection.php), plus aucun point
+ * d'entrée BO ne l'expose. Le titre d'une sélection dans la liste l'OUVRE pour modification (au
+ * lieu du simple lien de partage) : ajouter/retirer un cheval, réordonner, changer le titre — sans
+ * jamais toucher au token (le lien déjà envoyé reste identique après une modification).
+ *
+ * PÉRIMÈTRE LOT 2B : création, modification (titre/liste/ordre), suppression, page destinataire
+ * (rendu + route web, voir includes/cheval-selection-front.php). Toujours volontairement absent :
+ * message de partage/Open Graph/WhatsApp-SMS-Copier/PDF/QR code/catalogue/mobile/refonte
+ * graphique générale du BO.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -41,6 +44,16 @@ function gwseq_selection_page_url($args = array()) {
     array_merge(array('post_type' => GWSEQ_CPT_CHEVAL, 'page' => gwseq_selection_menu_slug()), $args),
     admin_url('edit.php')
   );
+}
+
+/**
+ * URL qui ouvre une sélection existante pour modification (§2 de l'ajustement de recette : "le
+ * titre de la sélection dans la liste devra permettre de rouvrir la sélection côté BO") — même
+ * écran, même app JS (aucune seconde interface), un simple paramètre `vue`/`selection_id` comme
+ * pour la création (`?vue=nouvelle`).
+ */
+function gwseq_selection_edit_url($selection_id) {
+  return gwseq_selection_page_url(array('vue' => 'modifier', 'selection_id' => (int) $selection_id));
 }
 
 function gwseq_add_selection_page() {
@@ -65,8 +78,8 @@ function gwseq_selection_current_user_restricted_to_own() {
 }
 
 /* -------------------------------------------------------------------------------------------
- * Recherche de chevaux éligibles (§5/§7 de la demande) — réutilise le moteur existant, avec
- * l'exclusion supplémentaire des chevaux "En préparation".
+ * Recherche de chevaux éligibles (§5/§7 de la demande initiale) — réutilise le moteur existant,
+ * avec l'exclusion supplémentaire des chevaux "En préparation".
  * ----------------------------------------------------------------------------------------- */
 
 /**
@@ -140,9 +153,8 @@ function gwseq_selection_recent_chevaux() {
 }
 
 /* -------------------------------------------------------------------------------------------
- * Liste des sélections existantes (§13 de la demande, dans la limite du Lot 2A : titre/date/
- * nombre de chevaux diffusables/lien/gestion du token — pas de "Ouvrir/Modifier", voir note de
- * fichier en tête).
+ * Liste des sélections existantes (§4 de l'ajustement de recette : titre/date/chevaux diffusables/
+ * lien/actions Ouvrir-modifier/Copier/Supprimer — plus de "Révoquer"/"Régénérer"/"Activer").
  * ----------------------------------------------------------------------------------------- */
 
 function gwseq_selection_query_ids() {
@@ -177,15 +189,35 @@ function gwseq_selection_admin_row($selection_id) {
     'date' => get_the_date('', $selection_id),
     'total_chevaux' => count($cheval_ids),
     'chevaux_diffusables' => gwseq_selection_diffusable_count($selection_id),
-    'token_actif' => gwseq_selection_is_active($selection_id),
     'url' => gwseq_selection_url($selection_id),
-    'url_regenerer' => gwseq_selection_action_url('regenerer', $selection_id),
-    'url_revoquer' => gwseq_selection_action_url('revoquer', $selection_id),
+    'url_modifier' => gwseq_selection_edit_url($selection_id),
+    'url_supprimer' => gwseq_selection_action_url('supprimer', $selection_id),
   );
 }
 
 function gwseq_selection_admin_rows() {
   return array_map('gwseq_selection_admin_row', gwseq_selection_query_ids());
+}
+
+/**
+ * Ligne d'un cheval pour l'écran de MODIFICATION (§2) : réutilise la même ligne légère que la
+ * recherche (gwseq_horse_share_lightweight_row(), includes/cheval-share-admin.php — nom/photo/
+ * sous-titre), enrichie du statut "displayable" (§6 : un cheval déjà présent reste affiché même
+ * s'il est devenu "En préparation", pour que l'utilisateur puisse voir ce qu'il retire). Un cheval
+ * supprimé entre-temps (§19) reste représenté, jamais une ligne qui ferait planter l'écran.
+ */
+function gwseq_selection_admin_editable_cheval_row($cheval_id) {
+  $resolved = gwseq_selection_resolve_cheval($cheval_id);
+  if (!$resolved['exists']) {
+    return array('id' => $cheval_id, 'nom' => __('Cheval supprimé', 'gws-core'), 'photo_url' => '', 'sous_titre' => '', 'displayable' => false);
+  }
+  $row = gwseq_horse_share_lightweight_row($cheval_id);
+  $row['displayable'] = $resolved['displayable'];
+  return $row;
+}
+
+function gwseq_selection_admin_editable_chevaux($selection_id) {
+  return array_map('gwseq_selection_admin_editable_cheval_row', gwseq_selection_get_cheval_ids($selection_id));
 }
 
 /* -------------------------------------------------------------------------------------------
@@ -203,7 +235,7 @@ function gwseq_render_selection_page() {
 }
 
 /* -------------------------------------------------------------------------------------------
- * AJAX — recherche (lecture seule, même sécurité que l'écran « Partager », §21).
+ * AJAX.
  * ----------------------------------------------------------------------------------------- */
 
 function gwseq_selection_ajax_check_general() {
@@ -221,20 +253,25 @@ function gwseq_ajax_selection_search_cheval() {
 add_action('wp_ajax_gwseq_selection_search_cheval', 'gwseq_ajax_selection_search_cheval');
 
 /**
- * Création (§7/§17 de la demande) — écriture. Chaque ID soumis est revérifié SERVEUR (jamais une
- * confiance dans ce que le client affirme avoir sélectionné) : appartenance au CPT Cheval,
- * capacité `edit_post` sur CE cheval précis (même exigence que gwseq_ajax_partager_get_cheval()),
- * ET éligibilité de diffusion (§5) — tout ID qui échoue l'une de ces vérifications est simplement
- * IGNORÉ (jamais une erreur bloquante pour le reste de la sélection, §19 : "données malformées").
- * gwseq_selection_create() (includes/cheval-selection.php) réapplique de toute façon lui-même le
- * filtre d'éligibilité en défense en profondeur.
+ * Sanitation des IDs soumis par le client (§7/§17 de la demande initiale) — jamais une confiance
+ * dans ce que le client affirme avoir sélectionné. `$keep_ids` (Lot 2B, §2/§6 de l'ajustement) est
+ * la liste ACTUELLE d'une sélection en cours de modification : un ID déjà présent y est conservé
+ * SANS revérifier son éligibilité de diffusion actuelle (§6 — un cheval repassé "En préparation"
+ * reste dans la liste tant qu'il n'est pas explicitement retiré), seul un ID RÉELLEMENT NOUVEAU
+ * doit passer les mêmes contrôles qu'à la création (appartenance au CPT Cheval, capacité
+ * `edit_post`, éligibilité §5). Pour une création, `$keep_ids` est vide : tout ID est alors "un
+ * nouvel ajout", comportement inchangé du Lot 2A.
  */
-function gwseq_selection_sanitize_submitted_cheval_ids($raw_ids) {
+function gwseq_selection_sanitize_submitted_cheval_ids($raw_ids, $keep_ids = array()) {
   $ids = array();
   foreach ((array) $raw_ids as $raw_id) {
     $id = absint($raw_id);
     if (!$id || in_array($id, $ids, true)) continue;
     if (get_post_type($id) !== GWSEQ_CPT_CHEVAL) continue;
+    if (in_array($id, $keep_ids, true)) {
+      $ids[] = $id;
+      continue;
+    }
     if (!current_user_can('edit_post', $id)) continue;
     if (!gwseq_selection_horse_is_eligible($id)) continue;
     $ids[] = $id;
@@ -268,25 +305,96 @@ function gwseq_ajax_selection_create() {
 }
 add_action('wp_ajax_gwseq_selection_create', 'gwseq_ajax_selection_create');
 
+/**
+ * Données d'une sélection existante pour l'écran de modification (§2) — capacité vérifiée sur
+ * CETTE sélection précise (gwseq_selection_user_can_manage()), jamais seulement la capacité
+ * générale de l'écran.
+ */
+function gwseq_ajax_selection_get() {
+  gwseq_selection_ajax_check_general();
+
+  $selection_id = isset($_POST['selection_id']) ? absint($_POST['selection_id']) : 0;
+  if (!gwseq_selection_user_can_manage($selection_id)) {
+    wp_send_json_error(array('message' => __('Sélection introuvable ou non autorisée.', 'gws-core')), 403);
+  }
+
+  wp_send_json_success(array(
+    'id' => $selection_id,
+    // Titre BRUT (peut être vide) — l'écran de modification doit refléter la donnée réellement
+    // stockée, jamais le libellé de repli "Sélection de chevaux" (qui resterait un placeholder
+    // d'affichage, jamais une valeur à réinjecter dans le champ de saisie).
+    'titre' => get_the_title($selection_id),
+    'chevaux' => gwseq_selection_admin_editable_chevaux($selection_id),
+  ));
+}
+add_action('wp_ajax_gwseq_selection_get', 'gwseq_ajax_selection_get');
+
+/**
+ * Modification (§2 de l'ajustement de recette) — ne touche JAMAIS au token (gwseq_selection_
+ * update(), includes/cheval-selection.php, n'accepte d'ailleurs même pas ce paramètre). Mêmes
+ * règles de sanitation que la création, avec conservation des chevaux déjà présents (voir
+ * gwseq_selection_sanitize_submitted_cheval_ids() ci-dessus).
+ */
+function gwseq_ajax_selection_update() {
+  gwseq_selection_ajax_check_general();
+
+  $selection_id = isset($_POST['selection_id']) ? absint($_POST['selection_id']) : 0;
+  if (!gwseq_selection_user_can_manage($selection_id)) {
+    wp_send_json_error(array('message' => __('Sélection introuvable ou non autorisée.', 'gws-core')), 403);
+  }
+
+  $title = isset($_POST['title']) ? sanitize_text_field(wp_unslash($_POST['title'])) : '';
+  $current_ids = gwseq_selection_get_cheval_ids($selection_id);
+  $cheval_ids = gwseq_selection_sanitize_submitted_cheval_ids($_POST['cheval_ids'] ?? array(), $current_ids);
+
+  if (!$cheval_ids) {
+    wp_send_json_error(array('message' => __('Sélectionnez au moins un cheval.', 'gws-core')), 400);
+  }
+
+  gwseq_selection_update($selection_id, array('title' => $title, 'cheval_ids' => $cheval_ids));
+
+  wp_send_json_success(array('redirect' => gwseq_selection_page_url()));
+}
+add_action('wp_ajax_gwseq_selection_update', 'gwseq_ajax_selection_update');
+
 /* -------------------------------------------------------------------------------------------
- * Gestion du token (régénérer/révoquer) — mêmes mécanismes que le partage privé Cheval
- * (includes/cheval-share-admin.php, §21 de la demande initiale) : liens admin-post.php
- * nonce-protégés (`check_admin_referer()`), jamais un formulaire imbriqué ni une action AJAX pour
- * un geste ponctuel et rare. Réutilise gwseq_selection_activate()/gwseq_selection_revoke()
- * (includes/cheval-selection.php) — jamais un second calcul de token ici.
+ * Suppression (§1 de l'ajustement de recette) — REMPLACE "Révoquer"/"Régénérer" comme seule
+ * action de fin de vie d'une sélection. Lien admin-post.php nonce-protégé, jamais un formulaire
+ * imbriqué ni une action AJAX pour un geste ponctuel, exactement le même mécanisme que le partage
+ * privé Cheval (includes/cheval-share-admin.php).
  * ----------------------------------------------------------------------------------------- */
 
 const GWSEQ_SELECTION_ACTION_NONCE_PREFIX = 'gwseq_selection_action';
 
+/**
+ * CORRECTIF DE RECETTE (bug bloquant constaté sur l'ancien bouton "Révoquer", même construction
+ * réutilisée ici pour "Supprimer") — CAUSE RACINE : `wp_nonce_url()` (WordPress core) applique
+ * `esc_html()` à son résultat par conception, car il est prévu pour être imprimé TEL QUEL dans un
+ * attribut HTML (`href="..."`) — un contexte où le navigateur DÉCODE nativement les entités HTML
+ * (`&amp;`/`&#038;` -> `&`) au moment de PARSER le document. Cette URL-ci n'est JAMAIS imprimée
+ * dans du HTML côté serveur : elle transite en JSON (`wp_localize_script()`, voir gwseq_selection_
+ * admin_row()) puis est assignée directement à la propriété JS `.href` d'un `<a>` (assets/cheval-
+ * selection-admin.js) — un contexte qui n'effectue JAMAIS ce décodage. L'entité HTML restait donc
+ * littéralement dans l'URL réellement soumise par le navigateur au clic, cassant le nonce ET le
+ * reste de la requête (symptôme observé : "Le lien suivi est expiré").
+ *
+ * CORRECTIF (pas un contournement) : construit le nonce manuellement (même action précise, même
+ * nom de paramètre `_wpnonce` par défaut de `check_admin_referer()`), sans jamais passer par
+ * `wp_nonce_url()` — aucune protection retirée (capacité, ID de sélection, nonce spécifique à
+ * cette sélection, type de post restent vérifiés à l'identique dans gwseq_selection_handle_
+ * delete_admin_post()/gwseq_selection_user_can_manage()), seul l'échappement HTML indu est retiré
+ * à la source.
+ */
 function gwseq_selection_action_url($action, $selection_id) {
   $url = add_query_arg(
     array('action' => 'gwseq_selection_' . $action, 'selection_id' => (int) $selection_id),
     admin_url('admin-post.php')
   );
-  return wp_nonce_url($url, GWSEQ_SELECTION_ACTION_NONCE_PREFIX . '_' . (int) $selection_id);
+  $nonce_action = GWSEQ_SELECTION_ACTION_NONCE_PREFIX . '_' . (int) $selection_id;
+  return add_query_arg('_wpnonce', wp_create_nonce($nonce_action), $url);
 }
 
-function gwseq_selection_handle_admin_post($activate) {
+function gwseq_selection_handle_delete_admin_post() {
   $selection_id = isset($_REQUEST['selection_id']) ? absint($_REQUEST['selection_id']) : 0;
   check_admin_referer(GWSEQ_SELECTION_ACTION_NONCE_PREFIX . '_' . $selection_id);
 
@@ -294,25 +402,12 @@ function gwseq_selection_handle_admin_post($activate) {
     wp_die(esc_html__('Action non autorisée.', 'gws-core'), '', array('response' => 403));
   }
 
-  if ($activate) {
-    gwseq_selection_activate($selection_id);
-  } else {
-    gwseq_selection_revoke($selection_id);
-  }
+  gwseq_selection_delete($selection_id);
 
   wp_safe_redirect(gwseq_selection_page_url());
   exit;
 }
-
-function gwseq_selection_admin_post_regenerate() {
-  gwseq_selection_handle_admin_post(true);
-}
-add_action('admin_post_gwseq_selection_regenerer', 'gwseq_selection_admin_post_regenerate');
-
-function gwseq_selection_admin_post_revoke() {
-  gwseq_selection_handle_admin_post(false);
-}
-add_action('admin_post_gwseq_selection_revoquer', 'gwseq_selection_admin_post_revoke');
+add_action('admin_post_gwseq_selection_supprimer', 'gwseq_selection_handle_delete_admin_post');
 
 /* -------------------------------------------------------------------------------------------
  * Assets — uniquement sur l'écran Sélections.
@@ -346,7 +441,6 @@ function gwseq_enqueue_selection_admin_assets($hook) {
       'backToList' => __('← Retour aux sélections', 'gws-core'),
       'searchPlaceholder' => __('Rechercher un cheval...', 'gws-core'),
       'noResults' => __('Aucun cheval trouvé.', 'gws-core'),
-      'add' => __('Ajouter', 'gws-core'),
       'remove' => __('Retirer', 'gws-core'),
       'up' => __('Monter', 'gws-core'),
       'down' => __('Descendre', 'gws-core'),
@@ -358,6 +452,13 @@ function gwseq_enqueue_selection_admin_assets($hook) {
       'createSelection' => __('Créer la sélection', 'gws-core'),
       'creating' => __('Création…', 'gws-core'),
       'createError' => __('La sélection n’a pas pu être créée.', 'gws-core'),
+      'saveChanges' => __('Enregistrer les modifications', 'gws-core'),
+      'saving' => __('Enregistrement…', 'gws-core'),
+      'updateError' => __('La sélection n’a pas pu être modifiée.', 'gws-core'),
+      'loading' => __('Chargement…', 'gws-core'),
+      'loadError' => __('Impossible de charger cette sélection.', 'gws-core'),
+      'editSelectionTitle' => __('Modifier la sélection', 'gws-core'),
+      'notDisplayable' => __('actuellement non diffusable', 'gws-core'),
       'allSexe' => __('Tous', 'gws-core'),
       'allStatut' => __('Tous', 'gws-core'),
       'allCategories' => __('Toutes les catégories', 'gws-core'),
@@ -378,11 +479,8 @@ function gwseq_enqueue_selection_admin_assets($hook) {
       'columnActions' => __('Actions', 'gws-core'),
       'copyLink' => __('Copier le lien', 'gws-core'),
       'copied' => __('Lien copié', 'gws-core'),
-      'regenerate' => __('Régénérer', 'gws-core'),
-      'revoke' => __('Révoquer', 'gws-core'),
-      'revoked' => __('Lien révoqué', 'gws-core'),
-      'confirmRevoke' => __('Révoquer ce lien ? L’ancien lien cessera immédiatement de fonctionner, la sélection reste conservée.', 'gws-core'),
-      'confirmRegenerate' => __('Régénérer ce lien ? L’ancien lien cessera immédiatement de fonctionner.', 'gws-core'),
+      'delete' => __('Supprimer', 'gws-core'),
+      'confirmDelete' => __('Supprimer cette sélection ? Le lien déjà envoyé ne fonctionnera plus.', 'gws-core'),
     ),
   ));
 }

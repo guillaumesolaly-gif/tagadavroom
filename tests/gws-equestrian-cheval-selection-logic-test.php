@@ -1,12 +1,15 @@
 <?php
 /**
  * Vérifie la couche métier de la sélection de plusieurs chevaux (includes/cheval-selection.php,
- * Suite V1 « Partager & vendre », Lot 2A) : persistance (CPT + une seule meta pour la liste
- * ordonnée), token (générer/activer/régénérer/révoquer/URL/recherche inverse), règle d'éligibilité
- * (réutilisation EXCLUSIVE de gwseq_horse_diffusion_state(), jamais un recalcul), résolution pour
- * affichage (référence toujours actuelle, jamais une copie figée — §6 de la demande), et création
- * (§7). Même méthodologie que le reste de cette suite : fonctions pures exercées avec des données
- * réalistes, réutilisant les VRAIS helpers du module (jamais une réimplémentation dans ce fichier).
+ * Suite V1 « Partager & vendre », Lot 2A puis 2B) : persistance (CPT + une seule meta pour la liste
+ * ordonnée), token (générer/activer/URL/recherche inverse — plus jamais régénéré/révoqué depuis
+ * l'interface depuis l'ajustement de recette 2A -> 2B), règle d'éligibilité (réutilisation
+ * EXCLUSIVE de gwseq_horse_diffusion_state(), jamais un recalcul), résolution pour affichage
+ * (référence toujours actuelle, jamais une copie figée — §6), création, MODIFICATION (titre/liste/
+ * ordre, sans jamais toucher au token — Lot 2B), SUPPRESSION (remplace l'ancienne révocation), et
+ * composition des données de la page destinataire (Lot 2B). Même méthodologie que le reste de
+ * cette suite : fonctions pures exercées avec des données réalistes, réutilisant les VRAIS helpers
+ * du module (jamais une réimplémentation dans ce fichier).
  *
  * Ne fait pas partie des paquets livrés (gws-core.zip / gws-starter.zip).
  */
@@ -33,6 +36,7 @@ function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES)
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function wp_parse_args($args, $defaults = array()) { return array_merge((array) $defaults, (array) $args); }
 function __($text, $domain = 'default') { return $text; }
+function _n($single, $plural, $number, $domain = 'default') { return $number == 1 ? $single : $plural; }
 function esc_html__($text, $domain = 'default') { return esc_html($text); }
 function esc_html_e($text, $domain = 'default') { echo esc_html__($text, $domain); }
 function home_url($path = '') { return 'https://example.test' . $path; }
@@ -72,10 +76,18 @@ function get_the_title($post) {
 function wp_update_post($postarr, $wp_error = false) {
   $id = (int) ($postarr['ID'] ?? 0);
   if (!$id || !isset($GLOBALS['__gwseq_test_posts'][$id])) return 0;
-  foreach (array('post_status', 'post_password') as $field) {
+  foreach (array('post_status', 'post_password', 'post_title') as $field) {
     if (array_key_exists($field, $postarr)) $GLOBALS['__gwseq_test_posts'][$id][$field] = $postarr[$field];
   }
   return $id;
+}
+// Fidèle au comportement réel de wp_trash_post() : passe le post en statut "trash" (jamais une
+// suppression immédiate — voir gwseq_selection_delete(), includes/cheval-selection.php).
+function wp_trash_post($post_id) {
+  $post_id = (int) $post_id;
+  if (!isset($GLOBALS['__gwseq_test_posts'][$post_id])) return false;
+  $GLOBALS['__gwseq_test_posts'][$post_id]['post_status'] = 'trash';
+  return true;
 }
 
 $GLOBALS['__gwseq_test_next_post_id'] = 1000;
@@ -124,13 +136,39 @@ class WP_Query {
   }
 }
 
+// --- Stubs supplémentaires requis par cheval-fields.php/cheval-editorial.php/cheval-media.php
+// (chargés ci-dessous pour gwseq_selection_get_public_card(), Lot 2B) — mêmes conventions que
+// gws-equestrian-cheval-share-admin-test.php. ---
+$GLOBALS['__gwseq_test_registered_meta'] = array();
+function register_post_meta($object_type, $meta_key, $args = array()) { $GLOBALS['__gwseq_test_registered_meta'][$meta_key] = $args; }
+function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
+function add_meta_box($id, $title, $callback, $post_type = null, $context = 'advanced', $priority = 'default') {}
+function metadata_exists($type, $post_id, $key) {
+  return array_key_exists($post_id, $GLOBALS['__gwseq_test_meta']) && array_key_exists($key, $GLOBALS['__gwseq_test_meta'][$post_id]);
+}
+$GLOBALS['__gwseq_test_attachment_urls'] = array();
+function wp_get_attachment_image_url($id, $size = 'thumbnail') { return $GLOBALS['__gwseq_test_attachment_urls'][$id][$size] ?? false; }
+$GLOBALS['__gwseq_test_thumbnails'] = array();
+function get_post_thumbnail_id($post_id) { return $GLOBALS['__gwseq_test_thumbnails'][$post_id] ?? 0; }
+function get_terms($args = array()) { return array(); }
+function get_option($name, $default = false) { return $default; }
+function term_exists($term, $taxonomy = '') { return null; }
+function remove_accents($text) { return strtr((string) $text, array('é' => 'e', 'è' => 'e', 'à' => 'a')); }
+function sanitize_title($value) { return trim(preg_replace('/[^a-z0-9_\-]+/', '-', strtolower((string) $value)), '-'); }
+
 define('ABSPATH', __DIR__ . '/');
 const GWSEQ_CPT_CHEVAL = 'gwseq_cheval';
 const GWSEQ_CPT_SELECTION = 'gwseq_selection';
+const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
 
 $repo_root = dirname(__DIR__);
 $module_dir = $repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/';
 require $repo_root . '/wp-content/plugins/gws-core/includes/fields.php';
+require $module_dir . 'includes/settings.php';
+require $module_dir . 'includes/race-referentiel.php';
+require $module_dir . 'includes/cheval-fields.php';
+require $module_dir . 'includes/cheval-editorial.php';
+require $module_dir . 'includes/cheval-media.php';
 require $module_dir . 'includes/cheval-share.php';
 require $module_dir . 'includes/cheval-selection.php';
 
@@ -145,6 +183,23 @@ function gws_test_make_horse($id, $title, $state, $author = 1) {
     gwseq_horse_private_share_activate($id);
   } else {
     gws_test_make_post($id, GWSEQ_CPT_CHEVAL, $title, 'draft', '', $author);
+  }
+}
+
+// Aide dédiée à la page destinataire (Lot 2B) : peuple les données réelles d'un cheval, réutilisant
+// les VRAIS setters/meta déjà existants du module — jamais une meta inventée pour ce test.
+function gws_test_set_horse_public_details($id, $overrides = array()) {
+  gwseq_set_cheval_identity($id, $overrides['identity'] ?? array());
+  gwseq_set_cheval_editorial($id, $overrides['editorial'] ?? array());
+  if (isset($overrides['statut_commercial'])) update_post_meta($id, '_gwseq_statut_commercial', $overrides['statut_commercial']);
+  if (isset($overrides['prix_fixe'])) update_post_meta($id, '_gwseq_prix_fixe', $overrides['prix_fixe']);
+  if (isset($overrides['photo_url'])) {
+    // gwseq_get_cheval_photo_principale_id() relit get_post_thumbnail_id($id) (l'ID de la fiche,
+    // jamais de l'attachement) — l'URL, elle, est indexée par l'ID D'ATTACHEMENT (ici arbitraire,
+    // dérivé de l'ID du cheval pour rester unique par cheval dans ce test).
+    $attachment_id = $id + 100000;
+    $GLOBALS['__gwseq_test_thumbnails'][$id] = $attachment_id;
+    $GLOBALS['__gwseq_test_attachment_urls'][$attachment_id]['medium'] = $overrides['photo_url'];
   }
 }
 
@@ -339,6 +394,113 @@ gws_test_assert(gwseq_selection_get_cheval_ids($selection_now_empty) === array(3
 $resolved_all = gwseq_selection_resolve_chevaux($selection_now_empty);
 gws_test_assert(count($resolved_all) === 2 && !$resolved_all[0]['displayable'] && !$resolved_all[1]['displayable'], 'Comptage : chaque cheval individuellement résolu comme non présentable, aucune exception levée');
 gws_test_assert(get_post($selection_now_empty) !== null, 'Comptage : la sélection elle-même continue d\'exister normalement');
+
+// =====================================================================================
+// Modification (Lot 2B, §2 de l'ajustement de recette) — ne touche JAMAIS au token.
+// =====================================================================================
+
+gws_test_make_horse(200, 'Cheval A', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_make_horse(201, 'Cheval B', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_make_horse(202, 'Cheval C', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_make_horse(203, 'Cheval En Preparation', GWSEQ_HORSE_DIFFUSION_EN_PREPARATION);
+
+$edit_selection = gwseq_selection_create(array('title' => 'Titre initial', 'cheval_ids' => array(200, 201)));
+$token_before_update = gwseq_selection_token($edit_selection);
+
+gwseq_selection_update($edit_selection, array('title' => 'Nouveau titre'));
+gws_test_assert(get_the_title($edit_selection) === 'Nouveau titre', 'Modification : titre mis à jour');
+gws_test_assert(gwseq_selection_get_cheval_ids($edit_selection) === array(200, 201), 'Modification : modifier UNIQUEMENT le titre ne touche jamais à la liste de chevaux');
+gws_test_assert(gwseq_selection_token($edit_selection) === $token_before_update, 'Modification : le token reste STRICTEMENT identique après une modification de titre (§2 : "jamais de régénération de token")');
+
+gwseq_selection_update($edit_selection, array('cheval_ids' => array(201, 202)));
+gws_test_assert(get_the_title($edit_selection) === 'Nouveau titre', 'Modification : modifier UNIQUEMENT la liste ne touche jamais au titre');
+gws_test_assert(gwseq_selection_get_cheval_ids($edit_selection) === array(201, 202), 'Modification : liste remplacée, ordre respecté (200 retiré, 202 ajouté)');
+gws_test_assert(gwseq_selection_token($edit_selection) === $token_before_update, 'Modification : le token reste STRICTEMENT identique après une modification de la liste');
+
+// Cheval déjà présent devenu "En préparation" entre-temps : reste conservé si toujours soumis (§6).
+gwseq_horse_diffusion_set_en_preparation(201);
+gwseq_selection_update($edit_selection, array('cheval_ids' => array(201, 202)));
+gws_test_assert(gwseq_selection_get_cheval_ids($edit_selection) === array(201, 202), 'Modification : un cheval déjà présent devenu "En préparation" reste conservé tant qu\'il est toujours soumis (§6, jamais retiré silencieusement)');
+
+// Un cheval "En préparation" NOUVELLEMENT ajouté (jamais présent avant) est rejeté (défense en
+// profondeur, §5) — jamais introduit par une modification, pas plus qu'à la création.
+gwseq_selection_update($edit_selection, array('cheval_ids' => array(201, 202, 203)));
+gws_test_assert(gwseq_selection_get_cheval_ids($edit_selection) === array(201, 202), 'Modification : un cheval "En préparation" JAMAIS présent avant est rejeté, même explicitement soumis (§5)');
+
+// Retrait explicite : un cheval présent mais absent de la nouvelle soumission est bien retiré.
+gwseq_selection_update($edit_selection, array('cheval_ids' => array(202)));
+gws_test_assert(gwseq_selection_get_cheval_ids($edit_selection) === array(202), 'Modification : un retrait EXPLICITE (absent de la nouvelle liste) retire bien le cheval');
+
+gws_test_assert(gwseq_selection_update(999999, array('title' => 'x')) === false, 'Modification : identifiant de sélection inexistant -> refusé proprement');
+gws_test_assert(gwseq_selection_update(200, array('title' => 'x')) === false, 'Modification : identifiant d\'un AUTRE type de contenu (ici un cheval) -> refusé proprement');
+
+// =====================================================================================
+// Suppression (Lot 2B, §1 de l'ajustement de recette) — remplace l'ancienne révocation de token
+// comme seule façon de mettre fin à une sélection.
+// =====================================================================================
+
+$to_delete = gwseq_selection_create(array('title' => 'À supprimer', 'cheval_ids' => array(202)));
+$token_to_delete = gwseq_selection_token($to_delete);
+gws_test_assert(gwseq_selection_find_by_token($token_to_delete) === $to_delete, 'Suppression : pré-requis — le lien fonctionne avant suppression');
+
+gws_test_assert(gwseq_selection_delete($to_delete) === true, 'Suppression : opération réussie');
+gws_test_assert(get_post($to_delete)->post_status === 'trash', 'Suppression : le post passe en corbeille (stratégie WordPress native, jamais une perte immédiate irréversible)');
+gws_test_assert(gwseq_selection_find_by_token($token_to_delete) === 0, 'Suppression : le lien devient IMMÉDIATEMENT inaccessible');
+gws_test_assert(get_post_type(202) === GWSEQ_CPT_CHEVAL, 'Suppression : le cheval référencé n\'est JAMAIS supprimé/modifié');
+
+gws_test_assert(gwseq_selection_delete(999999) === false, 'Suppression : identifiant inexistant -> refusé proprement');
+gws_test_assert(gwseq_selection_delete(200) === false, 'Suppression : identifiant d\'un AUTRE type de contenu -> refusé proprement');
+
+// =====================================================================================
+// Page destinataire (Lot 2B, §3 de l'ajustement) — composition PURE, réutilise EXCLUSIVEMENT les
+// fonctions déjà existantes de cheval-share.php (identité/prix/lien de fiche), jamais un second
+// calcul.
+// =====================================================================================
+
+gws_test_make_horse(300, 'Jamerose de Felines', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_set_horse_public_details(300, array(
+  'identity' => array('_gwseq_sexe' => 'female', '_gwseq_race' => 'SF', '_gwseq_annee_naissance' => (int) date('Y') - 7),
+  'editorial' => array('_gwseq_accroche_commerciale' => 'Jument très franche, idéale amateur.'),
+  'statut_commercial' => 'for_sale',
+  'prix_fixe' => 25000,
+  'photo_url' => 'https://example.test/photo-300.jpg',
+));
+
+$card_300 = gwseq_selection_get_public_card(300);
+gws_test_assert($card_300['nom'] === 'JAMEROSE DE FELINES', 'Carte publique : nom affiché selon la convention déjà en place (majuscules, sans accents)');
+gws_test_assert(strpos($card_300['identite_label'], 'Jument') !== false, 'Carte publique : identité réutilise gwseq_horse_share_identite_label(), jamais un second calcul');
+gws_test_assert($card_300['accroche'] === 'Jument très franche, idéale amateur.', 'Carte publique : accroche commerciale reprise telle quelle');
+gws_test_assert(strpos($card_300['prix_label'], '25') !== false, 'Carte publique : prix affiché (statut "À vendre", règle réutilisée telle quelle)');
+gws_test_assert($card_300['photo_url'] === 'https://example.test/photo-300.jpg', 'Carte publique : photo principale reprise telle quelle');
+gws_test_assert(strpos($card_300['fiche_url'], 'chevaux/cheval-300') !== false, 'Carte publique : lien de fiche PUBLIC (cheval visible sur le site)');
+
+gws_test_make_horse(301, 'Sans Prix', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+$card_301 = gwseq_selection_get_public_card(301);
+gws_test_assert($card_301['prix_label'] === '', 'Carte publique : aucun prix affiché par défaut (statut "Non proposé"), même règle que le partage individuel');
+gws_test_assert($card_301['accroche'] === '', 'Carte publique : aucune accroche inventée en son absence');
+
+gws_test_make_horse(302, 'Cheval Prive', GWSEQ_HORSE_DIFFUSION_PRIVEE);
+gws_test_make_horse(303, 'Cheval Preparation Vue', GWSEQ_HORSE_DIFFUSION_EN_PREPARATION);
+$selection_vue = gwseq_selection_create(array('title' => 'Vue destinataire', 'cheval_ids' => array(300, 302)));
+// Force, via le setter de bas niveau, un état que la seule création ne pourrait pas produire
+// (défense en profondeur du RENDU lui-même, indépendante de celle déjà vérifiée à la création) :
+// un ID "En préparation" et un ID inexistant, jamais retenus dans les cartes.
+gwseq_selection_set_cheval_ids($selection_vue, array(300, 302, 303, 999999));
+
+$vue = gwseq_selection_get_public_view($selection_vue);
+gws_test_assert($vue['titre'] === 'Vue destinataire', 'Vue destinataire : titre repris tel quel');
+gws_test_assert(count($vue['cartes']) === 2, 'Vue destinataire : seuls les 2 chevaux réellement présentables (300 visible, 302 diffusion privée) produisent une carte — jamais "En préparation"/inexistant');
+gws_test_assert($vue['cartes'][0]['id'] === 300 && $vue['cartes'][1]['id'] === 302, 'Vue destinataire : ordre des cartes conforme à l\'ordre stocké');
+
+gwseq_horse_diffusion_set_en_preparation(300);
+gwseq_horse_diffusion_set_en_preparation(302);
+$vue_vide = gwseq_selection_get_public_view($selection_vue);
+gws_test_assert($vue_vide['cartes'] === array(), 'Vue destinataire : liste de cartes vide quand plus aucun cheval n\'est présentable, sans erreur (§3 : "état vide propre")');
+gws_test_assert($vue_vide['titre'] === 'Vue destinataire', 'Vue destinataire : le titre reste affiché même avec une liste de cartes vide');
+
+$selection_sans_titre = gwseq_selection_create(array('cheval_ids' => array(301)));
+$vue_sans_titre = gwseq_selection_get_public_view($selection_sans_titre);
+gws_test_assert($vue_sans_titre['titre'] === 'Sélection de chevaux', 'Vue destinataire : libellé neutre de repli si aucun titre saisi');
 
 echo "\n";
 if ($failures > 0) {
