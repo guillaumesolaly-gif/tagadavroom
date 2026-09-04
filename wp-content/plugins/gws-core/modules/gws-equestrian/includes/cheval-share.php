@@ -259,6 +259,23 @@ function gwseq_horse_private_share_is_active($cheval_id) {
 }
 
 /**
+ * AJUSTEMENT D'ARCHITECTURE (recette) : la visibilité publique et l'existence d'un lien privé sont
+ * désormais DÉCOUPLÉES — un token ne doit jamais dégrader ni masquer une fiche publique valide (la
+ * priorité "privé > public" initiale s'est révélée trop risquée : créer un lien privé sur un cheval
+ * déjà publié rendait involontairement son permalink public inaccessible). Un cheval est en mode
+ * "partage privé EXCLUSIF" si et seulement si il n'est PAS publiquement visible ET qu'un partage
+ * privé est actif pour lui : c'est ce mode précis, et lui seul, qui justifie tout traitement
+ * "privé" (route dédiée avec noindex...). Un cheval RÉELLEMENT public avec un ancien token qui
+ * traîne reste un cheval public à tous égards — le token n'existe alors que pour ne pas casser un
+ * lien déjà envoyé (voir gwseq_horse_share_fiche_info() ci-dessous), jamais pour rien retirer à sa
+ * présence publique (recherche, catalogue, sitemap, API REST — tous déjà nativement limités aux
+ * fiches réellement publiées par WordPress, sans code supplémentaire nécessaire ici).
+ */
+function gwseq_horse_is_private_share_only($cheval_id) {
+  return !gwseq_horse_is_publicly_viewable($cheval_id) && gwseq_horse_private_share_is_active($cheval_id);
+}
+
+/**
  * Crée OU régénère le partage privé d'un cheval — toujours la même opération (voir le commentaire
  * de section ci-dessus) : un appelant n'a jamais besoin de distinguer les deux cas.
  */
@@ -312,19 +329,20 @@ function gwseq_horse_private_share_find_cheval_id($token) {
 
 /**
  * Détermine le lien de fiche approprié SANS jamais faire porter ce choix à l'utilisateur (§3 de la
- * demande — "GWS doit déterminer le lien approprié selon la visibilité du cheval") : lien PRIVÉ en
- * priorité si un partage privé est actif pour ce cheval (il a alors délibérément quitté son canal
- * public normal — voir gwseq_horse_private_share_is_active()), sinon lien PUBLIC normal si la fiche
- * est réellement publique, sinon aucun lien. Le TYPE renvoyé ('privee'/'publique'/'') sert
- * uniquement à adapter le VOCABULAIRE de l'écran BO (§3) — jamais le contenu du message lui-même,
- * strictement identique quel que soit le type de lien inclus.
+ * demande — "GWS doit déterminer le lien approprié selon la visibilité du cheval") : lien PUBLIC en
+ * priorité dès que la fiche est réellement publique — un token privé existant, même actif, ne doit
+ * JAMAIS masquer une fiche publique valide (ajustement d'architecture, voir gwseq_horse_is_private_
+ * share_only() ci-dessus) — sinon lien PRIVÉ si un partage privé est actif (le cheval n'a alors
+ * aucun autre canal), sinon aucun lien. Le TYPE renvoyé ('publique'/'privee'/'') sert uniquement à
+ * adapter le VOCABULAIRE de l'écran BO (§3) — jamais le contenu du message lui-même, strictement
+ * identique quel que soit le type de lien inclus.
  */
 function gwseq_horse_share_fiche_info($cheval_id) {
-  if (gwseq_horse_private_share_is_active($cheval_id)) {
-    return array('url' => gwseq_horse_private_share_url($cheval_id), 'type' => 'privee');
-  }
   if (gwseq_horse_is_publicly_viewable($cheval_id)) {
     return array('url' => get_permalink($cheval_id), 'type' => 'publique');
+  }
+  if (gwseq_horse_private_share_is_active($cheval_id)) {
+    return array('url' => gwseq_horse_private_share_url($cheval_id), 'type' => 'privee');
   }
   return array('url' => '', 'type' => '');
 }
@@ -515,15 +533,19 @@ function gwseq_horse_og_description($shareable) {
  * n'a pas de photo principale — jamais une image de remplacement fabriquée. `og:url` reflète
  * l'URL RÉELLEMENT visitée (publique OU privée) — jamais figée sur le seul permalink normal, sinon
  * un aperçu WhatsApp/iMessage généré depuis un lien privé pointerait à tort vers l'URL publique.
+ * "Vue privée" est déterminée via gwseq_horse_is_private_share_only() (ajustement d'architecture) :
+ * un cheval RÉELLEMENT public visité via un ancien lien `/partage/{token}` est traité comme la fiche
+ * PUBLIQUE qu'il est devenu (og:url public, jamais de noindex) — la publication prend toujours le
+ * pas sur un token qui traîne, cohérent avec gwseq_horse_share_fiche_info().
  */
 function gwseq_render_horse_og_meta() {
   if (!is_singular(GWSEQ_CPT_CHEVAL)) return;
 
   $cheval_id = get_queried_object_id();
-  $is_private_view = get_query_var('gwseq_partage_token', '') !== '' && gwseq_horse_private_share_is_active($cheval_id);
+  $is_private_view = get_query_var('gwseq_partage_token', '') !== '' && gwseq_horse_is_private_share_only($cheval_id);
 
   if (gwseq_horse_share_has_seo_plugin() && !$is_private_view) return;
-  if (!$is_private_view && !gwseq_horse_is_publicly_viewable($cheval_id)) return;
+  if (!gwseq_horse_is_publicly_viewable($cheval_id) && !$is_private_view) return;
 
   $shareable = gwseq_get_horse_shareable_data($cheval_id);
   $description = gwseq_horse_og_description($shareable);

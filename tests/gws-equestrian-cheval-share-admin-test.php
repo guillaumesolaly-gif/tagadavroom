@@ -639,93 +639,63 @@ $GLOBALS['__gwseq_test_security']['current_user_id'] = 2;
 gws_test_assert(gwseq_horse_private_share_user_can_manage(500) === false, 'Permission partage privé : un utilisateur sans edit_others_posts ne peut pas gérer le partage privé du cheval d’un autre auteur (§16)');
 gws_test_reset_security();
 
-// --- Exclusion recherche/sitemap/REST : une seule clause réutilisée aux QUATRE endroits (§16) ---
-$exclusion_clause = gwseq_horse_private_share_exclusion_meta_clause();
-gws_test_assert($exclusion_clause['relation'] === 'OR', 'Exclusion partage privé : clause meta_query à deux branches (méta absente OU vide) — couvre aussi bien un cheval qui n’a jamais eu de partage privé qu’un cheval révoqué');
-
-$rest_args = gwseq_horse_private_share_filter_rest_query(array(), null);
-gws_test_assert(isset($rest_args['meta_query']) && in_array($exclusion_clause, $rest_args['meta_query'], true), 'REST : la clause d’exclusion est bien ajoutée aux arguments de requête de LISTE (jamais une reconstruction séparée de la clause)');
-$rest_args_avec_meta_existante = gwseq_horse_private_share_filter_rest_query(array('meta_query' => array(array('key' => 'autre_chose', 'value' => 'x'))), null);
-gws_test_assert(count($rest_args_avec_meta_existante['meta_query']) === 2, 'REST : la clause d’exclusion s’AJOUTE à un meta_query déjà présent, ne l’écrase jamais');
-
-// --- Correctif de recette : `/wp/v2/search` (contrôleur transversal, y compris avec
-// `subtype=gwseq_cheval`) est un point d'entrée REST SÉPARÉ du contrôleur CRUD ci-dessus — jamais
-// couvert par rest_gwseq_cheval_query/rest_prepare_gwseq_cheval. Il force en dur post_status =>
-// 'publish', ce qui n'exclut PAS un cheval en partage privé actif resté publié (cas volontairement
-// permis par ce module) : la même clause d'exclusion doit donc être injectée sur son propre filtre
-// (`wp_rest_search_query`), sans dupliquer sa définition. ---
-$search_args = gwseq_horse_private_share_filter_rest_search_query(array('post_type' => array('post', 'page', GWSEQ_CPT_CHEVAL)), null);
-gws_test_assert(isset($search_args['meta_query']) && in_array($exclusion_clause, $search_args['meta_query'], true), 'REST /wp/v2/search : la MÊME clause d’exclusion (jamais une reconstruction séparée) est ajoutée à la requête transversale, y compris quand elle porte sur plusieurs post types à la fois');
-$search_args_avec_meta_existante = gwseq_horse_private_share_filter_rest_search_query(array('meta_query' => array(array('key' => 'autre_chose', 'value' => 'x'))), null);
-gws_test_assert(count($search_args_avec_meta_existante['meta_query']) === 2, 'REST /wp/v2/search : la clause d’exclusion s’AJOUTE à un meta_query déjà présent, ne l’écrase jamais');
-
-$sitemap_args_cheval = gwseq_horse_private_share_filter_sitemap_args(array(), GWSEQ_CPT_CHEVAL);
-gws_test_assert(isset($sitemap_args_cheval['meta_query']), 'Sitemap : la clause d’exclusion est appliquée pour le post_type Cheval');
-$sitemap_args_autre = gwseq_horse_private_share_filter_sitemap_args(array('foo' => 'bar'), 'post');
-gws_test_assert($sitemap_args_autre === array('foo' => 'bar'), 'Sitemap : aucune modification pour un autre post_type que Cheval (jamais un filtre trop large)');
-
-update_post_meta(500, '_gwseq_partage_prive_token', str_repeat('a', 64));
-$GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
-$GLOBALS['__gwseq_test_security']['current_user_id'] = 2; // pas l'auteur (1) de la fiche 500
-$rest_response_bloquee = gwseq_horse_private_share_filter_rest_response('reponse-normale', get_post(500), null);
-gws_test_assert($rest_response_bloquee instanceof WP_Error && $rest_response_bloquee->data['status'] === 404, 'REST : un accès DIRECT par identifiant à un cheval en partage privé actif est bloqué (404), pour un visiteur qui ne peut pas éditer la fiche');
-gws_test_reset_security();
-$rest_response_editeur = gwseq_horse_private_share_filter_rest_response('reponse-normale', get_post(500), null);
-gws_test_assert($rest_response_editeur === 'reponse-normale', 'REST : l’éditeur de la fiche continue, lui, d’obtenir la réponse normale (jamais bloqué sur sa propre fiche)');
-delete_post_meta(500, '_gwseq_partage_prive_token');
-gws_test_reset_security();
-
-// --- Filtre pre_get_posts : n'agit QUE sur les requêtes touchant réellement Cheval (recherche/
-// archive/taxonomie), jamais sur une requête sans rapport, et jamais sur notre propre route privée ---
-class Gws_Test_Fake_Query {
-  public $flags; public $vars = array();
-  public function __construct($flags) { $this->flags = $flags; }
-  public function is_main_query() { return $this->flags['main'] ?? true; }
-  public function is_search() { return $this->flags['search'] ?? false; }
-  public function is_post_type_archive($pt) { return ($this->flags['archive'] ?? '') === $pt; }
-  public function is_tax($tax) { return ($this->flags['tax'] ?? '') === $tax; }
-  public function get($key) { return $this->vars[$key] ?? ($key === 'meta_query' ? array() : ''); }
-  public function set($key, $value) { $this->vars[$key] = $value; }
-}
-
-$fake_query_recherche = new Gws_Test_Fake_Query(array('search' => true));
-gwseq_horse_private_share_filter_public_query($fake_query_recherche);
-gws_test_assert(!empty($fake_query_recherche->vars['meta_query']), 'pre_get_posts : une recherche publique (is_search) reçoit bien la clause d’exclusion');
-
-$fake_query_archive_cheval = new Gws_Test_Fake_Query(array('archive' => GWSEQ_CPT_CHEVAL));
-gwseq_horse_private_share_filter_public_query($fake_query_archive_cheval);
-gws_test_assert(!empty($fake_query_archive_cheval->vars['meta_query']), 'pre_get_posts : l’archive Cheval reçoit bien la clause d’exclusion');
-
-$fake_query_taxonomie = new Gws_Test_Fake_Query(array('tax' => GWSEQ_TAX_CATEGORIE_CHEVAL));
-gwseq_horse_private_share_filter_public_query($fake_query_taxonomie);
-gws_test_assert(!empty($fake_query_taxonomie->vars['meta_query']), 'pre_get_posts : une page de taxonomie Catégorie de cheval reçoit bien la clause d’exclusion');
-
-$fake_query_sans_rapport = new Gws_Test_Fake_Query(array('search' => false));
-gwseq_horse_private_share_filter_public_query($fake_query_sans_rapport);
-gws_test_assert(!isset($fake_query_sans_rapport->vars['meta_query']), 'pre_get_posts : une requête sans rapport (page normale, autre CPT) n’est jamais touchée — aucune jointure meta inutile');
-
-$fake_query_sous_query = new Gws_Test_Fake_Query(array('search' => true, 'main' => false));
-gwseq_horse_private_share_filter_public_query($fake_query_sous_query);
-gws_test_assert(!isset($fake_query_sous_query->vars['meta_query']), 'pre_get_posts : une sous-requête (is_main_query false) n’est jamais touchée, même si elle ressemble à une recherche');
+// --- Ajustement d'architecture (recette) : les filtres d'exclusion recherche/sitemap/REST/
+// pre_get_posts ont été RETIRÉS — ils excluaient tout cheval PORTANT UN TOKEN, indépendamment de
+// son statut réel, ce que la nouvelle règle interdit explicitement ("un token ne doit jamais
+// dégrader ni masquer une fiche publique valide"). Un cheval en mode "partage privé exclusif" est
+// par construction non publié : WordPress l'exclut déjà nativement de ces quatre surfaces, sans
+// code supplémentaire (voir includes/cheval-share-admin.php pour le détail). Ces fonctions
+// n'existent donc plus, remplacé ci-dessous par les tests de la boîte latérale adaptés aux QUATRE
+// états désormais possibles (public/non public × avec/sans token).
 
 // --- Boîte latérale "Partage" : contrôles de partage privé rendus dans LA MÊME boîte (§ "jamais
-// une seconde interface"), état "inactif" puis état "actif" ---
-gws_test_make_horse(510, 'Cheval Boite Partage Prive', 1);
+// une seconde interface"), adaptés à la visibilité RÉELLE du cheval, JAMAIS au seul fait qu'un
+// token existe (§6 de l'ajustement d'architecture — quatre états explicites) ---
+
+// --- État 1 : cheval PUBLIC, SANS token -> indique que le partage utilise la fiche publique,
+// jamais de bouton "Créer" ni de mention d'un lien privé ---
+gws_test_make_horse(510, 'Cheval Boite Partage Public', 1); // publish par défaut
 ob_start();
 call_user_func($meta_box['callback'], get_post(510));
-$meta_box_html_inactif = ob_get_clean();
-gws_test_assert(strpos($meta_box_html_inactif, 'Créer un lien de partage privé') !== false, 'Boîte latérale : bouton de création affiché tant qu’aucun partage privé n’est actif');
-gws_test_assert(strpos($meta_box_html_inactif, 'Révoquer') === false, 'Boîte latérale : aucune action de révocation proposée tant qu’il n’y a rien à révoquer');
+$meta_box_html_public_sans_token = ob_get_clean();
+gws_test_assert(strpos($meta_box_html_public_sans_token, 'la fiche publique du site') !== false, 'Boîte latérale, cheval public sans token : indique clairement que le partage utilise la fiche publique');
+gws_test_assert(strpos($meta_box_html_public_sans_token, 'Créer un lien de partage privé') === false, 'Boîte latérale, cheval public sans token : jamais de bouton "Créer" proposé (le lien privé n’est pas le mode principal)');
+gws_test_assert(strpos($meta_box_html_public_sans_token, 'Révoquer') === false, 'Boîte latérale, cheval public sans token : rien à révoquer, aucune action de révocation affichée');
 
+// --- État 2 : cheval PUBLIC, AVEC un ancien token -> toujours le message "fiche publique", PLUS
+// une mention discrète de l'ancien lien encore valide, avec la seule action "Révoquer" (jamais mis
+// en avant comme mode principal, jamais de "Créer"/"Régénérer") ---
 gwseq_horse_private_share_activate(510);
 ob_start();
 call_user_func($meta_box['callback'], get_post(510));
-$meta_box_html_actif = ob_get_clean();
-gws_test_assert(strpos($meta_box_html_actif, gwseq_horse_private_share_url(510)) !== false, 'Boîte latérale : l’URL de partage privé actuelle est affichée une fois active');
-gws_test_assert(strpos($meta_box_html_actif, 'Révoquer') !== false && strpos($meta_box_html_actif, 'Régénérer') !== false, 'Boîte latérale : actions Révoquer/Régénérer proposées une fois le partage privé actif');
-gws_test_assert(strpos($meta_box_html_actif, 'Créer un lien de partage privé') === false, 'Boîte latérale : le bouton de création initiale disparaît une fois un partage déjà actif (jamais les deux affichés en même temps)');
+$meta_box_html_public_avec_token = ob_get_clean();
+gws_test_assert(strpos($meta_box_html_public_avec_token, 'la fiche publique du site') !== false, 'Boîte latérale, cheval public AVEC token : le message "fiche publique" reste affiché en premier (pas remplacé par le token)');
+gws_test_assert(strpos($meta_box_html_public_avec_token, gwseq_horse_private_share_url(510)) !== false, 'Boîte latérale, cheval public AVEC token : l’ancien lien reste affiché (signalé), pas masqué');
+gws_test_assert(strpos($meta_box_html_public_avec_token, 'Révoquer') !== false, 'Boîte latérale, cheval public AVEC token : l’action Révoquer reste accessible');
+gws_test_assert(strpos($meta_box_html_public_avec_token, 'Créer un lien de partage privé') === false && strpos($meta_box_html_public_avec_token, 'Régénérer') === false, 'Boîte latérale, cheval public AVEC token : jamais "Créer"/"Régénérer" — le lien privé n’est PAS présenté comme le mode principal pour un cheval déjà public');
+gwseq_horse_private_share_revoke(510);
 
-// --- Un utilisateur qui ne peut pas éditer la fiche ne voit AUCUN contrôle de partage privé ---
+// --- État 3 : cheval NON PUBLIC, SANS token -> propose "Créer un lien de partage privé" ---
+gws_test_make_horse(513, 'Cheval Boite Partage Non Public', 1, array('post_status' => 'draft'));
+ob_start();
+call_user_func($meta_box['callback'], get_post(513));
+$meta_box_html_non_public_sans_token = ob_get_clean();
+gws_test_assert(strpos($meta_box_html_non_public_sans_token, 'Créer un lien de partage privé') !== false, 'Boîte latérale, cheval non public sans token : bouton de création proposé');
+gws_test_assert(strpos($meta_box_html_non_public_sans_token, 'Révoquer') === false, 'Boîte latérale, cheval non public sans token : aucune action de révocation proposée tant qu’il n’y a rien à révoquer');
+gws_test_assert(strpos($meta_box_html_non_public_sans_token, 'la fiche publique du site') === false, 'Boîte latérale, cheval non public sans token : jamais le message "fiche publique", puisqu’il n’y en a pas');
+
+// --- État 4 : cheval NON PUBLIC, AVEC token -> affiche l'URL privée + Régénérer/Révoquer ---
+gwseq_horse_private_share_activate(513);
+ob_start();
+call_user_func($meta_box['callback'], get_post(513));
+$meta_box_html_non_public_avec_token = ob_get_clean();
+gws_test_assert(strpos($meta_box_html_non_public_avec_token, gwseq_horse_private_share_url(513)) !== false, 'Boîte latérale, cheval non public AVEC token : l’URL de partage privé actuelle est affichée');
+gws_test_assert(strpos($meta_box_html_non_public_avec_token, 'Révoquer') !== false && strpos($meta_box_html_non_public_avec_token, 'Régénérer') !== false, 'Boîte latérale, cheval non public AVEC token : actions Régénérer/Révoquer proposées');
+gws_test_assert(strpos($meta_box_html_non_public_avec_token, 'Créer un lien de partage privé') === false, 'Boîte latérale, cheval non public AVEC token : le bouton de création initiale disparaît une fois un partage déjà actif');
+gwseq_horse_private_share_revoke(513);
+
+// --- Un utilisateur qui ne peut pas éditer la fiche ne voit AUCUN contrôle de partage privé,
+// quel que soit l'état de visibilité ---
 $GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
 $GLOBALS['__gwseq_test_security']['current_user_id'] = 2;
 ob_start();
@@ -733,7 +703,6 @@ call_user_func($meta_box['callback'], get_post(510));
 $meta_box_html_non_autorise = ob_get_clean();
 gws_test_assert(strpos($meta_box_html_non_autorise, 'Partage privé') === false, 'Boîte latérale : aucun contrôle de partage privé affiché à un utilisateur qui ne peut pas éditer cette fiche');
 gws_test_reset_security();
-gwseq_horse_private_share_revoke(510);
 
 // =====================================================================================
 // Bug runtime bloquant (premier test réel du Lot 1) — CAUSE RACINE : les actions de partage privé

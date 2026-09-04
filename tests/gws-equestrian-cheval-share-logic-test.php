@@ -480,31 +480,76 @@ gws_test_assert(gwseq_horse_private_share_is_active(60) === false, 'Partage priv
 gws_test_assert(gwseq_horse_private_share_url(60) === '', 'Partage privé : révocation -> plus aucune URL');
 gws_test_assert(gwseq_horse_private_share_find_cheval_id($token_60_regenere) === 0, 'Partage privé : révocation -> l’ancien token ne retrouve plus jamais le cheval');
 
-// --- gwseq_horse_share_fiche_info() : GWS détermine SEUL le lien approprié (§3), jamais à
-// l'utilisateur de choisir un type de permalink ---
-gws_test_make_horse(61, 'Cheval Public Seul'); // publish par défaut (gws_test_make_post())
-$info_public = gwseq_horse_share_fiche_info(61);
-gws_test_assert($info_public['type'] === 'publique' && $info_public['url'] === get_permalink(61), 'Fiche info : cheval publiquement visible sans partage privé -> lien PUBLIC normal');
+// =====================================================================================
+// AJUSTEMENT D'ARCHITECTURE (recette) — visibilité publique et existence d'un lien privé sont
+// DÉCOUPLÉES : la priorité "privé > public > aucun" initiale s'est révélée trop risquée (créer un
+// lien privé sur un cheval déjà publié rendait involontairement son permalink public inaccessible).
+// Nouvelle priorité : PUBLIC d'abord (si le cheval est réellement visible), sinon PRIVÉ (si un
+// token est actif), sinon AUCUN. Un token existant ne doit JAMAIS masquer une fiche publique
+// valide — les 8 scénarios ci-dessous couvrent explicitement chaque cas demandé.
+// =====================================================================================
 
+// --- 1. Cheval public SANS token -> public ---
+gws_test_make_horse(61, 'Cheval Public Seul'); // publish par défaut (gws_test_make_post())
+$info_public_sans_token = gwseq_horse_share_fiche_info(61);
+gws_test_assert($info_public_sans_token['type'] === 'publique' && $info_public_sans_token['url'] === get_permalink(61), 'Fiche info : cheval public sans token -> lien PUBLIC normal');
+
+// --- 2. Cheval public AVEC token -> le lien PUBLIC reste utilisé, la fiche publique reste
+// accessible (jamais de 404 publique causée UNIQUEMENT par l'existence d'un token) ---
+gwseq_horse_private_share_activate(61);
+gws_test_assert(gwseq_horse_private_share_is_active(61) === true, 'Pré-requis : le cheval public 61 porte bien un token actif pour ce scénario');
+$info_public_avec_token = gwseq_horse_share_fiche_info(61);
+gws_test_assert($info_public_avec_token['type'] === 'publique' && $info_public_avec_token['url'] === get_permalink(61), 'Fiche info : cheval public AVEC un token actif -> le lien reste PUBLIC (un token ne masque jamais une fiche publique valide)');
+gws_test_assert(gwseq_horse_is_publicly_viewable(61) === true, 'Visibilité publique : reste vraie pour un cheval publié même avec un token privé actif — jamais bloquée par l’existence d’un token (aucune "404 publique causée uniquement par l’existence d’un token")');
+
+// --- 8. bis : gwseq_horse_is_private_share_only() — le prédicat qui remplace l'ancienne priorité
+// "privé d'abord" : faux pour un cheval public même avec token, vrai seulement si NI public NI
+// autre chose ---
+gws_test_assert(gwseq_horse_is_private_share_only(61) === false, 'Mode partage privé exclusif : FAUX pour un cheval public, même avec un token actif (§ "ne doit plus modifier ni bloquer la fiche publique")');
+
+// --- 6. bis : passage public -> privé (dépublication d'un cheval qui a un ancien token) : le
+// token, laissé inchangé par la dépublication elle-même (aucune révocation automatique), redevient
+// le seul lien utilisable — exactement la règle "sinon, si un token privé actif existe -> URL
+// privée" ---
+$GLOBALS['__gwseq_test_posts'][61]['post_status'] = 'draft'; // dépublication (simulateur direct de statut, sans passer par une API de test dédiée)
+gws_test_assert(gwseq_horse_is_publicly_viewable(61) === false, 'Pré-requis : le cheval 61 n’est plus publiquement visible après dépublication');
+$info_devenu_prive = gwseq_horse_share_fiche_info(61);
+gws_test_assert($info_devenu_prive['type'] === 'privee' && $info_devenu_prive['url'] === gwseq_horse_private_share_url(61), 'Passage public -> privé : la fiche publique cesse d’être proposée, le token existant (jamais révoqué automatiquement) redevient utilisable immédiatement');
+gws_test_assert(gwseq_horse_is_private_share_only(61) === true, 'Mode partage privé exclusif : VRAI une fois le cheval dépublié, tant que son token reste actif');
+$GLOBALS['__gwseq_test_posts'][61]['post_status'] = 'publish'; // republication pour la suite du test
+gwseq_horse_private_share_revoke(61); // remis dans l'état "public sans token" pour la suite
+
+// --- 4. Cheval non public SANS token -> aucun lien (jamais accessible par accident, §2.C) ---
 gws_test_make_horse(62, 'Cheval Brouillon Seul', array('post_status' => 'draft'));
 $info_brouillon = gwseq_horse_share_fiche_info(62);
-gws_test_assert($info_brouillon['type'] === '' && $info_brouillon['url'] === '', 'Fiche info : brouillon sans partage privé -> aucun lien, jamais accessible par accident (§2.C)');
+gws_test_assert($info_brouillon['type'] === '' && $info_brouillon['url'] === '', 'Fiche info : cheval non public sans token -> aucun lien, jamais accessible par accident (§2.C)');
 
+// --- 3. Cheval non public AVEC token -> privé (logique explicite, jamais automatique) ---
 gwseq_horse_private_share_activate(62);
 $info_brouillon_prive = gwseq_horse_share_fiche_info(62);
-gws_test_assert($info_brouillon_prive['type'] === 'privee' && $info_brouillon_prive['url'] === gwseq_horse_private_share_url(62), 'Fiche info : un partage privé explicitement créé pour un brouillon fonctionne (§2.C — logique explicite, jamais automatique)');
-
-gwseq_horse_private_share_activate(61); // cheval PUBLIÉ qui active malgré tout un partage privé
-$info_public_devenu_prive = gwseq_horse_share_fiche_info(61);
-gws_test_assert($info_public_devenu_prive['type'] === 'privee', 'Fiche info : le partage privé prend TOUJOURS le pas sur un statut publié — un cheval ne "fuit" jamais son URL publique dès qu’un partage privé est activé pour lui (§2.B)');
-gwseq_horse_private_share_revoke(61); // remis dans l'état "public" pour la suite des tests
+gws_test_assert($info_brouillon_prive['type'] === 'privee' && $info_brouillon_prive['url'] === gwseq_horse_private_share_url(62), 'Fiche info : cheval non public AVEC token -> lien PRIVÉ (§2.C — logique explicite, jamais automatique)');
+gws_test_assert(gwseq_horse_is_private_share_only(62) === true, 'Mode partage privé exclusif : VRAI pour un brouillon avec token actif — seul cas où le traitement "privé" s’applique');
 
 // --- gwseq_get_horse_shareable_data() expose bien fiche_type, cohérent avec fiche_url ---
 $shareable_62 = gwseq_get_horse_shareable_data(62);
 gws_test_assert($shareable_62['fiche_type'] === 'privee' && $shareable_62['fiche_url'] === gwseq_horse_private_share_url(62) && $shareable_62['fiche_default_checked'] === true, 'Shareable : fiche_type "privee" exposé et cohérent avec fiche_url/fiche_default_checked');
+
+// --- 5. Passage privé -> public : la fiche publique doit devenir accessible, le partage utilise
+// désormais l'URL publique, MAIS le token n'est pas révoqué automatiquement (§ "ne pas casser les
+// liens déjà envoyés") ---
+$GLOBALS['__gwseq_test_posts'][62]['post_status'] = 'publish'; // publication du cheval 62
+$info_devenu_public = gwseq_horse_share_fiche_info(62);
+gws_test_assert($info_devenu_public['type'] === 'publique' && $info_devenu_public['url'] === get_permalink(62), 'Passage privé -> public : le partage utilise désormais l’URL PUBLIQUE, plus l’URL privée');
+gws_test_assert(gwseq_horse_private_share_is_active(62) === true, 'Passage privé -> public : le token existant N’EST PAS révoqué automatiquement par la seule publication (§ "ne pas révoquer automatiquement sans nécessité")');
+// --- 7. L'ancien token reste techniquement valide après ce passage (décision produit assumée :
+// "il peut rester valide pour ne pas casser les liens déjà envoyés") — la route /partage/{token}
+// continuerait donc de fonctionner pour ce cheval désormais public ---
+gws_test_assert(gwseq_horse_private_share_find_cheval_id(gwseq_horse_private_share_token(62)) === 62, 'Ancien token toujours valide après passage privé -> public : la recherche inverse le retrouve toujours (le lien déjà envoyé continue de fonctionner)');
+gws_test_assert(gwseq_horse_is_private_share_only(62) === false, 'Mode partage privé exclusif : redevient FAUX dès que le cheval est de nouveau public, même si son ancien token reste actif');
+
 gwseq_horse_private_share_revoke(62);
 $shareable_62_apres_revoke = gwseq_get_horse_shareable_data(62);
-gws_test_assert($shareable_62_apres_revoke['fiche_type'] === '' && $shareable_62_apres_revoke['fiche_url'] === '', 'Shareable : après révocation, fiche_type et fiche_url reviennent tous deux à vide (brouillon toujours inaccessible normalement)');
+gws_test_assert($shareable_62_apres_revoke['fiche_type'] === 'publique' && $shareable_62_apres_revoke['fiche_url'] === get_permalink(62), 'Shareable : après révocation d’un cheval désormais public, le lien PUBLIC reste proposé normalement (jamais de régression vers "aucun lien")');
 
 // --- Open Graph sur la route de partage privé (§4) : fonctionne, og:url pointe vers le lien
 // PRIVÉ effectivement partagé (jamais l'URL publique), et une balise noindex est ajoutée ---
@@ -527,6 +572,20 @@ ob_start();
 $GLOBALS['__gwseq_test_context'] = array('is_singular' => GWSEQ_CPT_CHEVAL, 'queried_id' => 63, 'query_vars' => array());
 gwseq_render_horse_og_meta();
 gws_test_assert(ob_get_clean() === '', 'Open Graph : un brouillon consulté HORS de sa route de partage privé (query_var absente) ne produit toujours aucune balise, même si un token existe par ailleurs pour lui');
+
+// --- Ajustement d'architecture : un cheval RÉELLEMENT PUBLIC visité via son ANCIEN lien
+// `/partage/{token}` (jamais révoqué automatiquement lors de sa publication) est traité comme la
+// fiche PUBLIQUE qu'il est devenu — og:url public, JAMAIS de noindex — cohérent avec
+// gwseq_horse_share_fiche_info() où la publication prend toujours le pas sur un token qui traîne ---
+$token_61_ancien = gwseq_horse_private_share_activate(61);
+gws_test_assert(gwseq_horse_is_publicly_viewable(61) === true, 'Pré-requis : le cheval 61 est bien public à ce stade (republié plus haut)');
+ob_start();
+$GLOBALS['__gwseq_test_context'] = array('is_singular' => GWSEQ_CPT_CHEVAL, 'queried_id' => 61, 'query_vars' => array('gwseq_partage_token' => $token_61_ancien));
+gwseq_render_horse_og_meta();
+$og_html_public_via_ancien_lien = ob_get_clean();
+gws_test_assert(strpos($og_html_public_via_ancien_lien, 'og:url" content="' . get_permalink(61) . '"') !== false, 'Open Graph : un cheval PUBLIC visité via un ancien lien privé affiche l’URL PUBLIQUE (og:url), jamais l’URL privée — la publication prend le pas sur le token');
+gws_test_assert(strpos($og_html_public_via_ancien_lien, 'noindex') === false, 'Open Graph : aucune balise noindex pour un cheval réellement public, même consulté via son ancien lien privé');
+gwseq_horse_private_share_revoke(61);
 
 // --- Aucune migration destructive : activer/révoquer un partage privé ne modifie JAMAIS le titre,
 // le statut, ni aucune autre donnée du cheval ---

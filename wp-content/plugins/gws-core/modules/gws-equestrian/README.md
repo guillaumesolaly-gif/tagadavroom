@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.28.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : visibilité public/privé (lien de partage privé `/partage/{token}`, révocable/régénérable, exclu recherche/archive/API REST y compris `/wp/v2/search` transversal/sitemap), vocabulaire "Inclure le lien vers la fiche" (GWS détermine seul le lien approprié), Open Graph fonctionnel aussi sur la route privée (og:url correct, noindex systématique, directives anti-cache explicites). Premier test réel : bug bloquant sur la création d'un lien privé corrigé à la cause racine (formulaires imbriqués dans l'écran d'édition WordPress, remplacés par des liens nonce-protégés, voir CHANGELOG.md 0.28.0). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + accès sans compte au lien privé, création/régénération/révocation du lien) avant d'engager le Lot 2.
+## État actuel : GWS Equestrian 0.29.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : visibilité publique et lien de partage privé (`/partage/{token}`, révocable/régénérable) désormais DÉCOUPLÉS — un token n'a plus jamais d'effet sur une fiche publique (permalink, recherche, archive, sitemap, API REST, tous nativement préservés par WordPress) ; le partage utilise toujours la fiche publique dès qu'elle est réellement visible, sinon le lien privé s'il est actif, sinon aucun lien ; boîte latérale "Partage" à quatre états explicites selon la visibilité réelle du cheval. Ajustement d'architecture suite à recette (voir CHANGELOG.md 0.29.0) après un correctif bloquant sur la création d'un lien privé (0.28.0). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + accès sans compte au lien privé, cheval public avec ancien token, passages public↔privé) avant d'engager le Lot 2.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -745,6 +745,24 @@ construction), exactement le schéma des actions de ligne natives de WordPress. 
 retour extraite dans `gwseq_horse_private_share_redirect_url_after_action()`, avec repli explicite
 vers la liste des Chevaux si `get_edit_post_link()` échoue exceptionnellement — jamais une URL vide
 ni le Tableau de bord générique. Voir `CHANGELOG.md` de ce dossier (0.28.0) pour le détail complet.
+
+**Ajustement d'architecture, visibilité publique vs lien privé (0.29.0).** La priorité "privé >
+public" retenue en 0.26.0 s'est révélée trop risquée en recette : créer un lien privé sur un
+cheval déjà publié rendait immédiatement son permalink public inaccessible en 404. Visibilité
+publique et existence d'un token sont désormais DÉCOUPLÉES : `gwseq_horse_share_fiche_info()`
+priorise maintenant PUBLIC d'abord (si le cheval est réellement visible), sinon PRIVÉ (si un token
+est actif), sinon aucun lien — un token qui traîne ne masque plus jamais une fiche publique
+valide. Nouveau prédicat `gwseq_horse_is_private_share_only()` (non public ET token actif), seul
+cas justifiant désormais un traitement "privé" (route dédiée, noindex, y compris dans l'Open
+Graph). En conséquence, deux mécanismes devenus incorrects sont RETIRÉS : le blocage du permalink
+normal (`gwseq_horse_private_share_block_normal_permalink()`, qui forçait un 404 dès qu'un token
+était actif, quel que soit le statut réel) et les cinq filtres d'exclusion recherche/sitemap/API
+REST (redondants avec le comportement natif de WordPress une fois qu'un cheval "partage privé
+exclusif" est, par construction, toujours non publié). Boîte latérale "Partage" à quatre états
+explicites selon la visibilité réelle (public sans token / public avec un ancien token, non mis en
+avant / non public sans token / non public avec token). Aucune révocation automatique du token
+lors d'un changement de statut, dans aucun sens. Voir `CHANGELOG.md` de ce dossier (0.29.0) pour le
+détail complet.
 
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et

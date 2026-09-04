@@ -5,6 +5,54 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.29.0 — Lot 1 « Partager & vendre » : ajustement d'architecture, visibilité publique vs lien privé
+
+Recette du correctif 0.28.0 : la priorité "privé > public" retenue pour `gwseq_horse_share_fiche_
+info()` s'est révélée trop risquée — créer un lien privé sur un cheval déjà publié rendait
+IMMÉDIATEMENT son permalink public inaccessible en 404, un utilisateur pouvait donc casser
+involontairement une page visible du site en cliquant simplement sur "Créer un lien de partage
+privé". Correctif d'architecture, pas un correctif ponctuel : la visibilité publique et
+l'existence d'un lien privé sont désormais DÉCOUPLÉES.
+
+**Nouvelle règle (`gwseq_horse_share_fiche_info()`, `includes/cheval-share.php`)** : PUBLIC
+d'abord si le cheval est réellement visible (un token existant, même actif, ne masque plus jamais
+une fiche publique valide), sinon PRIVÉ si un token est actif, sinon aucun lien. Nouveau prédicat
+`gwseq_horse_is_private_share_only($cheval_id)` (= non publiquement visible ET token actif) :
+seul ce mode précis justifie désormais un traitement "privé" (route dédiée, noindex) — remplace
+l'ancienne logique "un token = toujours privé" partout où elle était utilisée, y compris dans
+`gwseq_render_horse_og_meta()` (un cheval redevenu public, visité via son ancien lien
+`/partage/{token}`, affiche désormais l'Open Graph PUBLIC — og:url public, jamais de noindex).
+
+**Suppression du blocage du permalink normal** (`gwseq_horse_private_share_block_normal_
+permalink()`, `includes/cheval-share-admin.php`) : cette fonction forçait un 404 sur le permalink
+normal dès qu'un token était actif, quel que soit le statut réel — exactement le mécanisme à
+l'origine du problème. Retirée entièrement : un cheval non public reste déjà nativement
+inaccessible par son permalink normal (comportement WordPress natif, statut non "publish"), sans
+code supplémentaire.
+
+**Suppression des filtres d'exclusion recherche/sitemap/API REST** (`gwseq_horse_private_share_
+exclusion_meta_clause()` et les cinq filtres qui la réutilisaient — `rest_gwseq_cheval_query`,
+`rest_prepare_gwseq_cheval`, `wp_rest_search_query`, `wp_sitemaps_posts_query_args`,
+`pre_get_posts`) : ces filtres excluaient tout cheval PORTANT UN TOKEN de ces quatre surfaces,
+indépendamment de son statut réel — un cheval réellement public avec un ancien token qui traîne
+en aurait été exclu à tort, contraire à la nouvelle règle ("le token ne doit plus modifier ni
+bloquer la fiche publique"). Un cheval en mode "partage privé exclusif" étant par construction
+non publié (brouillon, privé...), WordPress l'exclut déjà NATIVEMENT de la recherche/l'archive/la
+taxonomie front-end (post_status restreint à "publish" par défaut), du sitemap natif
+(`WP_Sitemaps_Posts` ne requête jamais que les posts "publish"), et de l'API REST (le contrôleur
+applique `read_post`/le statut pour tout accès, direct ou listé) — sans code supplémentaire.
+Simplification nette du fichier de glue (retrait de ~145 lignes), cohérente avec le principe déjà
+établi du projet ("aucune logique parallèle à ce que WordPress fait déjà nativement").
+
+**Boîte latérale "Partage" adaptée à la visibilité RÉELLE du cheval**, quatre états explicites :
+public sans token (indique que le partage utilise la fiche publique) ; public AVEC un ancien
+token (même message, PLUS une mention discrète que ce vieux lien reste valide, seule action
+"Révoquer" — jamais présenté comme le mode principal, jamais de "Créer"/"Régénérer" proposés pour
+un cheval déjà public) ; non public sans token (propose "Créer un lien de partage privé") ; non
+public avec token (URL privée + Régénérer/Révoquer, inchangé). Le token n'est jamais révoqué
+automatiquement lors d'un changement de statut, dans aucun sens (§ "ne pas casser les liens déjà
+envoyés").
+
 ## 0.28.0 — Lot 1 « Partager & vendre » : correctif bloquant, création d'un lien privé
 
 Premier test réel du Lot 1 (0.27.0) : cliquer sur "Créer un lien de partage privé" dans la boîte

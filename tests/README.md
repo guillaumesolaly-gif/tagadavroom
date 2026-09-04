@@ -1194,3 +1194,36 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   scénario d'échec de `get_edit_post_link()`. Intégralité de la suite (21 fichiers PHP + 3 suites JS
   runtime) ré-exécutée après ce lot : aucune régression. Seuls deux fichiers touchés dans tout le
   dépôt (le fichier de glue et son test), conformément à la demande de ne rien développer d'autre.
+- **Lot 1 « Partager & vendre » : ajustement d'architecture, visibilité publique vs lien privé
+  (0.29.0)** : sans nouveau fichier de test. La priorité "privé > public" de `gwseq_horse_share_
+  fiche_info()` est inversée, et cinq fonctions/filtres devenus incorrects (blocage du permalink
+  normal, quatre filtres d'exclusion recherche/sitemap/REST) sont RETIRÉS — leurs tests dédiés le
+  sont donc aussi, remplacés par la couverture des huit scénarios explicitement demandés.
+  - `gws-equestrian-cheval-share-logic-test.php` (144 assertions au total) : les huit scénarios —
+    cheval public sans token -> public ; cheval public AVEC token -> le lien reste PUBLIC et
+    `gwseq_horse_is_publicly_viewable()` reste vraie (aucune "404 publique causée uniquement par
+    l'existence d'un token") ; cheval non public sans token -> aucun lien ; cheval non public AVEC
+    token -> privé ; passage public -> privé (le token existant, jamais révoqué automatiquement,
+    redevient utilisable immédiatement) ; passage privé -> public (le partage utilise désormais
+    l'URL publique) ; l'ancien token reste techniquement valide après ce passage (`gwseq_horse_
+    private_share_find_cheval_id()` le retrouve toujours) ; et le nouveau prédicat `gwseq_horse_is_
+    private_share_only()` vérifié dans chacun de ces cas (faux dès que le cheval est public, même
+    avec un token, vrai seulement quand ni l'un ni l'autre canal normal n'existe). Cohérence de
+    `gwseq_render_horse_og_meta()` également couverte : un cheval public visité via un ancien lien
+    privé affiche désormais l'URL PUBLIQUE, jamais de noindex.
+  - `gws-equestrian-cheval-share-admin-test.php` (103 assertions au total) : les quatre états de la
+    boîte latérale "Partage" adaptés à la visibilité RÉELLE (public sans token : message "fiche
+    publique", jamais de bouton "Créer" ; public AVEC un ancien token : même message en premier,
+    l'ancien lien signalé avec la seule action "Révoquer", jamais "Créer"/"Régénérer" mis en avant ;
+    non public sans token : bouton de création ; non public AVEC token : URL privée + Régénérer/
+    Révoquer, inchangé). Les tests des filtres retirés (exclusion meta_query, REST liste/direct/
+    recherche transversale, sitemap, `pre_get_posts`) sont supprimés avec le code qu'ils
+    couvraient — cette exclusion n'est plus nécessaire, WordPress l'assure déjà nativement dès
+    qu'un cheval "partage privé exclusif" est, par construction, toujours non publié.
+
+  Deux correctifs vérifiés par retrait/restauration : rétablir la priorité "privé > public" fait
+  échouer exactement les deux assertions qui dépendent de la nouvelle priorité (cheval public avec
+  token, passage privé -> public) ; rétablir l'ancienne condition "public seulement si aucun token"
+  dans le rendu de la boîte latérale fait échouer exactement les deux assertions "cheval public
+  AVEC token" qui vérifient que le message de fiche publique reste affiché en premier. Intégralité
+  de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée après ce lot : aucune régression.

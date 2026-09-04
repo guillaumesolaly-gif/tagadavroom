@@ -388,8 +388,16 @@ function gwseq_render_horse_share_meta_box($post) {
  * acheteurs précis, via un lien secret révocable/régénérable. Toute la logique de token
  * (génération/lecture/activation/révocation/URL/recherche inverse) vit dans includes/cheval-
  * share.php (couche métier, réutilisable sans connaître wp-admin) ; ce fichier-ci ne fait QUE la
- * glue WordPress : règle de réécriture, blocage du permalink normal, rendu de la route privée,
- * exclusion recherche/sitemap/REST, et les deux actions de formulaire classique (activer/révoquer).
+ * glue WordPress : règle de réécriture, rendu de la route privée, et les deux actions nonce-
+ * protégées (activer/révoquer).
+ *
+ * AJUSTEMENT D'ARCHITECTURE (recette) : visibilité publique et existence d'un token privé sont
+ * DÉCOUPLÉES — un token n'a plus JAMAIS d'effet sur une fiche publique (ni blocage du permalink
+ * normal, ni exclusion recherche/sitemap/REST, toutes deux RETIRÉES ci-dessous — voir la note à
+ * leur ancien emplacement). La boîte latérale "Partage" (gwseq_render_horse_private_share_controls()
+ * ci-dessous) adapte son vocabulaire à la visibilité RÉELLE du cheval (gwseq_horse_is_publicly_
+ * viewable(), includes/cheval-share.php) : jamais présenté comme le mode principal pour un cheval
+ * déjà public.
  * ----------------------------------------------------------------------------------------- */
 
 const GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR = 'gwseq_partage_token';
@@ -417,12 +425,34 @@ const GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION = 'gwseq_partage_prive';
  * fréquentes de l'écran Partager (recherche, cases à cocher) qui, elles, justifient l'AJAX. Rendu
  * dans la MÊME boîte latérale que le bouton "Partager ce cheval" — jamais une seconde interface.
  */
+/**
+ * Quatre états, adaptés à la visibilité RÉELLE du cheval (ajustement d'architecture, recette) —
+ * jamais au seul fait qu'un token existe :
+ *   1. public, sans token       -> indique que le partage utilise déjà la fiche publique.
+ *   2. public, AVEC un ancien token qui traîne -> même message qu'en 1 (jamais présenté comme le
+ *      mode principal), plus une mention discrète que ce vieux lien reste valide, avec la seule
+ *      action "Révoquer" (jamais "Créer"/"Régénérer" mis en avant pour un cheval déjà public).
+ *   3. non public, sans token   -> propose "Créer un lien de partage privé".
+ *   4. non public, AVEC token   -> affiche l'URL privée + Régénérer/Révoquer, comme avant.
+ */
 function gwseq_render_horse_private_share_controls($post) {
   if (!current_user_can('edit_post', $post->ID)) return;
 
+  $is_public = gwseq_horse_is_publicly_viewable($post->ID);
   $is_active = gwseq_horse_private_share_is_active($post->ID);
   echo '<hr>';
   echo '<p><strong>' . esc_html__('Partage privé', 'gws-core') . '</strong></p>';
+
+  if ($is_public) {
+    echo '<p class="description">' . esc_html__('Ce cheval est publié : le partage utilise la fiche publique du site.', 'gws-core') . '</p>';
+    if ($is_active) {
+      $url = gwseq_horse_private_share_url($post->ID);
+      echo '<p class="description">' . esc_html__('Un ancien lien de partage privé reste valide (créé avant la publication) — il n’est plus nécessaire, mais continue de fonctionner pour ne pas casser un lien déjà envoyé.', 'gws-core') . '</p>';
+      echo '<p><input type="text" readonly value="' . esc_attr($url) . '" style="width:100%;" onclick="this.select();"></p>';
+      echo '<p><a class="button" href="' . esc_url(gwseq_horse_private_share_action_url('revoquer', $post->ID)) . '">' . esc_html__('Révoquer cet ancien lien', 'gws-core') . '</a></p>';
+    }
+    return;
+  }
 
   if ($is_active) {
     $url = gwseq_horse_private_share_url($post->ID);
@@ -525,27 +555,6 @@ function gwseq_horse_private_share_register_rewrite() {
 add_action('init', 'gwseq_horse_private_share_register_rewrite');
 
 /**
- * Bloque le permalink public NORMAL d'un cheval dès qu'un partage privé est actif pour lui (§2.B :
- * "ne doit pas être accessible via le permalink public normal du cheval") — seul `/partage/{token}`
- * reste une porte d'entrée valide. L'auteur/éditeur de la fiche continue de la voir normalement
- * (édition, prévisualisation) : ce blocage ne vise QUE le visiteur qui ne peut pas éditer la fiche.
- */
-function gwseq_horse_private_share_block_normal_permalink() {
-  if (!is_singular(GWSEQ_CPT_CHEVAL) || is_preview()) return;
-  $cheval_id = get_queried_object_id();
-  if (!gwseq_horse_private_share_is_active($cheval_id)) return;
-  if (current_user_can('edit_post', $cheval_id)) return;
-
-  global $wp_query;
-  $wp_query->set_404();
-  status_header(404);
-  nocache_headers();
-  include get_404_template();
-  exit;
-}
-add_action('template_redirect', 'gwseq_horse_private_share_block_normal_permalink', 5);
-
-/**
  * Directives HTTP à envoyer sur TOUTE réponse de la route de partage privé (trouvée ou non) —
  * correctif de recette : une révocation/régénération doit être immédiate, y compris en présence
  * d'un cache plein-page, d'un reverse proxy ou d'un CDN placé devant WordPress ; sans directive
@@ -619,86 +628,18 @@ function gwseq_horse_private_share_render() {
 add_action('template_redirect', 'gwseq_horse_private_share_render', 10);
 
 /* -------------------------------------------------------------------------------------------
- * Exclusion recherche/archive/sitemap/REST (§16 : "aucune fuite via recherche publique/archive/
- * taxonomie/API REST") — un cheval en partage privé actif ne doit apparaître dans AUCUN de ces
- * canaux, quel que soit son post_status réel. Une seule définition de "exclu du public" (jamais
- * plusieurs clauses qui pourraient diverger), réutilisée par les quatre points d'accroche
- * ci-dessous.
+ * Exclusion recherche/archive/sitemap/REST — RETIRÉE (ajustement d'architecture, recette) : ces
+ * filtres excluaient tout cheval PORTANT UN TOKEN, indépendamment de son statut réel — exactement
+ * ce que la nouvelle règle interdit ("un token ne doit jamais dégrader ni masquer une fiche
+ * publique valide"). Un cheval en mode "partage privé EXCLUSIF" (voir gwseq_horse_is_private_share_
+ * only(), includes/cheval-share.php) est PAR CONSTRUCTION dans un post_status autre que "publish"
+ * (brouillon, privé...) : WordPress exclut déjà NATIVEMENT ce statut de la recherche/archive/
+ * taxonomie front-end, du sitemap natif (WP_Sitemaps_Posts ne requête jamais que les posts
+ * "publish"), et de l'API REST (le contrôleur applique `read_post`/statut pour tout accès direct ou
+ * listé) — sans aucun code supplémentaire. Un cheval réellement PUBLIC, lui, doit désormais
+ * apparaître normalement partout, même avec un ancien token qui traîne : ces filtres l'en auraient
+ * empêché à tort.
  * ----------------------------------------------------------------------------------------- */
-
-function gwseq_horse_private_share_exclusion_meta_clause() {
-  return array(
-    'relation' => 'OR',
-    array('key' => GWSEQ_HORSE_PRIVATE_SHARE_META_KEY, 'compare' => 'NOT EXISTS'),
-    array('key' => GWSEQ_HORSE_PRIVATE_SHARE_META_KEY, 'value' => '', 'compare' => '='),
-  );
-}
-
-/**
- * Requêtes REST de LISTE uniquement (`/wp/v2/gwseq_cheval?...`) — un accès DIRECT par identifiant
- * ne passe pas par ce filtre, voir gwseq_horse_private_share_filter_rest_response() ci-dessous.
- */
-function gwseq_horse_private_share_filter_rest_query($args, $request) {
-  $meta_query = (array) ($args['meta_query'] ?? array());
-  $meta_query[] = gwseq_horse_private_share_exclusion_meta_clause();
-  $args['meta_query'] = $meta_query;
-  return $args;
-}
-add_filter('rest_' . GWSEQ_CPT_CHEVAL . '_query', 'gwseq_horse_private_share_filter_rest_query', 10, 2);
-
-function gwseq_horse_private_share_filter_rest_response($response, $post, $request) {
-  if (gwseq_horse_private_share_is_active($post->ID) && !current_user_can('edit_post', $post->ID)) {
-    return new WP_Error('gwseq_horse_private', __('Cheval introuvable.', 'gws-core'), array('status' => 404));
-  }
-  return $response;
-}
-add_filter('rest_prepare_' . GWSEQ_CPT_CHEVAL, 'gwseq_horse_private_share_filter_rest_response', 10, 3);
-
-/**
- * Le contrôleur transversal `/wp/v2/search` (`WP_REST_Search_Controller`, y compris avec
- * `subtype=gwseq_cheval`) est un point d'entrée REST COMPLÈTEMENT SÉPARÉ du contrôleur CRUD par
- * post_type filtré ci-dessus (`rest_{post_type}_query`/`rest_prepare_{post_type}`) : il ne passe
- * JAMAIS par ces deux filtres, et interroge par défaut TOUS les post types publics interrogeables
- * (Cheval inclus) même sans `subtype` explicite. Il force en dur `post_status => 'publish'`, ce qui
- * suffit à exclure un cheval resté en brouillon — mais PAS un cheval en partage privé actif dont le
- * statut est resté "publish" (cas volontairement permis, voir gwseq_horse_share_fiche_info() : le
- * partage privé prend le pas sur le statut sans exiger un changement de statut). Même clause
- * d'exclusion réutilisée ici, correctif de recette (§ "aucune fuite via une surface REST publique
- * transversale").
- */
-function gwseq_horse_private_share_filter_rest_search_query($args, $request) {
-  $meta_query = (array) ($args['meta_query'] ?? array());
-  $meta_query[] = gwseq_horse_private_share_exclusion_meta_clause();
-  $args['meta_query'] = $meta_query;
-  return $args;
-}
-add_filter('wp_rest_search_query', 'gwseq_horse_private_share_filter_rest_search_query', 10, 2);
-
-function gwseq_horse_private_share_filter_sitemap_args($args, $post_type) {
-  if ($post_type !== GWSEQ_CPT_CHEVAL) return $args;
-  $meta_query = (array) ($args['meta_query'] ?? array());
-  $meta_query[] = gwseq_horse_private_share_exclusion_meta_clause();
-  $args['meta_query'] = $meta_query;
-  return $args;
-}
-add_filter('wp_sitemaps_posts_query_args', 'gwseq_horse_private_share_filter_sitemap_args', 10, 2);
-
-/**
- * Recherche publique/archive/taxonomie Cheval UNIQUEMENT (jamais appliqué à une requête sans
- * rapport, pour ne pas ajouter une jointure meta inutile à chaque page du site) — jamais notre
- * propre route `/partage/{token}`, qui doit au contraire toujours réussir à trouver le cheval.
- */
-function gwseq_horse_private_share_filter_public_query($query) {
-  if (is_admin() || !$query->is_main_query()) return;
-  if (get_query_var(GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR, '') !== '') return;
-  $touches_cheval = in_array(GWSEQ_CPT_CHEVAL, (array) $query->get('post_type'), true) || $query->is_post_type_archive(GWSEQ_CPT_CHEVAL);
-  if (!$query->is_search() && !$touches_cheval && !$query->is_tax(GWSEQ_TAX_CATEGORIE_CHEVAL)) return;
-
-  $meta_query = (array) $query->get('meta_query');
-  $meta_query[] = gwseq_horse_private_share_exclusion_meta_clause();
-  $query->set('meta_query', $meta_query);
-}
-add_action('pre_get_posts', 'gwseq_horse_private_share_filter_public_query');
 
 /* -------------------------------------------------------------------------------------------
  * Assets — uniquement sur l'écran Partager.

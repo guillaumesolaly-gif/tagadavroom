@@ -1,5 +1,18 @@
 # Changelog — GWS Starter
 
+## 1.32.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Lot 1 « Partager & vendre » : ajustement d'architecture, visibilité publique vs lien privé
+  (GWS Equestrian 0.29.0).** La priorité "privé > public" retenue initialement s'est révélée trop
+  risquée : créer un lien privé sur un cheval déjà publié rendait immédiatement son permalink
+  public inaccessible en 404. Visibilité publique et existence d'un lien privé sont désormais
+  DÉCOUPLÉES : un token n'a plus jamais d'effet sur une fiche publique (permalink, recherche,
+  sitemap, API REST) — le partage utilise toujours la fiche publique dès qu'elle est réellement
+  visible, l'ancien token restant valide sans être mis en avant. Simplification du code de glue
+  (retrait des filtres devenus redondants avec le comportement natif de WordPress). Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.29.0) pour le détail
+  complet.
+
 ## 1.31.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Lot 1 « Partager & vendre » : correctif bloquant, création d'un lien privé (GWS Equestrian
