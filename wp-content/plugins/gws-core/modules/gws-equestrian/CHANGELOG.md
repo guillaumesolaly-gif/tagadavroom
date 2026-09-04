@@ -5,6 +5,48 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.36.0 — Diagnostic instrumenté de performance (anomalie de recette : ~38 s à l'ouverture d'une fiche Cheval)
+
+Recette du Lot 2B validée intégralement (voir CR de recette) — le modèle Sélection est confirmé
+sans mécanisme supplémentaire de révocation/régénération. Une anomalie de performance INDÉPENDANTE
+des Sélections a été signalée pendant cette même recette : l'ouverture d'une fiche Cheval en édition
+prend environ 38 secondes, sur un site n'en comptant qu'une grosse dizaine. Aucun correctif n'est
+livré dans cette version — sur demande explicite ("ne pas commencer par modifier ou refactorer le
+code sur la base d'une hypothèse"), cette version livre UNIQUEMENT l'instrumentation nécessaire à un
+diagnostic réel, avant tout correctif.
+
+**Audit statique préalable (sans instrumentation, sur le code source du module)** : aucun appel
+HTTP sortant (`wp_remote_*`, `curl_exec`, oEmbed) nulle part dans `gws-core` ni le thème
+`gws-starter` ; aucun `sleep()`/`usleep()` ; aucune régénération synchrone d'image
+(`wp_generate_attachment_metadata()` absent) ; les quatre seules requêtes `posts_per_page => -1` du
+module sont chacune une SEULE requête `WP_Query`/`meta_query`, correctement scopées à leur propre
+écran (jamais déclenchées sur l'écran d'édition Cheval) ; la résolution du pedigree est bornée par
+construction (au plus 31 fiches à profondeur 3, mémoïsée) et protégée contre les cycles — aucune de
+ces pistes n'explique, à elle seule, un ordre de grandeur de 38 secondes sur une grosse dizaine de
+chevaux. Cet audit ne remplace pas une mesure réelle : aucun environnement WordPress+MySQL n'étant
+disponible pour la reproduire ailleurs, seule une instrumentation exécutée sur le site réel de
+recette (Local) peut confirmer la cause exacte.
+
+**Nouveau fichier `includes/cheval-perf-diagnostic.php`** (local/développement uniquement, même
+garde que le module QA de gws-core — entièrement inerte en production, aucun coût, aucune sortie) :
+chronomètre CHAQUE boîte méta de la fiche Cheval individuellement (enveloppement non invasif du
+callback déjà enregistré dans `$wp_meta_boxes` — mêmes arguments, même sortie, même valeur de
+retour, seule une mesure est ajoutée autour de l'appel existant), les étapes du cycle de chargement
+WordPress (`plugins_loaded`/`init`/`admin_init`/`current_screen`/`admin_enqueue_scripts`/
+`admin_footer`), et compare ce total au temps RÉEL écoulé depuis le tout début de la requête HTTP
+(`$_SERVER['REQUEST_TIME_FLOAT']`) — pour déterminer si le temps perdu se trouve dans ce que GWS
+peut voir, ou ailleurs (cœur WordPress, un autre plugin, le thème, l'environnement Local
+lui-même). Rapport affiché en pied de l'écran d'édition et, si `WP_DEBUG_LOG` est actif, journalisé.
+Portée strictement limitée à l'écran d'édition d'une fiche Cheval précise (jamais la liste, jamais
+un autre CPT, jamais le front) — aucun effet sur le comportement métier déjà validé (Cheval,
+diffusion, Sélections).
+
+**Aucun changement de comportement métier dans cette version** : aucune migration, aucune
+réécriture de données, aucun changement du modèle Cheval/diffusion/Sélections. Tests dédiés
+vérifiant explicitement cette propriété (le callback enveloppé produit une sortie et une valeur de
+retour STRICTEMENT identiques à l'original) et le gating local/développement, sur le même modèle que
+`qa-toggle-logic-test.php`.
+
 ## 0.35.0 — Correctif URL de suppression + Lot 2B (Sélection : modification + page destinataire)
 
 Recette du Lot 2A : la création fonctionne et conserve bien les chevaux sélectionnés. Trois

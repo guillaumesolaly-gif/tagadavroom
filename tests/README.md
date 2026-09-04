@@ -1502,3 +1502,23 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   dédiées (entité HTML présente, `parse_str()` ne retrouvant plus les paramètres correctement),
   aucune autre assertion affectée. Intégralité de la suite (24 fichiers PHP + 4 suites JS runtime)
   ré-exécutée après restauration : aucune régression.
+- **Diagnostic instrumenté de performance — fiche Cheval (0.36.0)** — un NOUVEAU fichier de test,
+  `gws-equestrian-cheval-perf-diagnostic-test.php`, dédié à `includes/cheval-perf-diagnostic.php`
+  (anomalie de recette : ~38 s à l'ouverture d'une fiche Cheval). Ce fichier ne modifiant AUCUN
+  comportement métier, la suite vérifie PRÉCISÉMENT cette propriété plutôt que des données : gating
+  local/développement strict (en production, AUCUN hook n'est enregistré — vérifié directement,
+  plus un sous-processus PHP séparé pour tester le cas "local" sans jamais re-`require` un fichier
+  déjà chargé dans le processus principal, même contrainte que `qa-toggle-logic-test.php`) ;
+  portée de `gwseq_perf_diag_active_screen()` strictement limitée à l'écran d'édition d'UNE fiche
+  Cheval précise (jamais la liste, jamais un autre type de contenu, jamais hors admin) ;
+  **PROPRIÉTÉ CRITIQUE** de `gwseq_perf_diag_wrap_meta_boxes()` — le callback enveloppé produit une
+  sortie HTML et une valeur de retour STRICTEMENT identiques à l'original, et reçoit EXACTEMENT les
+  mêmes arguments (`$post`, `$box`) qu'un appel WordPress natif, la seule différence observable
+  étant l'entrée de chronométrage enregistrée en mémoire ; aucune modification de `$wp_meta_boxes`
+  hors de l'écran actif ; rapport lisible (en-tête, chaque boîte nommément listée avec son temps en
+  millisecondes, conteneur DOM identifiable jamais mêlé au reste de la fiche).
+
+  Correctif vérifié par retrait/restauration : faire perdre la valeur de retour du callback
+  enveloppé (bug introduit délibérément) fait échouer exactement l'assertion "PROPRIÉTÉ CRITIQUE"
+  dédiée à la valeur de retour, aucune autre assertion affectée. Intégralité de la suite
+  (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après restauration : aucune régression.

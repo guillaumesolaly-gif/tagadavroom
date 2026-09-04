@@ -1,5 +1,20 @@
 # Changelog — GWS Starter
 
+## 1.39.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Diagnostic instrumenté de performance (GWS Equestrian 0.36.0).** Le Lot 2B (Sélections) est
+  validé intégralement en recette. Une anomalie de performance indépendante a été signalée à la
+  même occasion : l'ouverture d'une fiche Cheval en édition prend environ 38 secondes sur un site
+  n'en comptant qu'une grosse dizaine. Aucun correctif n'est livré dans cette version — sur demande
+  explicite, seule l'instrumentation nécessaire à un diagnostic réel est livrée avant tout
+  correctif. Un audit statique préalable (aucun appel réseau sortant, aucune régénération
+  synchrone d'image, aucune requête non bornée déclenchée sur cet écran, pedigree borné et
+  mémoïsé) n'a rien trouvé de concluant à lui seul dans le code — un nouveau fichier local/
+  développement uniquement (même garde que le module QA, aucun effet en production) chronomètre
+  désormais chaque boîte méta de la fiche et chaque étape du chargement, sans jamais modifier leur
+  comportement réel, pour localiser précisément la cause sur le site réel de recette. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.36.0) pour le détail complet.
+
 ## 1.38.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif URL de suppression + Lot 2B, Sélection de chevaux (GWS Equestrian 0.35.0).**
