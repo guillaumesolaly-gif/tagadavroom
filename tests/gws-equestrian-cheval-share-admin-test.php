@@ -142,11 +142,14 @@ function get_option($name, $default = false) {
 // --- Sécurité : nonce, capacités générales ET spécifiques à une fiche (méta-capacité `edit_post`,
 // fidèle au modèle natif WordPress : un auteur peut toujours éditer SES PROPRES fiches, seule
 // `edit_others_posts` autorise l'accès aux fiches d'un AUTRE auteur) ---
-$GLOBALS['__gwseq_test_security'] = array('nonce_valid' => true, 'edit_posts' => true, 'edit_others_posts' => true, 'current_user_id' => 1);
+$GLOBALS['__gwseq_test_security'] = array('nonce_valid' => true, 'edit_posts' => true, 'edit_others_posts' => true, 'current_user_id' => 1, 'is_revision' => false);
 function check_ajax_referer($action, $arg_name = false, $die = true) {
   if (!$GLOBALS['__gwseq_test_security']['nonce_valid']) throw new Gws_Test_Wp_Die_Exception('nonce invalide');
   return true;
 }
+// Même convention que le reste de la suite (ex. gws-equestrian-cheval-logic-test.php) : piloté par
+// le test, jamais un état WordPress réel simulé lourdement.
+function wp_is_post_revision($post_id) { return $GLOBALS['__gwseq_test_security']['is_revision']; }
 function current_user_can($cap, $post_id = null) {
   $security = $GLOBALS['__gwseq_test_security'];
   if ($cap === 'edit_posts') return $security['edit_posts'];
@@ -343,7 +346,7 @@ gws_test_assert(strpos($placeholder_html_extra, 'gwseq-media-placeholder') !== f
 // =====================================================================================
 
 function gws_test_reset_security() {
-  $GLOBALS['__gwseq_test_security'] = array('nonce_valid' => true, 'edit_posts' => true, 'edit_others_posts' => true, 'current_user_id' => 1);
+  $GLOBALS['__gwseq_test_security'] = array('nonce_valid' => true, 'edit_posts' => true, 'edit_others_posts' => true, 'current_user_id' => 1, 'is_revision' => false);
 }
 
 $GLOBALS['__gwseq_test_security']['nonce_valid'] = false;
@@ -661,6 +664,7 @@ $meta_box_html_public_sans_token = ob_get_clean();
 gws_test_assert(strpos($meta_box_html_public_sans_token, 'la fiche publique du site') !== false, 'Boîte latérale, cheval public sans token : indique clairement que le partage utilise la fiche publique');
 gws_test_assert(strpos($meta_box_html_public_sans_token, 'Créer un lien de partage privé') === false, 'Boîte latérale, cheval public sans token : jamais de bouton "Créer" proposé (le lien privé n’est pas le mode principal)');
 gws_test_assert(strpos($meta_box_html_public_sans_token, 'Révoquer') === false, 'Boîte latérale, cheval public sans token : rien à révoquer, aucune action de révocation affichée');
+gws_test_assert(strpos($meta_box_html_public_sans_token, 'Statut de diffusion') !== false && strpos($meta_box_html_public_sans_token, 'Visible sur le site') !== false, 'Boîte latérale, cheval public sans token : statut de diffusion affiché en vocabulaire métier ("Visible sur le site", jamais "Publié")');
 
 // --- État 2 : cheval PUBLIC, AVEC un ancien token -> toujours le message "fiche publique", PLUS
 // une mention discrète de l'ancien lien encore valide, avec la seule action "Révoquer" (jamais mis
@@ -673,6 +677,7 @@ gws_test_assert(strpos($meta_box_html_public_avec_token, 'la fiche publique du s
 gws_test_assert(strpos($meta_box_html_public_avec_token, gwseq_horse_private_share_url(510)) !== false, 'Boîte latérale, cheval public AVEC token : l’ancien lien reste affiché (signalé), pas masqué');
 gws_test_assert(strpos($meta_box_html_public_avec_token, 'Révoquer') !== false, 'Boîte latérale, cheval public AVEC token : l’action Révoquer reste accessible');
 gws_test_assert(strpos($meta_box_html_public_avec_token, 'Créer un lien de partage privé') === false && strpos($meta_box_html_public_avec_token, 'Régénérer') === false, 'Boîte latérale, cheval public AVEC token : jamais "Créer"/"Régénérer" — le lien privé n’est PAS présenté comme le mode principal pour un cheval déjà public');
+gws_test_assert(strpos($meta_box_html_public_avec_token, 'Visible sur le site') !== false, 'Boîte latérale, cheval public AVEC token : statut de diffusion "Visible sur le site" — un ancien token qui traîne ne change jamais l’état métier affiché');
 gwseq_horse_private_share_revoke(510);
 
 // --- État 3 : cheval NON PUBLIC, SANS token -> propose "Créer un lien de partage privé" ---
@@ -683,6 +688,14 @@ $meta_box_html_non_public_sans_token = ob_get_clean();
 gws_test_assert(strpos($meta_box_html_non_public_sans_token, 'Créer un lien de partage privé') !== false, 'Boîte latérale, cheval non public sans token : bouton de création proposé');
 gws_test_assert(strpos($meta_box_html_non_public_sans_token, 'Révoquer') === false, 'Boîte latérale, cheval non public sans token : aucune action de révocation proposée tant qu’il n’y a rien à révoquer');
 gws_test_assert(strpos($meta_box_html_non_public_sans_token, 'la fiche publique du site') === false, 'Boîte latérale, cheval non public sans token : jamais le message "fiche publique", puisqu’il n’y en a pas');
+gws_test_assert(strpos($meta_box_html_non_public_sans_token, 'Statut de diffusion') !== false && strpos($meta_box_html_non_public_sans_token, 'En préparation') !== false, 'Boîte latérale, cheval non public sans token : statut de diffusion "En préparation" (jamais "Brouillon")');
+// Audit UX/métier (§2, risque de données non sauvegardées) : "Créer" est désormais un VRAI bouton
+// de soumission du formulaire d'édition (jamais un lien admin-post.php) — cliquer dessus sauvegarde
+// réellement la fiche avant d'activer le partage privé, voir gwseq_horse_private_share_maybe_
+// activate_on_save() plus bas.
+gws_test_assert(strpos($meta_box_html_non_public_sans_token, '<button type="submit"') !== false, 'Boîte latérale, cheval non public sans token : "Créer" est un vrai bouton de soumission (<button type="submit">), jamais un lien');
+gws_test_assert(strpos($meta_box_html_non_public_sans_token, 'name="' . GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD . '"') !== false, 'Boîte latérale, cheval non public sans token : le bouton "Créer" porte bien le champ que gwseq_horse_private_share_maybe_activate_on_save() surveille');
+gws_test_assert(strpos($meta_box_html_non_public_sans_token, 'action=gwseq_partage_prive_activer') === false, 'Boîte latérale, cheval non public sans token : "Créer" ne pointe plus vers admin-post.php (cause racine du risque de données non sauvegardées)');
 
 // --- État 4 : cheval NON PUBLIC, AVEC token -> affiche l'URL privée + Régénérer/Révoquer ---
 gwseq_horse_private_share_activate(513);
@@ -692,6 +705,10 @@ $meta_box_html_non_public_avec_token = ob_get_clean();
 gws_test_assert(strpos($meta_box_html_non_public_avec_token, gwseq_horse_private_share_url(513)) !== false, 'Boîte latérale, cheval non public AVEC token : l’URL de partage privé actuelle est affichée');
 gws_test_assert(strpos($meta_box_html_non_public_avec_token, 'Révoquer') !== false && strpos($meta_box_html_non_public_avec_token, 'Régénérer') !== false, 'Boîte latérale, cheval non public AVEC token : actions Régénérer/Révoquer proposées');
 gws_test_assert(strpos($meta_box_html_non_public_avec_token, 'Créer un lien de partage privé') === false, 'Boîte latérale, cheval non public AVEC token : le bouton de création initiale disparaît une fois un partage déjà actif');
+gws_test_assert(strpos($meta_box_html_non_public_avec_token, 'Statut de diffusion') !== false && strpos($meta_box_html_non_public_avec_token, 'Diffusion privée') !== false, 'Boîte latérale, cheval non public AVEC token : statut de diffusion "Diffusion privée" (jamais "Brouillon")');
+gws_test_assert(strpos($meta_box_html_non_public_avec_token, '<button type="submit"') !== false && strpos($meta_box_html_non_public_avec_token, 'name="' . GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD . '"') !== false, 'Boîte latérale, cheval non public AVEC token : "Régénérer" est également un vrai bouton de soumission (même correctif que "Créer")');
+gws_test_assert(strpos($meta_box_html_non_public_avec_token, 'action=gwseq_partage_prive_activer') === false, 'Boîte latérale, cheval non public AVEC token : "Régénérer" ne pointe plus vers admin-post.php');
+gws_test_assert(strpos($meta_box_html_non_public_avec_token, 'action=gwseq_partage_prive_revoquer') !== false, 'Boîte latérale, cheval non public AVEC token : "Révoquer" reste un lien admin-post.php (aucun risque de fausse impression de fraîcheur pour cette action)');
 gwseq_horse_private_share_revoke(513);
 
 // --- Un utilisateur qui ne peut pas éditer la fiche ne voit AUCUN contrôle de partage privé,
@@ -718,7 +735,7 @@ gws_test_reset_security();
 // --- Régression : plus JAMAIS de <form> dans cette boîte, dans AUCUN état (garde-fou explicite
 // contre la cause racine ci-dessus, qui ne se voit qu'en HTML réellement rendu dans un navigateur —
 // jamais dans un test qui se contente de vérifier la présence d'un texte de bouton) ---
-gws_test_make_horse(511, 'Cheval Sans Form Imbrique', 1);
+gws_test_make_horse(511, 'Cheval Sans Form Imbrique', 1, array('post_status' => 'draft'));
 ob_start();
 call_user_func($meta_box['callback'], get_post(511));
 $meta_box_html_sans_partage = ob_get_clean();
@@ -728,8 +745,9 @@ gwseq_horse_private_share_activate(511);
 ob_start();
 call_user_func($meta_box['callback'], get_post(511));
 $meta_box_html_avec_partage = ob_get_clean();
-gws_test_assert(stripos($meta_box_html_avec_partage, '<form') === false, 'Boîte latérale : aucun <form> imbriqué non plus une fois le partage privé actif (Régénérer/Révoquer)');
-gws_test_assert(substr_count($meta_box_html_avec_partage, '<a class="button"') + substr_count($meta_box_html_avec_partage, 'class="button') >= 2, 'Boîte latérale : Régénérer et Révoquer sont bien rendus comme des liens (<a>), jamais comme des boutons de formulaire');
+gws_test_assert(stripos($meta_box_html_avec_partage, '<form') === false, 'Boîte latérale : aucun <form> imbriqué non plus une fois le partage privé actif (Régénérer/Révoquer) — la cause racine ici était un <form> IMBRIQUÉ, jamais un <button> ordinaire du formulaire d’édition existant (voir audit UX/métier ci-dessous, qui introduit précisément un tel bouton pour "Régénérer")');
+gws_test_assert(strpos($meta_box_html_avec_partage, '<button type="submit"') !== false, 'Boîte latérale : "Régénérer" est un vrai bouton de soumission du formulaire d’édition existant (audit UX/métier — sauvegarde la fiche avant de régénérer), pas un <form> imbriqué');
+gws_test_assert(strpos($meta_box_html_avec_partage, 'Révoquer') !== false, 'Boîte latérale : "Révoquer" reste accessible (lien admin-post.php, inchangé)');
 gwseq_horse_private_share_revoke(511);
 
 // --- gwseq_horse_private_share_action_url() : construction de l'URL cliquée, testable isolément ---
@@ -800,6 +818,96 @@ $GLOBALS['__gwseq_enqueued'] = array();
 $GLOBALS['__gwseq_test_screen'] = (object) array('id' => 'edit-gwseq_cheval');
 gwseq_enqueue_horse_share_admin_assets('edit.php');
 gws_test_assert(!in_array('gwseq-cheval-share-admin', $GLOBALS['__gwseq_enqueued'], true), 'Assets : jamais chargés sur un autre écran (ex. la liste native des chevaux)');
+
+// =====================================================================================
+// Audit UX/métier (§2) — gwseq_horse_private_share_maybe_activate_on_save() : greffée sur le hook
+// NATIF save_post_{cpt}, jamais une seconde requête admin-post.php ni une logique de sauvegarde
+// dupliquée. Vérifie ici précisément les gardes qui protègent cette activation, dans le MÊME ordre
+// que gwseq_save_cheval_meta() (cheval-fields.php) pour rester cohérent avec le reste du module.
+// =====================================================================================
+
+gws_test_assert(
+  in_array('gwseq_horse_private_share_maybe_activate_on_save', $GLOBALS['__gwseq_test_actions']['save_post_' . GWSEQ_CPT_CHEVAL] ?? array(), true),
+  'Sauvegarde-avant-partage : gwseq_horse_private_share_maybe_activate_on_save() bien greffée sur le hook NATIF save_post_{cpt} (jamais un second point d’entrée admin-post.php)'
+);
+
+gws_test_make_horse(520, 'Cheval Sauvegarde Avant Partage', 1, array('post_status' => 'draft'));
+
+// --- Champ absent du $_POST (sauvegarde normale de la fiche, ex. "Enregistrer le brouillon" tel
+// quel, sans avoir cliqué "Créer") -> aucune activation, jamais un effet de bord inattendu ---
+$_POST = array();
+gwseq_horse_private_share_maybe_activate_on_save(520);
+gws_test_assert(gwseq_horse_private_share_is_active(520) === false, 'Sauvegarde-avant-partage : une sauvegarde normale de la fiche (champ absent) n’active jamais le partage privé par accident');
+
+// --- Champ présent -> active RÉELLEMENT le partage privé, exactement comme un clic direct sur
+// gwseq_horse_private_share_activate() (même fonction métier, aucune duplication) ---
+$_POST = array(GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD => '1');
+gwseq_horse_private_share_maybe_activate_on_save(520);
+gws_test_assert(gwseq_horse_private_share_is_active(520) === true, 'Sauvegarde-avant-partage : le champ soumis par le bouton "Créer" déclenche bien l’activation du partage privé, greffée sur la sauvegarde réelle de la fiche');
+$token_520_initial = gwseq_horse_private_share_token(520);
+
+// --- Régénérer réutilise le MÊME champ/même fonction (cohérent avec le bouton "Régénérer" ci-dessus,
+// qui réutilise lui aussi l'action "activer") -> nouveau token, l'ancien cesse de fonctionner ---
+$_POST = array(GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD => '1');
+gwseq_horse_private_share_maybe_activate_on_save(520);
+gws_test_assert(gwseq_horse_private_share_token(520) !== $token_520_initial, 'Sauvegarde-avant-partage : ressoumettre le même champ régénère bien un nouveau token (même opération que "Créer", §"Créer ET Régénérer réutilisent la même action")');
+
+// --- Un utilisateur qui ne peut pas éditer CETTE fiche ne peut jamais activer son partage privé par
+// ce mécanisme, même si le champ est présent (défense en profondeur — post.php aurait de toute façon
+// déjà bloqué la sauvegarde elle-même avant d'arriver ici, mais ce garde reste testable isolément) ---
+gwseq_horse_private_share_revoke(520);
+$GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
+$GLOBALS['__gwseq_test_security']['current_user_id'] = 2;
+$_POST = array(GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD => '1');
+gwseq_horse_private_share_maybe_activate_on_save(520);
+gws_test_assert(gwseq_horse_private_share_is_active(520) === false, 'Sauvegarde-avant-partage : un utilisateur sans droit d’édition sur cette fiche ne peut jamais activer son partage privé par ce mécanisme');
+gws_test_reset_security();
+
+// --- Révision : jamais d'activation sur une révision (même garde que gwseq_save_cheval_meta()) ---
+$GLOBALS['__gwseq_test_security']['is_revision'] = true;
+$_POST = array(GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD => '1');
+gwseq_horse_private_share_maybe_activate_on_save(520);
+gws_test_assert(gwseq_horse_private_share_is_active(520) === false, 'Sauvegarde-avant-partage : aucune activation lors de la sauvegarde d’une révision');
+gws_test_reset_security();
+$_POST = array();
+
+// =====================================================================================
+// Audit UX/métier (§4) — gwseq_cheval_admin_list_post_states() : remplace "— Brouillon" par l'état
+// MÉTIER pour le seul CPT Cheval, jamais pour un autre contenu WordPress (scopé, §4 : "sans altérer
+// les autres contenus WordPress").
+// =====================================================================================
+
+gws_test_assert(
+  in_array('gwseq_cheval_admin_list_post_states', $GLOBALS['__gwseq_test_filters']['display_post_states'] ?? array(), true),
+  'Liste Chevaux : gwseq_cheval_admin_list_post_states() bien greffée sur le filtre natif display_post_states'
+);
+
+gws_test_make_horse(530, 'Cheval Liste En Preparation', 1, array('post_status' => 'draft'));
+$states_en_preparation = gwseq_cheval_admin_list_post_states(array('draft' => 'Brouillon'), get_post(530));
+gws_test_assert($states_en_preparation === array('gwseq_diffusion' => 'En préparation'), 'Liste Chevaux : brouillon sans token -> "En préparation" REMPLACE intégralement "Brouillon" natif, jamais cumulé avec lui');
+
+gwseq_horse_private_share_activate(530);
+$states_diffusion_privee = gwseq_cheval_admin_list_post_states(array('draft' => 'Brouillon'), get_post(530));
+gws_test_assert($states_diffusion_privee === array('gwseq_diffusion' => 'Diffusion privée'), 'Liste Chevaux : brouillon AVEC token actif -> "Diffusion privée", plus jamais présenté comme un simple brouillon inachevé (§4 de la demande)');
+gwseq_horse_private_share_revoke(530);
+
+gws_test_make_horse(531, 'Cheval Liste Visible', 1); // publish par défaut
+$states_visible = gwseq_cheval_admin_list_post_states(array('sticky' => 'À la une'), get_post(531));
+gws_test_assert($states_visible === array(), 'Liste Chevaux : cheval visible sur le site -> aucun état affiché, exactement comme WordPress n’affiche déjà rien à côté d’un contenu publié');
+
+$autre_post = (object) array('ID' => 900, 'post_type' => 'page');
+$states_autre_type = gwseq_cheval_admin_list_post_states(array('draft' => 'Brouillon'), $autre_post);
+gws_test_assert($states_autre_type === array('draft' => 'Brouillon'), 'Liste Chevaux : jamais appliqué à un autre type de contenu (scopé au seul CPT Cheval, §4 — "sans altérer les autres contenus WordPress")');
+
+// --- DOING_AUTOSAVE : testé en TOUT DERNIER, même contrainte que le reste de la suite (constante
+// PHP réelle, ne peut être définie qu'une seule fois par processus — resterait sinon "vraie" pour
+// tous les tests précédents si définie plus tôt) ---
+gws_test_make_horse(521, 'Cheval Autosave Partage', 1, array('post_status' => 'draft'));
+define('DOING_AUTOSAVE', true);
+$_POST = array(GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD => '1');
+gwseq_horse_private_share_maybe_activate_on_save(521);
+gws_test_assert(gwseq_horse_private_share_is_active(521) === false, 'Sauvegarde-avant-partage : aucune activation pendant un autosave WordPress (même garde que gwseq_save_cheval_meta())');
+$_POST = array();
 
 echo ($failures === 0 ? 'Tous les tests sont passés.' : "$failures test(s) en échec.") . "\n";
 exit($failures === 0 ? 0 : 1);

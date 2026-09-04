@@ -398,6 +398,13 @@ function gwseq_render_horse_share_meta_box($post) {
  * ci-dessous) adapte son vocabulaire à la visibilité RÉELLE du cheval (gwseq_horse_is_publicly_
  * viewable(), includes/cheval-share.php) : jamais présenté comme le mode principal pour un cheval
  * déjà public.
+ *
+ * AUDIT UX/MÉTIER (recette suivante) : la boîte affiche désormais explicitement l'état MÉTIER de la
+ * fiche ("En préparation"/"Diffusion privée"/"Visible sur le site" — gwseq_horse_diffusion_state(),
+ * includes/cheval-share.php — jamais "Brouillon"/"Publié"), et les boutons "Créer"/"Régénérer" sont
+ * de VRAIS boutons de soumission du formulaire d'édition (plus des liens admin-post.php) afin de
+ * toujours enregistrer correctement la fiche avant d'activer le partage privé — voir
+ * gwseq_horse_private_share_maybe_activate_on_save() plus bas pour le détail et sa cause racine.
  * ----------------------------------------------------------------------------------------- */
 
 const GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR = 'gwseq_partage_token';
@@ -426,47 +433,95 @@ const GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION = 'gwseq_partage_prive';
  * dans la MÊME boîte latérale que le bouton "Partager ce cheval" — jamais une seconde interface.
  */
 /**
- * Quatre états, adaptés à la visibilité RÉELLE du cheval (ajustement d'architecture, recette) —
- * jamais au seul fait qu'un token existe :
- *   1. public, sans token       -> indique que le partage utilise déjà la fiche publique.
- *   2. public, AVEC un ancien token qui traîne -> même message qu'en 1 (jamais présenté comme le
- *      mode principal), plus une mention discrète que ce vieux lien reste valide, avec la seule
- *      action "Révoquer" (jamais "Créer"/"Régénérer" mis en avant pour un cheval déjà public).
- *   3. non public, sans token   -> propose "Créer un lien de partage privé".
- *   4. non public, AVEC token   -> affiche l'URL privée + Régénérer/Révoquer, comme avant.
+ * Nom du champ soumis par les boutons "Créer"/"Régénérer" ci-dessous (audit UX/métier — §2 : risque
+ * de données non sauvegardées). Vit dans le formulaire d'édition standard de WordPress (aucun nonce
+ * séparé nécessaire : ce formulaire est déjà protégé par le nonce natif `update-post_{id}`, vérifié
+ * par post.php AVANT même de déclencher save_post — voir gwseq_horse_private_share_maybe_activate_
+ * on_save() plus bas).
+ */
+const GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD = 'gwseq_partage_prive_submit_activer';
+
+/**
+ * Trois états MÉTIER (gwseq_horse_diffusion_state(), includes/cheval-share.php — fonction centrale
+ * réutilisée telle quelle, jamais recalculée ici), adaptés à la visibilité RÉELLE du cheval, jamais
+ * au seul fait qu'un token existe :
+ *   1. Visible sur le site               -> indique que le partage utilise déjà la fiche publique ;
+ *      un ancien token qui traînerait encore n'est JAMAIS présenté comme le mode principal, seule
+ *      l'action "Révoquer" reste proposée (§ ajustement d'architecture, jamais remis en cause ici).
+ *   2. Diffusion privée (non public + token actif) -> affiche l'URL privée + Régénérer/Révoquer.
+ *   3. En préparation (non public + aucun token)    -> propose "Créer un lien de partage privé".
+ * Le libellé de cet état est affiché explicitement en tête de boîte (§3 de l'audit UX/métier :
+ * vocabulaire métier, jamais "Brouillon"/"Publié").
  */
 function gwseq_render_horse_private_share_controls($post) {
   if (!current_user_can('edit_post', $post->ID)) return;
 
-  $is_public = gwseq_horse_is_publicly_viewable($post->ID);
-  $is_active = gwseq_horse_private_share_is_active($post->ID);
+  $state = gwseq_horse_diffusion_state($post->ID);
   echo '<hr>';
   echo '<p><strong>' . esc_html__('Partage privé', 'gws-core') . '</strong></p>';
+  echo '<p class="description"><strong>' . esc_html__('Statut de diffusion :', 'gws-core') . '</strong> ' . esc_html(gwseq_horse_diffusion_state_label($state)) . '</p>';
 
-  if ($is_public) {
-    echo '<p class="description">' . esc_html__('Ce cheval est publié : le partage utilise la fiche publique du site.', 'gws-core') . '</p>';
-    if ($is_active) {
+  if ($state === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE) {
+    echo '<p class="description">' . esc_html__('Ce cheval est visible sur le site : le partage utilise la fiche publique du site.', 'gws-core') . '</p>';
+    if (gwseq_horse_private_share_is_active($post->ID)) {
       $url = gwseq_horse_private_share_url($post->ID);
-      echo '<p class="description">' . esc_html__('Un ancien lien de partage privé reste valide (créé avant la publication) — il n’est plus nécessaire, mais continue de fonctionner pour ne pas casser un lien déjà envoyé.', 'gws-core') . '</p>';
+      echo '<p class="description">' . esc_html__('Un ancien lien de partage privé reste valide (créé avant que la fiche soit visible sur le site) — il n’est plus nécessaire, mais continue de fonctionner pour ne pas casser un lien déjà envoyé.', 'gws-core') . '</p>';
       echo '<p><input type="text" readonly value="' . esc_attr($url) . '" style="width:100%;" onclick="this.select();"></p>';
       echo '<p><a class="button" href="' . esc_url(gwseq_horse_private_share_action_url('revoquer', $post->ID)) . '">' . esc_html__('Révoquer cet ancien lien', 'gws-core') . '</a></p>';
     }
     return;
   }
 
-  if ($is_active) {
+  if ($state === GWSEQ_HORSE_DIFFUSION_PRIVEE) {
     $url = gwseq_horse_private_share_url($post->ID);
     echo '<p class="description">' . esc_html__('Ce cheval est accessible uniquement via ce lien secret, jamais publiquement (recherche, catalogue, sitemap).', 'gws-core') . '</p>';
     echo '<p><input type="text" readonly value="' . esc_attr($url) . '" style="width:100%;" onclick="this.select();"></p>';
     echo '<p>';
-    echo '<a class="button" style="margin-right:6px;" href="' . esc_url(gwseq_horse_private_share_action_url('activer', $post->ID)) . '">' . esc_html__('Régénérer (invalide l’ancien lien)', 'gws-core') . '</a>';
+    echo '<button type="submit" class="button" style="margin-right:6px;" name="' . esc_attr(GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD) . '" value="1">' . esc_html__('Régénérer (invalide l’ancien lien)', 'gws-core') . '</button>';
     echo '<a class="button" href="' . esc_url(gwseq_horse_private_share_action_url('revoquer', $post->ID)) . '">' . esc_html__('Révoquer', 'gws-core') . '</a>';
     echo '</p>';
+    echo '<p class="description">' . esc_html__('Enregistre également les modifications en cours de cette fiche.', 'gws-core') . '</p>';
   } else {
     echo '<p class="description">' . esc_html__('Envoyer ce cheval à des acheteurs précis sans l’afficher publiquement sur le site.', 'gws-core') . '</p>';
-    echo '<p><a class="button button-secondary" href="' . esc_url(gwseq_horse_private_share_action_url('activer', $post->ID)) . '">' . esc_html__('Créer un lien de partage privé', 'gws-core') . '</a></p>';
+    echo '<p><button type="submit" class="button button-secondary" name="' . esc_attr(GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD) . '" value="1">' . esc_html__('Créer un lien de partage privé', 'gws-core') . '</button></p>';
+    echo '<p class="description">' . esc_html__('Enregistre également les modifications en cours de cette fiche.', 'gws-core') . '</p>';
   }
 }
+
+/**
+ * AUDIT UX/MÉTIER — §2 : risque de données non sauvegardées. CAUSE RACINE identifiée en recette :
+ * "Créer un lien de partage privé"/"Régénérer" étaient rendus comme de simples liens `<a>` vers
+ * admin-post.php (navigation GET immédiate, hors du formulaire d'édition) — si l'utilisateur avait
+ * modifié des champs de la fiche (identité, commercialisation...) sans avoir cliqué "Enregistrer"
+ * au préalable, ces modifications étaient PERDUES au moment du clic, sans qu'il en soit informé : il
+ * pouvait croire à tort que "sa fiche vient d'être mise en diffusion privée" alors que ses dernières
+ * modifications n'avaient jamais atteint la base.
+ *
+ * CORRECTIF RETENU (sauvegarder correctement AVANT l'activation, plutôt que bloquer l'action) : les
+ * deux boutons ci-dessus sont désormais de VRAIS `<button type="submit">` du MÊME formulaire
+ * d'édition `<form id="post">` (contrairement à "Révoquer", resté un lien admin-post.php — révoquer
+ * un accès ne prétend jamais refléter des données à jour, aucun risque de fausse impression pour
+ * cette action précise). Cliquer dessus soumet donc RÉELLEMENT toute la fiche vers post.php, exactement
+ * comme n'importe quelle sauvegarde, ce qui déclenche nativement `save_post_{cpt}` — les mêmes hooks
+ * qu'un enregistrement normal (gwseq_save_cheval_meta() compris), SANS AUCUNE ligne de logique de
+ * persistance dupliquée ici. Une fois la fiche réellement enregistrée par ce mécanisme NATIF,
+ * cette fonction (greffée sur ce MÊME hook, priorité 20 — après la sauvegarde des champs métier)
+ * active/régénère le partage privé : jamais un second aller-retour, jamais de requête admin-post.php
+ * séparée pour ces deux actions. Volontairement PAS une simulation de clic sur "Enregistrer le
+ * brouillon" (aucun JavaScript ne déclenche un autre bouton à la place de l'utilisateur) : le champ
+ * `GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD` est sa propre action explicite, portée par son propre
+ * bouton, qui se trouve simplement produire, comme effet de bord assumé et documenté, une
+ * sauvegarde réelle et complète de la fiche.
+ */
+function gwseq_horse_private_share_maybe_activate_on_save($post_id) {
+  if (empty($_POST[GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD])) return;
+  if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+  if (function_exists('wp_is_post_revision') && wp_is_post_revision($post_id)) return;
+  if (!current_user_can('edit_post', $post_id)) return;
+
+  gwseq_horse_private_share_activate($post_id);
+}
+add_action('save_post_' . GWSEQ_CPT_CHEVAL, 'gwseq_horse_private_share_maybe_activate_on_save', 20);
 
 /**
  * Construit l'URL nonce-protégée d'une action de partage privé — POINT UNIQUE de construction,

@@ -691,6 +691,29 @@ function gwseq_cheval_admin_column_content($column, $post_id) {
 add_action('manage_' . GWSEQ_CPT_CHEVAL . '_posts_custom_column', 'gwseq_cheval_admin_column_content', 10, 2);
 
 /**
+ * Audit UX/métier — le mot-clé "— Brouillon" que WordPress affiche nativement à côté du nom d'une
+ * fiche non publiée (display_post_states(), natif à TOUS les post types) ne fait aucune différence
+ * entre une fiche simplement inachevée et une fiche volontairement mise en "Diffusion privée" (§4 de
+ * la demande) : pour l'utilisateur métier, présenter les deux de la même façon laisse croire à tort
+ * qu'un cheval déjà envoyé à des acheteurs via son lien privé est resté "un brouillon inachevé".
+ *
+ * Solution SCOPÉE au seul CPT Cheval (jamais un changement du comportement natif WordPress pour les
+ * autres contenus, y compris les autres post types métier du module) : ce filtre remplace
+ * INTÉGRALEMENT l'état affiché par le SEUL état métier centralisé (gwseq_horse_diffusion_state(),
+ * includes/cheval-share.php — même fonction que la boîte "Partage", jamais un second calcul).
+ * "Visible sur le site" (fiche réellement publique) n'affiche RIEN, exactement comme WordPress
+ * n'affiche déjà rien à côté d'un article publié.
+ */
+function gwseq_cheval_admin_list_post_states($post_states, $post) {
+  if (!$post || $post->post_type !== GWSEQ_CPT_CHEVAL) return $post_states;
+
+  $state = gwseq_horse_diffusion_state($post->ID);
+  if ($state === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE) return array();
+  return array('gwseq_diffusion' => gwseq_horse_diffusion_state_label($state));
+}
+add_filter('display_post_states', 'gwseq_cheval_admin_list_post_states', 10, 2);
+
+/**
  * Années de naissance RÉELLEMENT présentes parmi les chevaux (§2 de la demande : "éviter une
  * énorme liste arbitraire d'années inutilisées"), triées décroissant (années récentes en premier).
  * Requête directe (années distinctes, pas un jeu de données borné à l'avance) — jamais un

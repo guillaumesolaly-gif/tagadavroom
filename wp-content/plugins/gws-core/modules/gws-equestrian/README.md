@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.29.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : visibilité publique et lien de partage privé (`/partage/{token}`, révocable/régénérable) désormais DÉCOUPLÉS — un token n'a plus jamais d'effet sur une fiche publique (permalink, recherche, archive, sitemap, API REST, tous nativement préservés par WordPress) ; le partage utilise toujours la fiche publique dès qu'elle est réellement visible, sinon le lien privé s'il est actif, sinon aucun lien ; boîte latérale "Partage" à quatre états explicites selon la visibilité réelle du cheval. Ajustement d'architecture suite à recette (voir CHANGELOG.md 0.29.0) après un correctif bloquant sur la création d'un lien privé (0.28.0). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + accès sans compte au lien privé, cheval public avec ancien token, passages public↔privé) avant d'engager le Lot 2.
+## État actuel : GWS Equestrian 0.30.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : visibilité publique et lien de partage privé (`/partage/{token}`, révocable/régénérable) DÉCOUPLÉS — un token n'a plus jamais d'effet sur une fiche publique ; le partage utilise toujours la fiche publique dès qu'elle est réellement visible, sinon le lien privé s'il est actif, sinon aucun lien. Trois états métier explicites ("En préparation"/"Diffusion privée"/"Visible sur le site", jamais le vocabulaire WordPress `Brouillon/Publié`), fonction centrale `gwseq_horse_diffusion_state()` réutilisable par un futur écran mobile ; boîte latérale "Partage" affichant ce statut, avec des boutons "Créer"/"Régénérer" qui sauvegardent désormais réellement la fiche avant d'activer le partage privé (vrais boutons de soumission du formulaire d'édition, jamais un simple lien admin-post.php qui perdait silencieusement des modifications non enregistrées) ; liste `Chevaux → Tous les chevaux` n'affichant plus "— Brouillon" pour une fiche volontairement en Diffusion privée. Ajustement UX/métier suite à recette (voir CHANGELOG.md 0.30.0), après un ajustement d'architecture (0.29.0) suite à un correctif bloquant sur la création d'un lien privé (0.28.0). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + accès sans compte au lien privé, cheval public avec ancien token, passages public↔privé, sauvegarde avant partage) avant d'engager le Lot 2.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -763,6 +763,28 @@ explicites selon la visibilité réelle (public sans token / public avec un anci
 avant / non public sans token / non public avec token). Aucune révocation automatique du token
 lors d'un changement de statut, dans aucun sens. Voir `CHANGELOG.md` de ce dossier (0.29.0) pour le
 détail complet.
+
+**Ajustement UX/métier, statut de diffusion et sauvegarde (0.30.0).** Recette du 0.29.0 concluante,
+mais deux problèmes produit identifiés. (1) Vocabulaire : le client ne doit jamais avoir à
+comprendre `Brouillon/Publié`. Trois états métier centralisés dans une fonction unique,
+`gwseq_horse_diffusion_state()` (includes/cheval-share.php, réutilisable telle quelle par un futur
+écran mobile), dérivés des DEUX mêmes mécanismes natifs déjà en place (aucun statut personnalisé
+créé) : **En préparation** (non public, aucun token), **Diffusion privée** (non public, token
+actif), **Visible sur le site** (fiche publique — un ancien token qui traînerait ne change jamais
+cet état). (2) Sauvegarde : les boutons "Créer"/"Régénérer" un lien de partage privé naviguaient
+directement vers `admin-post.php`, hors du formulaire d'édition — toute modification de la fiche
+non encore enregistrée était donc perdue au clic, sans que l'utilisateur en soit informé. Corrigé
+en transformant ces deux boutons en VRAIS `<button type="submit">` du même formulaire d'édition
+(jamais une simulation de clic sur "Enregistrer le brouillon", jamais une duplication de la logique
+de sauvegarde) : le clic soumet réellement la fiche vers `post.php`, ce qui déclenche nativement
+`save_post_{cpt}` ; `gwseq_horse_private_share_maybe_activate_on_save()` (includes/cheval-share-
+admin.php), greffée sur ce même hook, active/régénère alors le partage privé. "Révoquer" reste un
+simple lien `admin-post.php` (révoquer un accès ne prétend jamais refléter des données à jour).
+Boîte "Partage" affichant désormais le statut de diffusion en vocabulaire métier. Liste
+`Chevaux → Tous les chevaux` : nouveau filtre `display_post_states` scopé au seul CPT Cheval
+(`gwseq_cheval_admin_list_post_states()`, includes/cheval-fields.php) remplaçant "— Brouillon" par
+l'état métier réel, sans toucher aux autres contenus WordPress. Voir `CHANGELOG.md` de ce dossier
+(0.30.0) pour le détail complet.
 
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et

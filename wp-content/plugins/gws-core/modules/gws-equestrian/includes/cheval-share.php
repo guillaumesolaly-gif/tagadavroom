@@ -276,6 +276,47 @@ function gwseq_horse_is_private_share_only($cheval_id) {
 }
 
 /**
+ * AUDIT UX/MÉTIER (recette suivante) : le client ne doit jamais avoir à comprendre le vocabulaire
+ * WordPress `Brouillon/Publié` pour savoir où en est une fiche. En interne, on conserve strictement
+ * les DEUX SEULS mécanismes natifs déjà en place (`post_status`/`post_password` via
+ * gwseq_horse_is_publicly_viewable(), et le token via gwseq_horse_private_share_is_active()) —
+ * aucun statut personnalisé créé pour ça (`register_post_status()` volontairement absent : pas de
+ * nécessité démontrée, cf. gwseq_horse_is_private_share_only() ci-dessus qui suffisait déjà à couvrir
+ * le même besoin). Trois états MÉTIER, dérivés de ces deux mécanismes, exactement dans cet ordre de
+ * priorité (une fiche publique reste "Visible sur le site" même si un ancien token traîne encore —
+ * §5 de l'ajustement d'architecture précédent, jamais remis en cause ici) :
+ *   1. Visible sur le site   -> gwseq_horse_is_publicly_viewable() vrai.
+ *   2. Diffusion privée      -> pas publiquement visible, MAIS un token actif existe
+ *                                (= gwseq_horse_is_private_share_only()).
+ *   3. En préparation        -> ni l'un ni l'autre (brouillon jamais partagé, à aucun titre).
+ * Fonction UNIQUE et centralisée (§ de la demande : "le futur écran mobile puisse utiliser
+ * exactement la même logique") — tout consommateur (boîte BO, liste d'administration, un jour REST/
+ * mobile) doit appeler CETTE fonction, jamais recalculer indépendamment ces conditions.
+ */
+const GWSEQ_HORSE_DIFFUSION_EN_PREPARATION = 'en_preparation';
+const GWSEQ_HORSE_DIFFUSION_PRIVEE = 'diffusion_privee';
+const GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE = 'visible_site';
+
+function gwseq_horse_diffusion_state($cheval_id) {
+  if (gwseq_horse_is_publicly_viewable($cheval_id)) return GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE;
+  if (gwseq_horse_private_share_is_active($cheval_id)) return GWSEQ_HORSE_DIFFUSION_PRIVEE;
+  return GWSEQ_HORSE_DIFFUSION_EN_PREPARATION;
+}
+
+/**
+ * Libellé métier affiché au professionnel — jamais "Brouillon"/"Publié" (vocabulaire WordPress),
+ * jamais recomposé ailleurs qu'ici (BO et liste d'administration réutilisent ce SEUL libellé).
+ */
+function gwseq_horse_diffusion_state_label($state) {
+  $labels = array(
+    GWSEQ_HORSE_DIFFUSION_EN_PREPARATION => __('En préparation', 'gws-core'),
+    GWSEQ_HORSE_DIFFUSION_PRIVEE => __('Diffusion privée', 'gws-core'),
+    GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE => __('Visible sur le site', 'gws-core'),
+  );
+  return $labels[$state] ?? '';
+}
+
+/**
  * Crée OU régénère le partage privé d'un cheval — toujours la même opération (voir le commentaire
  * de section ci-dessus) : un appelant n'a jamais besoin de distinguer les deux cas.
  */

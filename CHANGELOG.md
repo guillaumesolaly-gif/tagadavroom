@@ -1,5 +1,20 @@
 # Changelog — GWS Starter
 
+## 1.33.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Lot 1 « Partager & vendre » : ajustement UX/métier, statut de diffusion et sauvegarde
+  (GWS Equestrian 0.30.0).** Deux correctifs produit révélés par la recette du 0.29.0. (1) Trois
+  états métier explicites — "En préparation" / "Diffusion privée" / "Visible sur le site" — dérivés
+  des mécanismes WordPress natifs déjà en place, jamais un vocabulaire technique exposé au client ;
+  fonction centrale unique `gwseq_horse_diffusion_state()`, réutilisable telle quelle par un futur
+  écran mobile. (2) Les boutons "Créer"/"Régénérer" un lien de partage privé sauvegardent désormais
+  réellement la fiche avant l'activation (vrais boutons de soumission du formulaire d'édition,
+  hook natif `save_post_{cpt}`, aucune duplication de logique) : fini le risque de croire une fiche
+  "mise en diffusion" alors que les dernières modifications n'avaient jamais été enregistrées. La
+  liste `Chevaux → Tous les chevaux` n'affiche plus "— Brouillon" pour une fiche volontairement en
+  Diffusion privée. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.30.0)
+  pour le détail complet.
+
 ## 1.32.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Lot 1 « Partager & vendre » : ajustement d'architecture, visibilité publique vs lien privé

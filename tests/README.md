@@ -1227,3 +1227,42 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   dans le rendu de la boîte latérale fait échouer exactement les deux assertions "cheval public
   AVEC token" qui vérifient que le message de fiche publique reste affiché en premier. Intégralité
   de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée après ce lot : aucune régression.
+- **Lot 1 « Partager & vendre » : ajustement UX/métier, statut de diffusion et sauvegarde
+  (0.30.0)** : sans nouveau fichier de test — deux problèmes produit révélés par la recette du
+  0.29.0, traités dans les deux fichiers de test déjà existants.
+  - `gws-equestrian-cheval-share-logic-test.php` (154 assertions au total, +10) : nouvelle fonction
+    centrale `gwseq_horse_diffusion_state()` (+ `gwseq_horse_diffusion_state_label()`) vérifiée sur
+    les trois états et leurs transitions — brouillon sans token -> "En préparation" ; token actif
+    sur un cheval non public -> "Diffusion privée" ; passage à `publish` -> "Visible sur le site"
+    même avec un ancien token toujours actif (la priorité publique de l'ajustement d'architecture
+    0.29.0 n'est jamais remise en cause) ; repassage non public avec le même token encore actif ->
+    de nouveau "Diffusion privée" ; révocation -> retour à "En préparation" ; cheval publié sans
+    aucun token -> "Visible sur le site" directement.
+  - `gws-equestrian-cheval-share-admin-test.php` (126 assertions au total, +23) : les quatre tests
+    de la boîte latérale "Partage" (états 510/513) étendus pour vérifier la ligne "Statut de
+    diffusion :" avec le libellé métier attendu, et que "Créer"/"Régénérer" sont désormais de vrais
+    `<button type="submit">` portant le champ `GWSEQ_HORSE_PRIVATE_SHARE_SUBMIT_FIELD` (jamais plus
+    un lien `admin-post.php?action=gwseq_partage_prive_activer`), tandis que "Révoquer" reste un
+    lien. Le test de régression "aucun `<form>` imbriqué" (bug 0.28.0) est adapté et clarifié : la
+    cause racine de ce bug était un `<form>` IMBRIQUÉ, jamais un `<button>` ordinaire du formulaire
+    d'édition existant — la nouvelle assertion vérifie l'absence de `<form>` ET la présence du
+    nouveau bouton de soumission, sans les confondre. Nouvelle section dédiée à
+    `gwseq_horse_private_share_maybe_activate_on_save()` (greffée sur `save_post_{cpt}`) : champ
+    absent -> aucune activation ; champ présent -> activation réelle (`gwseq_horse_private_share_
+    is_active()` devient vraie) ; ressoumission -> régénération (nouveau token, distinct du
+    précédent) ; utilisateur sans droit d'édition, révision, et `DOING_AUTOSAVE` (ce dernier testé
+    en tout dernier, même contrainte que le reste de la suite) -> aucune activation dans les trois
+    cas. Nouvelle section dédiée à `gwseq_cheval_admin_list_post_states()` (filtre `display_post_
+    states`, scopé au CPT Cheval) : brouillon sans token -> "En préparation" remplace intégralement
+    "Brouillon" natif ; brouillon avec token -> "Diffusion privée" ; cheval visible sur le site ->
+    aucun état affiché (comme WordPress pour un contenu publié) ; un autre type de contenu (Page) ->
+    entrée `$post_states` transmise inchangée, jamais altérée.
+
+  Trois correctifs vérifiés par retrait/restauration : réintroduire l'ancienne priorité "public
+  d'abord, token ensuite" dans `gwseq_horse_diffusion_state()` (en l'inversant) fait échouer
+  exactement l'assertion "passage à publish -> Visible sur le site, même avec un ancien token
+  toujours actif" ; neutraliser `gwseq_horse_private_share_maybe_activate_on_save()` (`return;` en
+  première ligne) fait échouer exactement les deux assertions d'activation/régénération ;
+  neutraliser `gwseq_cheval_admin_list_post_states()` (retour de `$post_states` inchangé) fait
+  échouer exactement les trois assertions de remplacement d'état. Intégralité de la suite (21
+  fichiers PHP + 3 suites JS runtime) ré-exécutée après chaque restauration : aucune régression.

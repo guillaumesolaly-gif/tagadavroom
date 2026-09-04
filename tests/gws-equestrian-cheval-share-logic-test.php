@@ -551,6 +551,37 @@ gwseq_horse_private_share_revoke(62);
 $shareable_62_apres_revoke = gwseq_get_horse_shareable_data(62);
 gws_test_assert($shareable_62_apres_revoke['fiche_type'] === 'publique' && $shareable_62_apres_revoke['fiche_url'] === get_permalink(62), 'Shareable : après révocation d’un cheval désormais public, le lien PUBLIC reste proposé normalement (jamais de régression vers "aucun lien")');
 
+// =====================================================================================
+// Audit UX/métier — état de diffusion MÉTIER centralisé (gwseq_horse_diffusion_state(), dérivé des
+// DEUX mêmes mécanismes natifs déjà utilisés ci-dessus, aucun troisième système, aucun custom post
+// status). Vocabulaire client : "En préparation" / "Diffusion privée" / "Visible sur le site" —
+// plus jamais "Brouillon"/"Publié". Fonction UNIQUE, réutilisable telle quelle par un futur écran
+// mobile (§ de la demande).
+// =====================================================================================
+
+gws_test_make_horse(70, 'Cheval En Preparation', array('post_status' => 'draft'));
+gws_test_assert(gwseq_horse_diffusion_state(70) === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, 'État de diffusion : brouillon sans token -> "En préparation"');
+gws_test_assert(gwseq_horse_diffusion_state_label(GWSEQ_HORSE_DIFFUSION_EN_PREPARATION) === 'En préparation', 'Libellé métier : "En préparation"');
+
+gwseq_horse_private_share_activate(70);
+gws_test_assert(gwseq_horse_diffusion_state(70) === GWSEQ_HORSE_DIFFUSION_PRIVEE, 'État de diffusion : cheval non public + token actif -> "Diffusion privée"');
+gws_test_assert(gwseq_horse_diffusion_state_label(GWSEQ_HORSE_DIFFUSION_PRIVEE) === 'Diffusion privée', 'Libellé métier : "Diffusion privée"');
+
+$GLOBALS['__gwseq_test_posts'][70]['post_status'] = 'publish'; // passage non public -> public
+gws_test_assert(gwseq_horse_diffusion_state(70) === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE, 'État de diffusion : passage à "publish" -> "Visible sur le site", même avec un ancien token toujours actif (la priorité publique n’est jamais remise en cause par l’ajustement d’architecture précédent)');
+gws_test_assert(gwseq_horse_diffusion_state_label(GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE) === 'Visible sur le site', 'Libellé métier : "Visible sur le site"');
+
+$GLOBALS['__gwseq_test_posts'][70]['post_status'] = 'draft'; // passage public -> non public
+gws_test_assert(gwseq_horse_diffusion_state(70) === GWSEQ_HORSE_DIFFUSION_PRIVEE, 'État de diffusion : passage "Visible sur le site" -> non public, avec un token qui redevient actif -> "Diffusion privée" (jamais révoqué automatiquement par la seule dépublication)');
+
+gwseq_horse_private_share_revoke(70);
+gws_test_assert(gwseq_horse_diffusion_state(70) === GWSEQ_HORSE_DIFFUSION_EN_PREPARATION, 'État de diffusion : après révocation d’un cheval non public -> retour à "En préparation"');
+
+gws_test_make_horse(71, 'Cheval Visible Sans Token'); // publish par défaut, aucun token
+gws_test_assert(gwseq_horse_diffusion_state(71) === GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE, 'État de diffusion : cheval publié sans aucun token -> "Visible sur le site"');
+
+gws_test_assert(gwseq_horse_diffusion_state_label('etat_inconnu') === '', 'Libellé métier : un état inconnu ne fabrique jamais un libellé, chaîne vide (défense en profondeur, jamais atteint en pratique)');
+
 // --- Open Graph sur la route de partage privé (§4) : fonctionne, og:url pointe vers le lien
 // PRIVÉ effectivement partagé (jamais l'URL publique), et une balise noindex est ajoutée ---
 gws_test_make_horse(63, 'Cheval Prive OG', array('post_status' => 'draft'));

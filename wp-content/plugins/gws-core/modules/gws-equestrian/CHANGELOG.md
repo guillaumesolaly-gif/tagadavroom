@@ -5,6 +5,50 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.30.0 — Lot 1 « Partager & vendre » : ajustement UX/métier, statut de diffusion et sauvegarde
+
+Recette du correctif 0.29.0 : le cheval non public avec token est bien accessible via son lien
+privé, mais cette recette révèle deux problèmes produit distincts, traités ici avant de clôturer
+le Lot 1.
+
+**1. Vocabulaire métier, pas WordPress.** Le professionnel n'a pas à connaître `Brouillon/Publié`
+pour comprendre où en est une fiche. Trois états métier, dérivés des DEUX mêmes mécanismes natifs
+déjà en place (`post_status`/`post_password` via `gwseq_horse_is_publicly_viewable()`, le token via
+`gwseq_horse_private_share_is_active()`) — aucun statut personnalisé créé (pas de nécessité
+démontrée) : **En préparation** (non public, aucun token), **Diffusion privée** (non public, token
+actif), **Visible sur le site** (fiche publique — un ancien token qui traînerait ne change jamais
+cet état, cohérent avec l'ajustement d'architecture 0.29.0). Nouvelle fonction centrale unique,
+`gwseq_horse_diffusion_state()` (+ `gwseq_horse_diffusion_state_label()`), includes/cheval-share.php
+— tout consommateur (boîte BO, liste d'administration, un jour un écran mobile) l'appelle telle
+quelle, jamais un second calcul.
+
+**2. Risque de données non sauvegardées.** Les boutons "Créer un lien de partage privé"/
+"Régénérer" naviguaient directement vers `admin-post.php` (lien `<a>`, simple GET), hors du grand
+formulaire d'édition WordPress : toute modification de la fiche saisie mais pas encore enregistrée
+était donc PERDUE au moment du clic, sans que l'utilisateur en soit informé — il pouvait croire à
+tort que "sa fiche vient d'être mise en diffusion privée" alors que ses dernières modifications
+n'avaient jamais atteint la base. Correctif retenu (sauvegarder correctement, plutôt que bloquer
+l'action) : ces deux boutons sont désormais de VRAIS `<button type="submit">` du même formulaire
+d'édition (jamais une simulation de clic sur "Enregistrer le brouillon", jamais une duplication de
+la logique de sauvegarde) — cliquer dessus soumet réellement la fiche vers `post.php`, déclenchant
+nativement `save_post_{cpt}` (les mêmes hooks qu'un enregistrement normal) ; une fois la fiche
+réellement enregistrée par ce mécanisme natif, `gwseq_horse_private_share_maybe_activate_on_save()`
+(includes/cheval-share-admin.php, greffée sur ce même hook) active/régénère le partage privé.
+"Révoquer" reste un simple lien `admin-post.php` : révoquer un accès ne prétend jamais refléter des
+données à jour, aucun risque de fausse impression pour cette action précise.
+
+**3. Interface.** La boîte "Partage" affiche désormais explicitement le "Statut de diffusion :"
+avec son libellé métier, et les boutons "Créer"/"Régénérer" ci-dessus. Pas de refonte du BO (le
+futur Lot 3 mobile exploitera cette même logique).
+
+**4. Liste Chevaux.** Le suffixe natif "— Brouillon" à côté du nom, dans `Chevaux → Tous les
+chevaux`, ne distinguait pas une fiche simplement inachevée d'une fiche volontairement en Diffusion
+privée. Nouveau filtre `display_post_states` scopé au seul CPT Cheval (`gwseq_cheval_admin_list_
+post_states()`, includes/cheval-fields.php, jamais un changement pour les autres contenus
+WordPress) : remplace intégralement l'état affiché par le seul état métier centralisé — "Visible
+sur le site" n'affiche rien, exactement comme WordPress n'affiche déjà rien à côté d'un contenu
+publié.
+
 ## 0.29.0 — Lot 1 « Partager & vendre » : ajustement d'architecture, visibilité publique vs lien privé
 
 Recette du correctif 0.28.0 : la priorité "privé > public" retenue pour `gwseq_horse_share_fiche_
