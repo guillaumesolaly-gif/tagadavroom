@@ -25,8 +25,26 @@ const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
 // Version propre au module (distincte de la version du plugin gws-core qui l'héberge) : suit
 // l'avancement des étapes du plan de développement, voir CHANGELOG.md de ce dossier. Atteindra
 // 1.0.0 au gel de la V1 (fin de l'étape 9).
-define('GWSEQ_MODULE_VERSION', '0.25.0');
+define('GWSEQ_MODULE_VERSION', '0.26.0');
 define('GWSEQ_MODULE_URL', GWS_CORE_URL . 'modules/gws-equestrian/');
+
+/**
+ * Le mécanisme de flush existant (gws_core_flag_rewrite_flush(), includes/modules.php de gws-core)
+ * ne se déclenche que lorsque la LISTE des modules actifs change — jamais lorsqu'un module déjà
+ * actif ajoute une nouvelle règle de réécriture à une version ultérieure (cas du lien de partage
+ * privé, `/partage/{token}`, introduit en 0.26.0 — voir includes/cheval-share-admin.php). Ce
+ * déclencheur générique, comparé à la version stockée en base, couvre ce cas ET tout ajout futur
+ * de règle de réécriture dans ce module, sans geste manuel dans Réglages > Permaliens.
+ */
+function gwseq_maybe_flag_rewrite_flush_for_version() {
+  if (get_option('gwseq_module_version_for_flush') === GWSEQ_MODULE_VERSION) return;
+  // Garde defensive volontaire (même raisonnement que gwseq_horse_share_has_seo_plugin() pour
+  // gws_has_seo_plugin()) : cette fonction appartient à gws-core (includes/modules.php), un
+  // fichier distinct de ce module — jamais garanti chargé par un test qui isole ce seul module.php.
+  if (function_exists('gws_core_flag_rewrite_flush')) gws_core_flag_rewrite_flush();
+  update_option('gwseq_module_version_for_flush', GWSEQ_MODULE_VERSION, false);
+}
+add_action('init', 'gwseq_maybe_flag_rewrite_flush_for_version', 1);
 
 require_once __DIR__ . '/includes/post-types.php';
 require_once __DIR__ . '/includes/taxonomies.php';

@@ -61,7 +61,16 @@ function term_exists($term, $taxonomy = '') {
 function wp_die($message = '') { throw new Gws_Test_Wp_Die_Exception(is_string($message) ? $message : ''); }
 class Gws_Test_Wp_Die_Exception extends Exception {}
 
+class WP_Error {
+  public $code; public $message; public $data;
+  public function __construct($code = '', $message = '', $data = null) { $this->code = $code; $this->message = $message; $this->data = $data; }
+}
+function is_wp_error($thing) { return $thing instanceof WP_Error; }
+
 function admin_url($path = '') { return 'https://example.test/wp-admin/' . $path; }
+function home_url($path = '') { return 'https://example.test' . $path; }
+function is_admin() { return false; }
+function get_query_var($var, $default = '') { return $default; }
 function add_query_arg($args, $url) {
   $sep = strpos($url, '?') === false ? '?' : '&';
   return $url . $sep . http_build_query($args);
@@ -86,6 +95,7 @@ function add_meta_box($id, $title, $callback, $post_type = null, $context = 'adv
 $GLOBALS['__gwseq_test_meta'] = array();
 function update_post_meta($post_id, $key, $value) { $GLOBALS['__gwseq_test_meta'][$post_id][$key] = wp_unslash($value); return true; }
 function get_post_meta($post_id, $key, $single = false) { return $GLOBALS['__gwseq_test_meta'][$post_id][$key] ?? ''; }
+function delete_post_meta($post_id, $key) { unset($GLOBALS['__gwseq_test_meta'][$post_id][$key]); return true; }
 function metadata_exists($type, $post_id, $key) {
   return array_key_exists($post_id, $GLOBALS['__gwseq_test_meta']) && array_key_exists($key, $GLOBALS['__gwseq_test_meta'][$post_id]);
 }
@@ -590,6 +600,114 @@ try { gwseq_ajax_partager_build_message(); } catch (Gws_Test_Json_Exit $e) { $js
 gws_test_assert($json['success'] === false, 'AJAX composition : même restriction de permission qu’au chargement des données complètes');
 gws_test_reset_security();
 $_POST = array();
+
+// =====================================================================================
+// Suite V1 « Partager & vendre » — Lot 1 : glue WordPress du partage privé (§2.B/§16).
+// La logique de token elle-même (génération/activation/révocation/URL/recherche inverse) est
+// testée dans gws-equestrian-cheval-share-logic-test.php ; ce fichier-ci teste UNIQUEMENT ce qui
+// est propre à la glue (permissions, exclusion recherche/sitemap/REST, rendu de la boîte latérale)
+// — jamais la même logique reconstruite ici en double.
+// =====================================================================================
+
+// --- Prédicat de permission (§16 : "utilisateur sans permission ne peut pas générer un lien pour
+// un cheval qu'il ne peut pas éditer") ---
+gws_test_make_horse(500, 'Cheval Partage Prive Test', 1);
+gws_test_assert(gwseq_horse_private_share_user_can_manage(500) === true, 'Permission partage privé : le propriétaire de la fiche peut gérer son partage privé');
+gws_test_assert(gwseq_horse_private_share_user_can_manage(999999) === false, 'Permission partage privé : un identifiant inexistant est toujours refusé');
+gws_test_assert(gwseq_horse_private_share_user_can_manage(0) === false, 'Permission partage privé : un identifiant à zéro est toujours refusé, jamais interprété comme "tous les chevaux"');
+
+gws_test_make_post(501, 'page', 'Une page');
+gws_test_assert(gwseq_horse_private_share_user_can_manage(501) === false, 'Permission partage privé : un post d’un autre type (Page) est toujours refusé, même avec un ID valide');
+
+$GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
+$GLOBALS['__gwseq_test_security']['current_user_id'] = 2;
+gws_test_assert(gwseq_horse_private_share_user_can_manage(500) === false, 'Permission partage privé : un utilisateur sans edit_others_posts ne peut pas gérer le partage privé du cheval d’un autre auteur (§16)');
+gws_test_reset_security();
+
+// --- Exclusion recherche/sitemap/REST : une seule clause réutilisée aux trois endroits (§16) ---
+$exclusion_clause = gwseq_horse_private_share_exclusion_meta_clause();
+gws_test_assert($exclusion_clause['relation'] === 'OR', 'Exclusion partage privé : clause meta_query à deux branches (méta absente OU vide) — couvre aussi bien un cheval qui n’a jamais eu de partage privé qu’un cheval révoqué');
+
+$rest_args = gwseq_horse_private_share_filter_rest_query(array(), null);
+gws_test_assert(isset($rest_args['meta_query']) && in_array($exclusion_clause, $rest_args['meta_query'], true), 'REST : la clause d’exclusion est bien ajoutée aux arguments de requête de LISTE (jamais une reconstruction séparée de la clause)');
+$rest_args_avec_meta_existante = gwseq_horse_private_share_filter_rest_query(array('meta_query' => array(array('key' => 'autre_chose', 'value' => 'x'))), null);
+gws_test_assert(count($rest_args_avec_meta_existante['meta_query']) === 2, 'REST : la clause d’exclusion s’AJOUTE à un meta_query déjà présent, ne l’écrase jamais');
+
+$sitemap_args_cheval = gwseq_horse_private_share_filter_sitemap_args(array(), GWSEQ_CPT_CHEVAL);
+gws_test_assert(isset($sitemap_args_cheval['meta_query']), 'Sitemap : la clause d’exclusion est appliquée pour le post_type Cheval');
+$sitemap_args_autre = gwseq_horse_private_share_filter_sitemap_args(array('foo' => 'bar'), 'post');
+gws_test_assert($sitemap_args_autre === array('foo' => 'bar'), 'Sitemap : aucune modification pour un autre post_type que Cheval (jamais un filtre trop large)');
+
+update_post_meta(500, '_gwseq_partage_prive_token', str_repeat('a', 64));
+$GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
+$GLOBALS['__gwseq_test_security']['current_user_id'] = 2; // pas l'auteur (1) de la fiche 500
+$rest_response_bloquee = gwseq_horse_private_share_filter_rest_response('reponse-normale', get_post(500), null);
+gws_test_assert($rest_response_bloquee instanceof WP_Error && $rest_response_bloquee->data['status'] === 404, 'REST : un accès DIRECT par identifiant à un cheval en partage privé actif est bloqué (404), pour un visiteur qui ne peut pas éditer la fiche');
+gws_test_reset_security();
+$rest_response_editeur = gwseq_horse_private_share_filter_rest_response('reponse-normale', get_post(500), null);
+gws_test_assert($rest_response_editeur === 'reponse-normale', 'REST : l’éditeur de la fiche continue, lui, d’obtenir la réponse normale (jamais bloqué sur sa propre fiche)');
+delete_post_meta(500, '_gwseq_partage_prive_token');
+gws_test_reset_security();
+
+// --- Filtre pre_get_posts : n'agit QUE sur les requêtes touchant réellement Cheval (recherche/
+// archive/taxonomie), jamais sur une requête sans rapport, et jamais sur notre propre route privée ---
+class Gws_Test_Fake_Query {
+  public $flags; public $vars = array();
+  public function __construct($flags) { $this->flags = $flags; }
+  public function is_main_query() { return $this->flags['main'] ?? true; }
+  public function is_search() { return $this->flags['search'] ?? false; }
+  public function is_post_type_archive($pt) { return ($this->flags['archive'] ?? '') === $pt; }
+  public function is_tax($tax) { return ($this->flags['tax'] ?? '') === $tax; }
+  public function get($key) { return $this->vars[$key] ?? ($key === 'meta_query' ? array() : ''); }
+  public function set($key, $value) { $this->vars[$key] = $value; }
+}
+
+$fake_query_recherche = new Gws_Test_Fake_Query(array('search' => true));
+gwseq_horse_private_share_filter_public_query($fake_query_recherche);
+gws_test_assert(!empty($fake_query_recherche->vars['meta_query']), 'pre_get_posts : une recherche publique (is_search) reçoit bien la clause d’exclusion');
+
+$fake_query_archive_cheval = new Gws_Test_Fake_Query(array('archive' => GWSEQ_CPT_CHEVAL));
+gwseq_horse_private_share_filter_public_query($fake_query_archive_cheval);
+gws_test_assert(!empty($fake_query_archive_cheval->vars['meta_query']), 'pre_get_posts : l’archive Cheval reçoit bien la clause d’exclusion');
+
+$fake_query_taxonomie = new Gws_Test_Fake_Query(array('tax' => GWSEQ_TAX_CATEGORIE_CHEVAL));
+gwseq_horse_private_share_filter_public_query($fake_query_taxonomie);
+gws_test_assert(!empty($fake_query_taxonomie->vars['meta_query']), 'pre_get_posts : une page de taxonomie Catégorie de cheval reçoit bien la clause d’exclusion');
+
+$fake_query_sans_rapport = new Gws_Test_Fake_Query(array('search' => false));
+gwseq_horse_private_share_filter_public_query($fake_query_sans_rapport);
+gws_test_assert(!isset($fake_query_sans_rapport->vars['meta_query']), 'pre_get_posts : une requête sans rapport (page normale, autre CPT) n’est jamais touchée — aucune jointure meta inutile');
+
+$fake_query_sous_query = new Gws_Test_Fake_Query(array('search' => true, 'main' => false));
+gwseq_horse_private_share_filter_public_query($fake_query_sous_query);
+gws_test_assert(!isset($fake_query_sous_query->vars['meta_query']), 'pre_get_posts : une sous-requête (is_main_query false) n’est jamais touchée, même si elle ressemble à une recherche');
+
+// --- Boîte latérale "Partage" : contrôles de partage privé rendus dans LA MÊME boîte (§ "jamais
+// une seconde interface"), état "inactif" puis état "actif" ---
+gws_test_make_horse(510, 'Cheval Boite Partage Prive', 1);
+ob_start();
+call_user_func($meta_box['callback'], get_post(510));
+$meta_box_html_inactif = ob_get_clean();
+gws_test_assert(strpos($meta_box_html_inactif, 'Créer un lien de partage privé') !== false, 'Boîte latérale : bouton de création affiché tant qu’aucun partage privé n’est actif');
+gws_test_assert(strpos($meta_box_html_inactif, 'Révoquer') === false, 'Boîte latérale : aucune action de révocation proposée tant qu’il n’y a rien à révoquer');
+
+gwseq_horse_private_share_activate(510);
+ob_start();
+call_user_func($meta_box['callback'], get_post(510));
+$meta_box_html_actif = ob_get_clean();
+gws_test_assert(strpos($meta_box_html_actif, gwseq_horse_private_share_url(510)) !== false, 'Boîte latérale : l’URL de partage privé actuelle est affichée une fois active');
+gws_test_assert(strpos($meta_box_html_actif, 'Révoquer') !== false && strpos($meta_box_html_actif, 'Régénérer') !== false, 'Boîte latérale : actions Révoquer/Régénérer proposées une fois le partage privé actif');
+gws_test_assert(strpos($meta_box_html_actif, 'Créer un lien de partage privé') === false, 'Boîte latérale : le bouton de création initiale disparaît une fois un partage déjà actif (jamais les deux affichés en même temps)');
+
+// --- Un utilisateur qui ne peut pas éditer la fiche ne voit AUCUN contrôle de partage privé ---
+$GLOBALS['__gwseq_test_security']['edit_others_posts'] = false;
+$GLOBALS['__gwseq_test_security']['current_user_id'] = 2;
+ob_start();
+call_user_func($meta_box['callback'], get_post(510));
+$meta_box_html_non_autorise = ob_get_clean();
+gws_test_assert(strpos($meta_box_html_non_autorise, 'Partage privé') === false, 'Boîte latérale : aucun contrôle de partage privé affiché à un utilisateur qui ne peut pas éditer cette fiche');
+gws_test_reset_security();
+gwseq_horse_private_share_revoke(510);
 
 // =====================================================================================
 // Assets — uniquement sur l'écran Partager (§7)

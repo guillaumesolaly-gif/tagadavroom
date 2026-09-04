@@ -1091,3 +1091,57 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   pictogramme, revenir à `!empty()` pour "fiche") font chacun échouer exactement les assertions
   dédiées, aucune autre. Intégralité de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée
   après ce lot : aucune régression.
+- **Suite V1 « Partager & vendre » — Lot 1 : visibilité public/privé, liens, Open Graph (0.26.0)** :
+  sans nouveau fichier de test (la logique de token vit dans `includes/cheval-share.php`, déjà
+  couvert par `gws-equestrian-cheval-share-logic-test.php` ; la glue WordPress dans `includes/
+  cheval-share-admin.php`, déjà couvert par `gws-equestrian-cheval-share-admin-test.php`).
+  - `gws-equestrian-cheval-share-logic-test.php` (130 assertions au total) : génération de token
+    (64 caractères hexadécimaux, deux générations successives distinctes), activation/révocation/
+    régénération (l'ANCIEN token cesse immédiatement de retrouver le cheval après régénération OU
+    révocation, le NOUVEAU fonctionne immédiatement), recherche inverse token -> cheval rejetant
+    tout format invalide (trop court, casse différente, chaîne vide) AVANT toute requête, jamais
+    l'ID WordPress ni le Global Horse ID comme token (comparaison explicite avec un vrai UUID de
+    Global Horse ID). `gwseq_horse_share_fiche_info()` : lien public pour un cheval publiquement
+    visible sans partage privé, aucun lien pour un brouillon sans partage privé (§2.C), un partage
+    privé explicitement créé pour un brouillon fonctionne, et — cas de sécurité important — le
+    partage privé prend TOUJOURS le pas sur un statut publié (un cheval ne "fuit" jamais son URL
+    publique dès qu'un partage privé est activé pour lui). `fiche_type` exposé et cohérent avec
+    `fiche_url`/`fiche_default_checked` dans `gwseq_get_horse_shareable_data()`. Open Graph sur la
+    route de partage privé : émis pour un brouillon (jamais bloqué par la seule visibilité
+    publique), `og:url` pointe vers le lien PRIVÉ effectivement visité (jamais l'URL publique),
+    balise noindex systématique, aucune fuite de prix, absent si la même fiche est consultée HORS
+    de sa route privée (le token seul ne suffit pas, il faut la bonne route), et — exception
+    documentée — notre balisage reste actif MÊME si un plugin SEO tiers est détecté sur cette route
+    précise. Aucune migration destructive : activer/révoquer ne modifie jamais le titre ni le
+    statut du cheval.
+  - `gws-equestrian-cheval-share-admin-test.php` (86 assertions au total) : uniquement la glue
+    propre à ce fichier (jamais la logique de token déjà testée côté logic-test) — prédicat de
+    permission (`gwseq_horse_private_share_user_can_manage()` : propriétaire autorisé, identifiant
+    inexistant/zéro/autre post_type refusés, utilisateur sans `edit_others_posts` refusé pour la
+    fiche d'un autre auteur) ; clause d'exclusion meta_query réutilisée telle quelle par les filtres
+    REST (liste ET accès direct par identifiant, ce dernier bloqué en 404 pour qui ne peut pas
+    éditer la fiche, jamais pour l'éditeur lui-même) et sitemap (jamais pour un autre post_type que
+    Cheval) ; filtre `pre_get_posts` exercé via un faux `WP_Query` minimal (recherche/archive
+    Cheval/taxonomie Catégorie reçoivent la clause, une requête sans rapport ou une sous-requête
+    n'est jamais touchée) ; rendu de la boîte latérale "Partage" dans ses trois états (aucun
+    partage actif -> bouton de création seul ; actif -> URL affichée + Révoquer/Régénérer, jamais
+    le bouton de création en même temps ; utilisateur sans droit d'édition -> aucun contrôle de
+    partage privé affiché du tout).
+  - `gws-equestrian-cheval-share-runtime-test.js` (74 assertions au total) : nouveau libellé
+    "Inclure le lien vers la fiche"/"Inclure le lien privé vers la fiche" vérifié selon `fiche_type`
+    (`publique`/`privee`), jamais l'ancien "Ajouter la fiche complète".
+  - `gws-equestrian-foundations-test.php` et `gws-equestrian-actualites-logic-test.php` : stubs
+    `get_option()`/`update_option()`/`add_rewrite_tag()`/`add_rewrite_rule()` ajoutés (ces deux
+    fichiers isolent `module.php` seul et exécutent immédiatement tout hook `init` — le nouveau
+    déclencheur de flush par version et l'enregistrement de la règle de réécriture du partage privé
+    en ont besoin pour s'exécuter sans erreur), sans ajouter aucune assertion nouvelle : ces deux
+    suites restent centrées sur leur périmètre d'origine (fondations/Actualités).
+
+  Deux correctifs vérifiés par retrait/restauration : neutraliser la priorité du partage privé dans
+  `gwseq_horse_share_fiche_info()` (revient à ne considérer que le statut public) fait échouer
+  exactement les 3 assertions qui en dépendent ; retirer la validation de format dans
+  `gwseq_horse_private_share_find_cheval_id()` fait échouer l'assertion "chaîne vide rejetée" (le
+  faux `WP_Query` de ce fichier traite alors, à tort, une recherche à vide comme trouvant le premier
+  cheval sans token — confirmant la nécessité réelle de ce garde-fou, pas un test qui se contente de
+  lui-même). Intégralité de la suite (21 fichiers PHP + 3 suites JS runtime) ré-exécutée après ce
+  lot : aucune régression.

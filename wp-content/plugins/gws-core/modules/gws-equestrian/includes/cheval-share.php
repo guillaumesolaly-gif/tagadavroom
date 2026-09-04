@@ -226,8 +226,111 @@ function gwseq_horse_is_publicly_viewable($cheval_id) {
   return true;
 }
 
+/* -------------------------------------------------------------------------------------------
+ * Partage privé (suite V1 « Partager & vendre », Lot 1 — visibilité public/privé).
+ *
+ * Un cheval que le professionnel ne veut PAS exposer publiquement (catalogue, recherche, sitemap)
+ * doit pouvoir être envoyé quand même à des acheteurs précis, sans jamais "publier la fiche puis la
+ * retirer des menus" : un vrai mécanisme de lien secret, distinct du statut WordPress natif.
+ *
+ * Le TOKEN est l'unique clé d'accès : 32 octets générés par random_bytes() (source
+ * cryptographiquement sûre du PHP natif — 64 caractères hexadécimaux, non énumérable), JAMAIS
+ * l'ID WordPress ni le Global Horse ID (identifiants métier prévisibles, qui ne doivent jamais
+ * devenir un secret d'accès). Stocké dans UNE SEULE meta postmeta déjà existante comme mécanisme
+ * de stockage (aucune nouvelle table) : sa seule PRÉSENCE non vide fait office de drapeau
+ * "partage privé actif" — aucune meta booléenne séparée à garder synchronisée avec elle.
+ * Révoquer = supprimer la meta. Régénérer = simplement écraser l'ancien token par un nouveau :
+ * la même opération sert les deux besoins, l'ancien lien cesse instantanément de fonctionner
+ * puisque plus aucune fiche ne porte alors cette valeur (voir
+ * gwseq_horse_private_share_find_cheval_id()).
+ * ----------------------------------------------------------------------------------------- */
+const GWSEQ_HORSE_PRIVATE_SHARE_META_KEY = '_gwseq_partage_prive_token';
+
+function gwseq_horse_private_share_generate_token() {
+  return bin2hex(random_bytes(32));
+}
+
+function gwseq_horse_private_share_token($cheval_id) {
+  return (string) get_post_meta((int) $cheval_id, GWSEQ_HORSE_PRIVATE_SHARE_META_KEY, true);
+}
+
+function gwseq_horse_private_share_is_active($cheval_id) {
+  return gwseq_horse_private_share_token($cheval_id) !== '';
+}
+
+/**
+ * Crée OU régénère le partage privé d'un cheval — toujours la même opération (voir le commentaire
+ * de section ci-dessus) : un appelant n'a jamais besoin de distinguer les deux cas.
+ */
+function gwseq_horse_private_share_activate($cheval_id) {
+  $token = gwseq_horse_private_share_generate_token();
+  update_post_meta((int) $cheval_id, GWSEQ_HORSE_PRIVATE_SHARE_META_KEY, $token);
+  return $token;
+}
+
+function gwseq_horse_private_share_revoke($cheval_id) {
+  delete_post_meta((int) $cheval_id, GWSEQ_HORSE_PRIVATE_SHARE_META_KEY);
+}
+
+/**
+ * Chemin technique de la route de partage privé — centralisé ICI (jamais reconstruit ailleurs,
+ * y compris côté règle de réécriture, voir includes/cheval-share-admin.php, qui réutilise cette
+ * même constante de base). Slash de fin systématique, cohérent avec les permaliens WordPress
+ * existants ("chevaux/xxx/").
+ */
+const GWSEQ_HORSE_PRIVATE_SHARE_REWRITE_BASE = 'partage';
+
+function gwseq_horse_private_share_url($cheval_id) {
+  $token = gwseq_horse_private_share_token($cheval_id);
+  return $token !== '' ? home_url('/' . GWSEQ_HORSE_PRIVATE_SHARE_REWRITE_BASE . '/' . $token . '/') : '';
+}
+
+/**
+ * Recherche inverse token -> cheval (§ "accessible sans compte par quelqu'un possédant le lien").
+ * Le format est vérifié AVANT toute requête (64 hexadécimaux minuscules, exactement ce que produit
+ * gwseq_horse_private_share_generate_token()) : rejette immédiatement toute valeur qui ne pourra de
+ * toute façon jamais correspondre à un token réel — défense en profondeur, jamais une requête pour
+ * une chaîne à l'évidence invalide. `post_status => 'any'` volontairement : un partage privé doit
+ * fonctionner MÊME pour un cheval resté en brouillon (§2.C — le brouillon reste inaccessible par son
+ * permalink normal, mais un partage privé explicitement créé pour lui doit, lui, fonctionner).
+ */
+function gwseq_horse_private_share_find_cheval_id($token) {
+  $token = (string) $token;
+  if (!preg_match('/^[a-f0-9]{64}$/', $token)) return 0;
+
+  $query = new WP_Query(array(
+    'post_type' => GWSEQ_CPT_CHEVAL,
+    'post_status' => 'any',
+    'fields' => 'ids',
+    'posts_per_page' => 1,
+    'meta_query' => array(
+      array('key' => GWSEQ_HORSE_PRIVATE_SHARE_META_KEY, 'value' => $token, 'compare' => '='),
+    ),
+  ));
+  return $query->posts ? (int) $query->posts[0] : 0;
+}
+
+/**
+ * Détermine le lien de fiche approprié SANS jamais faire porter ce choix à l'utilisateur (§3 de la
+ * demande — "GWS doit déterminer le lien approprié selon la visibilité du cheval") : lien PRIVÉ en
+ * priorité si un partage privé est actif pour ce cheval (il a alors délibérément quitté son canal
+ * public normal — voir gwseq_horse_private_share_is_active()), sinon lien PUBLIC normal si la fiche
+ * est réellement publique, sinon aucun lien. Le TYPE renvoyé ('privee'/'publique'/'') sert
+ * uniquement à adapter le VOCABULAIRE de l'écran BO (§3) — jamais le contenu du message lui-même,
+ * strictement identique quel que soit le type de lien inclus.
+ */
+function gwseq_horse_share_fiche_info($cheval_id) {
+  if (gwseq_horse_private_share_is_active($cheval_id)) {
+    return array('url' => gwseq_horse_private_share_url($cheval_id), 'type' => 'privee');
+  }
+  if (gwseq_horse_is_publicly_viewable($cheval_id)) {
+    return array('url' => get_permalink($cheval_id), 'type' => 'publique');
+  }
+  return array('url' => '', 'type' => '');
+}
+
 function gwseq_horse_share_fiche_url($cheval_id) {
-  return gwseq_horse_is_publicly_viewable($cheval_id) ? get_permalink($cheval_id) : '';
+  return gwseq_horse_share_fiche_info($cheval_id)['url'];
 }
 
 /**
@@ -277,7 +380,8 @@ function gwseq_get_horse_shareable_data($cheval_id) {
     );
   }
 
-  $fiche_url = gwseq_horse_share_fiche_url($cheval_id);
+  $fiche_info = gwseq_horse_share_fiche_info($cheval_id);
+  $fiche_url = $fiche_info['url'];
 
   return array(
     'id' => $cheval_id,
@@ -287,6 +391,7 @@ function gwseq_get_horse_shareable_data($cheval_id) {
     'items' => $items,
     'videos' => $videos,
     'fiche_url' => $fiche_url,
+    'fiche_type' => $fiche_info['type'],
     'fiche_default_checked' => $fiche_url !== '',
   );
 }
@@ -349,14 +454,21 @@ function gwseq_build_horse_share_message($shareable, $selection) {
 }
 
 /* -------------------------------------------------------------------------------------------
- * Open Graph de la fiche Cheval (§19 de la demande).
+ * Open Graph de la fiche Cheval (§19 de la demande initiale ; §4 de la suite « Partager & vendre »).
  *
  * Ne crée AUCUN second système SEO/canonical/schema parallèle (principe déjà établi du projet) :
  * ne s'active QUE si aucun plugin SEO n'est actif (même détection que le thème gws-starter,
  * réutilisée si disponible — voir gwseq_horse_share_has_seo_plugin() ci-dessous), et ne touche
  * jamais au <title>/à la balise canonique (déjà gérés nativement par WordPress/le thème/un plugin
- * SEO). Émis uniquement sur la page singulière d'un cheval PUBLIQUEMENT VISIBLE — jamais pour un
- * brouillon ou un cheval protégé, même prévisualisé par un utilisateur connecté.
+ * SEO). Émis sur la page singulière d'un cheval PUBLIQUEMENT VISIBLE, OU sur la route de partage
+ * privé d'un cheval dont le partage privé est actif (voir gwseq_horse_private_share_is_active()) —
+ * jamais pour un brouillon/un cheval protégé consulté par un autre chemin, même prévisualisé par un
+ * utilisateur connecté. Sur la route privée, une balise "noindex" est systématiquement ajoutée : un
+ * plugin SEO tiers, lui, continue d'être court-circuité normalement (il ignore ce contexte), SAUF
+ * précisément sur cette route privée, où l'on ne peut pas garantir qu'il gère correctement le
+ * noindex/l'absence de prix pour une URL qu'il ne connaît pas nativement — notre balisage y reste
+ * donc actif en toutes circonstances (limite documentée : un plugin SEO tiers actif peut malgré
+ * tout émettre EN PLUS ses propres balises sur cette route, hors de notre contrôle).
  * ----------------------------------------------------------------------------------------- */
 
 /**
@@ -396,29 +508,39 @@ function gwseq_horse_og_description($shareable) {
 }
 
 /**
- * Émet og:title/og:description/og:image(+dimensions)/og:type/og:url. Image : une DÉRIVÉE WordPress
- * adaptée ('medium_large', ~768px) plutôt que l'original potentiellement lourd — réutilise le
- * pipeline média déjà existant (wp_get_attachment_image_src(), aucun nouveau redimensionnement
- * créé). Aucune balise si la fiche n'a pas de photo principale — jamais une image de remplacement
- * fabriquée. `og:url` réutilise get_permalink() : cohérente avec l'URL canonique déjà émise par
- * WordPress nativement (rel_canonical(), jamais modifiée ni dupliquée ici).
+ * Émet og:title/og:description/og:image(+dimensions)/og:type/og:url(+noindex sur la route privée).
+ * Image : une DÉRIVÉE WordPress adaptée ('medium_large', ~768px) plutôt que l'original
+ * potentiellement lourd — réutilise le pipeline média déjà existant
+ * (wp_get_attachment_image_src(), aucun nouveau redimensionnement créé). Aucune balise si la fiche
+ * n'a pas de photo principale — jamais une image de remplacement fabriquée. `og:url` reflète
+ * l'URL RÉELLEMENT visitée (publique OU privée) — jamais figée sur le seul permalink normal, sinon
+ * un aperçu WhatsApp/iMessage généré depuis un lien privé pointerait à tort vers l'URL publique.
  */
 function gwseq_render_horse_og_meta() {
-  if (gwseq_horse_share_has_seo_plugin()) return;
   if (!is_singular(GWSEQ_CPT_CHEVAL)) return;
 
   $cheval_id = get_queried_object_id();
-  if (!gwseq_horse_is_publicly_viewable($cheval_id)) return;
+  $is_private_view = get_query_var('gwseq_partage_token', '') !== '' && gwseq_horse_private_share_is_active($cheval_id);
+
+  if (gwseq_horse_share_has_seo_plugin() && !$is_private_view) return;
+  if (!$is_private_view && !gwseq_horse_is_publicly_viewable($cheval_id)) return;
 
   $shareable = gwseq_get_horse_shareable_data($cheval_id);
   $description = gwseq_horse_og_description($shareable);
+  $current_url = $is_private_view ? gwseq_horse_private_share_url($cheval_id) : get_permalink($cheval_id);
 
   echo '<meta property="og:type" content="website">' . "\n";
   echo '<meta property="og:title" content="' . esc_attr($shareable['nom']) . '">' . "\n";
   if ($description !== '') {
     echo '<meta property="og:description" content="' . esc_attr($description) . '">' . "\n";
   }
-  echo '<meta property="og:url" content="' . esc_url(get_permalink($cheval_id)) . '">' . "\n";
+  echo '<meta property="og:url" content="' . esc_url($current_url) . '">' . "\n";
+  // Jamais un mécanisme de sécurité en soi (le blocage réel du permalink normal se fait dans
+  // includes/cheval-share-admin.php) — seulement une indication aux moteurs de recherche pour un
+  // contenu qu'ils ne devraient de toute façon jamais pouvoir découvrir par eux-mêmes (§16).
+  if ($is_private_view) {
+    echo '<meta name="robots" content="noindex, nofollow">' . "\n";
+  }
 
   $thumbnail_id = gwseq_get_cheval_photo_principale_id($cheval_id);
   if ($thumbnail_id) {

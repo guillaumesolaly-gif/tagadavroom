@@ -79,10 +79,37 @@ function get_the_title($post) {
   return $GLOBALS['__gwseq_test_posts'][$id]['post_title'] ?? '';
 }
 function get_permalink($post_id) { return 'https://example.test/chevaux/cheval-' . (int) $post_id . '/'; }
+function home_url($path = '') { return 'https://example.test' . $path; }
 
-$GLOBALS['__gwseq_test_context'] = array('is_singular' => false, 'queried_id' => 0);
+$GLOBALS['__gwseq_test_context'] = array('is_singular' => false, 'queried_id' => 0, 'query_vars' => array());
 function is_singular($post_type = '') { return $GLOBALS['__gwseq_test_context']['is_singular'] === $post_type; }
 function get_queried_object_id() { return $GLOBALS['__gwseq_test_context']['queried_id']; }
+function get_query_var($var, $default = '') { return $GLOBALS['__gwseq_test_context']['query_vars'][$var] ?? $default; }
+
+// --- WP_Query minimal, suffisant pour gwseq_horse_private_share_find_cheval_id() (correspondance
+// EXACTE d'une seule clause meta_query sur une clé donnée — pas besoin ici du moteur complet de
+// gws-equestrian-cheval-share-admin-test.php, dédié aux filtres de recherche BO) ---
+class WP_Query {
+  public $posts = array();
+  public function __construct($args = array()) {
+    $post_type = $args['post_type'] ?? 'post';
+    $meta_query = $args['meta_query'] ?? array();
+    $limit = $args['posts_per_page'] ?? -1;
+    $results = array();
+    foreach ($GLOBALS['__gwseq_test_posts'] as $id => $post) {
+      if ($post['post_type'] !== $post_type) continue;
+      $match = true;
+      foreach ($meta_query as $clause) {
+        if (!isset($clause['key'])) continue;
+        $value = get_post_meta($id, $clause['key'], true);
+        if ((string) $value !== (string) ($clause['value'] ?? '')) { $match = false; break; }
+      }
+      if ($match) $results[] = $id;
+    }
+    if ($limit > 0) $results = array_slice($results, 0, $limit);
+    $this->posts = $results;
+  }
+}
 
 $GLOBALS['__gwseq_test_attachment_urls'] = array();
 function wp_get_attachment_image_url($id, $size = 'thumbnail') { return $GLOBALS['__gwseq_test_attachment_urls'][$id][$size] ?? false; }
@@ -412,6 +439,103 @@ $origines_52 = gwseq_horse_share_origines_label(52);
 gws_test_assert(strpos($origines_52, '&rsquo;') === false, 'Origines : aucune entité littérale résiduelle dans le nom d’un parent externe');
 gws_test_assert(strpos($origines_52, "FILS D") !== false, 'Origines : nom du parent externe avec entité décodée bien repris (convention majuscules)');
 
+// =====================================================================================
+// Suite V1 « Partager & vendre » — Lot 1 : partage privé (§2.B/§16 de la demande).
+// =====================================================================================
+
+// --- Génération du token : long, aléatoire, jamais un identifiant métier prévisible ---
+$token_a = gwseq_horse_private_share_generate_token();
+$token_b = gwseq_horse_private_share_generate_token();
+gws_test_assert(strlen($token_a) === 64, 'Partage privé : token de 64 caractères (32 octets hexadécimaux — random_bytes(32))');
+gws_test_assert(ctype_xdigit($token_a), 'Partage privé : token entièrement hexadécimal');
+gws_test_assert($token_a !== $token_b, 'Partage privé : deux générations successives produisent des tokens différents (aucune valeur figée/prévisible)');
+
+gws_test_make_horse(60, 'Cheval Prive');
+update_post_meta(60, '_gwseq_global_id', 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+gws_test_assert(gwseq_horse_private_share_is_active(60) === false, 'Partage privé : inactif par défaut, aucun token créé automatiquement');
+gws_test_assert(gwseq_horse_private_share_url(60) === '', 'Partage privé : aucune URL tant qu’aucun token n’est actif');
+
+$token_60 = gwseq_horse_private_share_activate(60);
+gws_test_assert(gwseq_horse_private_share_is_active(60) === true, 'Partage privé : actif immédiatement après activation');
+gws_test_assert($token_60 !== (string) 60 && $token_60 !== 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'Partage privé : le token n’est JAMAIS l’ID WordPress ni le Global Horse ID (§ "jamais un identifiant prévisible comme token")');
+gws_test_assert(strlen($token_60) === 64 && $token_60 !== gwseq_get_cheval_global_id(60), 'Partage privé : format et valeur totalement distincts du Global Horse ID (36 caractères avec tirets, jamais un secret)');
+gws_test_assert(gwseq_horse_private_share_url(60) === 'https://example.test/partage/' . $token_60 . '/', 'Partage privé : URL "/partage/{token}/" construite sur home_url()');
+
+gws_test_assert(gwseq_horse_private_share_find_cheval_id($token_60) === 60, 'Partage privé : recherche inverse token -> cheval fonctionne pour un token actif');
+gws_test_assert(gwseq_horse_private_share_find_cheval_id(str_repeat('0', 64)) === 0, 'Partage privé : un token bien formé mais qui ne correspond à aucun cheval -> introuvable, jamais une erreur');
+gws_test_assert(gwseq_horse_private_share_find_cheval_id('abc') === 0, 'Partage privé : un token trop court est rejeté avant toute requête (format invalide)');
+gws_test_assert(gwseq_horse_private_share_find_cheval_id(strtoupper($token_60)) === 0, 'Partage privé : la casse compte — un token en MAJUSCULES ne correspond jamais (le format produit est toujours en minuscules)');
+gws_test_assert(gwseq_horse_private_share_find_cheval_id('') === 0, 'Partage privé : une chaîne vide est rejetée avant toute requête');
+
+// --- Régénération : l'ancien lien cesse IMMÉDIATEMENT de fonctionner (§ "la régénération invalide
+// immédiatement l'ancien lien") ---
+$token_60_regenere = gwseq_horse_private_share_activate(60);
+gws_test_assert($token_60_regenere !== $token_60, 'Partage privé : régénérer produit un NOUVEAU token, distinct de l’ancien');
+gws_test_assert(gwseq_horse_private_share_find_cheval_id($token_60) === 0, 'Partage privé : l’ANCIEN token ne retrouve plus aucun cheval immédiatement après régénération');
+gws_test_assert(gwseq_horse_private_share_find_cheval_id($token_60_regenere) === 60, 'Partage privé : le NOUVEAU token fonctionne immédiatement');
+
+// --- Révocation : réellement effective ---
+gwseq_horse_private_share_revoke(60);
+gws_test_assert(gwseq_horse_private_share_is_active(60) === false, 'Partage privé : révocation -> inactif');
+gws_test_assert(gwseq_horse_private_share_url(60) === '', 'Partage privé : révocation -> plus aucune URL');
+gws_test_assert(gwseq_horse_private_share_find_cheval_id($token_60_regenere) === 0, 'Partage privé : révocation -> l’ancien token ne retrouve plus jamais le cheval');
+
+// --- gwseq_horse_share_fiche_info() : GWS détermine SEUL le lien approprié (§3), jamais à
+// l'utilisateur de choisir un type de permalink ---
+gws_test_make_horse(61, 'Cheval Public Seul'); // publish par défaut (gws_test_make_post())
+$info_public = gwseq_horse_share_fiche_info(61);
+gws_test_assert($info_public['type'] === 'publique' && $info_public['url'] === get_permalink(61), 'Fiche info : cheval publiquement visible sans partage privé -> lien PUBLIC normal');
+
+gws_test_make_horse(62, 'Cheval Brouillon Seul', array('post_status' => 'draft'));
+$info_brouillon = gwseq_horse_share_fiche_info(62);
+gws_test_assert($info_brouillon['type'] === '' && $info_brouillon['url'] === '', 'Fiche info : brouillon sans partage privé -> aucun lien, jamais accessible par accident (§2.C)');
+
+gwseq_horse_private_share_activate(62);
+$info_brouillon_prive = gwseq_horse_share_fiche_info(62);
+gws_test_assert($info_brouillon_prive['type'] === 'privee' && $info_brouillon_prive['url'] === gwseq_horse_private_share_url(62), 'Fiche info : un partage privé explicitement créé pour un brouillon fonctionne (§2.C — logique explicite, jamais automatique)');
+
+gwseq_horse_private_share_activate(61); // cheval PUBLIÉ qui active malgré tout un partage privé
+$info_public_devenu_prive = gwseq_horse_share_fiche_info(61);
+gws_test_assert($info_public_devenu_prive['type'] === 'privee', 'Fiche info : le partage privé prend TOUJOURS le pas sur un statut publié — un cheval ne "fuit" jamais son URL publique dès qu’un partage privé est activé pour lui (§2.B)');
+gwseq_horse_private_share_revoke(61); // remis dans l'état "public" pour la suite des tests
+
+// --- gwseq_get_horse_shareable_data() expose bien fiche_type, cohérent avec fiche_url ---
+$shareable_62 = gwseq_get_horse_shareable_data(62);
+gws_test_assert($shareable_62['fiche_type'] === 'privee' && $shareable_62['fiche_url'] === gwseq_horse_private_share_url(62) && $shareable_62['fiche_default_checked'] === true, 'Shareable : fiche_type "privee" exposé et cohérent avec fiche_url/fiche_default_checked');
+gwseq_horse_private_share_revoke(62);
+$shareable_62_apres_revoke = gwseq_get_horse_shareable_data(62);
+gws_test_assert($shareable_62_apres_revoke['fiche_type'] === '' && $shareable_62_apres_revoke['fiche_url'] === '', 'Shareable : après révocation, fiche_type et fiche_url reviennent tous deux à vide (brouillon toujours inaccessible normalement)');
+
+// --- Open Graph sur la route de partage privé (§4) : fonctionne, og:url pointe vers le lien
+// PRIVÉ effectivement partagé (jamais l'URL publique), et une balise noindex est ajoutée ---
+gws_test_make_horse(63, 'Cheval Prive OG', array('post_status' => 'draft'));
+$token_63 = gwseq_horse_private_share_activate(63);
+
+ob_start();
+$GLOBALS['__gwseq_test_context'] = array('is_singular' => GWSEQ_CPT_CHEVAL, 'queried_id' => 63, 'query_vars' => array('gwseq_partage_token' => $token_63));
+gwseq_render_horse_og_meta();
+$og_html_prive = ob_get_clean();
+gws_test_assert($og_html_prive !== '', 'Open Graph : émis sur la route de partage privé, alors que le cheval est un brouillon (jamais bloqué par gwseq_horse_is_publicly_viewable() seule)');
+gws_test_assert(strpos($og_html_prive, 'og:title" content="Cheval Prive OG"') !== false, 'Open Graph (privé) : og:title correct');
+gws_test_assert(strpos($og_html_prive, 'og:url" content="' . gwseq_horse_private_share_url(63) . '"') !== false, 'Open Graph (privé) : og:url pointe vers le lien PRIVÉ effectivement visité, jamais l’URL publique normale (§4)');
+gws_test_assert(strpos($og_html_prive, 'name="robots" content="noindex, nofollow"') !== false, 'Open Graph (privé) : balise noindex systématiquement ajoutée (§16 — jamais utilisée seule comme mécanisme de sécurité, seulement une indication aux moteurs de recherche)');
+gws_test_assert(strpos($og_html_prive, '25 000') === false && strpos($og_html_prive, 'gwseq_prix') === false, 'Open Graph (privé) : aucune donnée commerciale/prix, même règle que la route publique');
+
+// --- Sans le partage privé actif (query_var absent), la même fiche brouillon ne produit AUCUN
+// Open Graph — bien la route qui fait la différence, pas seulement l'existence d'un token ---
+ob_start();
+$GLOBALS['__gwseq_test_context'] = array('is_singular' => GWSEQ_CPT_CHEVAL, 'queried_id' => 63, 'query_vars' => array());
+gwseq_render_horse_og_meta();
+gws_test_assert(ob_get_clean() === '', 'Open Graph : un brouillon consulté HORS de sa route de partage privé (query_var absente) ne produit toujours aucune balise, même si un token existe par ailleurs pour lui');
+
+// --- Aucune migration destructive : activer/révoquer un partage privé ne modifie JAMAIS le titre,
+// le statut, ni aucune autre donnée du cheval ---
+$post_63_avant = get_post(63);
+gwseq_horse_private_share_activate(63);
+gwseq_horse_private_share_revoke(63);
+$post_63_apres = get_post(63);
+gws_test_assert($post_63_avant->post_title === $post_63_apres->post_title && $post_63_avant->post_status === $post_63_apres->post_status, 'Partage privé : activer/révoquer ne modifie jamais le titre ni le statut du cheval (aucune migration destructive)');
+
 // --- Aucun second système SEO concurrent : si un plugin SEO est détecté, rien n'est émis ---
 // (placé en tout dernier : WPSEO_VERSION est une constante PHP, donc définitive une fois posée —
 // tout test Open Graph placé après elle dans ce fichier serait à tort neutralisé.)
@@ -420,6 +544,19 @@ ob_start();
 $GLOBALS['__gwseq_test_context'] = array('is_singular' => GWSEQ_CPT_CHEVAL, 'queried_id' => 10);
 gwseq_render_horse_og_meta();
 gws_test_assert(ob_get_clean() === '', 'Open Graph : rien n’est émis si un plugin SEO tiers est détecté actif (jamais de second système concurrent, §19)');
+
+// --- Exception documentée (§4) : sur la route de partage PRIVÉ précisément, notre balisage reste
+// actif MÊME si un plugin SEO tiers est détecté — on ne peut pas garantir qu'il gère correctement
+// le noindex/l'absence de prix pour un contexte qu'il ne connaît pas nativement. WPSEO_VERSION est
+// déjà défini par le bloc précédent (constante PHP, définitive) : ce test s'exécute donc bien avec
+// un plugin SEO "actif" simulé. ---
+gws_test_make_horse(64, 'Cheval Prive Malgre Plugin SEO', array('post_status' => 'draft'));
+$token_64 = gwseq_horse_private_share_activate(64);
+ob_start();
+$GLOBALS['__gwseq_test_context'] = array('is_singular' => GWSEQ_CPT_CHEVAL, 'queried_id' => 64, 'query_vars' => array('gwseq_partage_token' => $token_64));
+gwseq_render_horse_og_meta();
+$og_html_prive_malgre_seo = ob_get_clean();
+gws_test_assert($og_html_prive_malgre_seo !== '' && strpos($og_html_prive_malgre_seo, 'noindex') !== false, 'Open Graph : sur la route de partage privé, notre balisage (avec noindex) reste actif MÊME si un plugin SEO tiers est détecté — jamais garanti qu’il connaisse ce contexte spécifique');
 
 echo ($failures === 0 ? 'Tous les tests sont passés.' : "$failures test(s) en échec.") . "\n";
 exit($failures === 0 ? 0 : 1);

@@ -1,5 +1,21 @@
 # Changelog — GWS Starter
 
+## 1.29.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Suite V1 « Partager & vendre » — Lot 1 : visibilité public/privé, liens, Open Graph (GWS
+  Equestrian 0.26.0).** Un cheval peut désormais être partagé via un lien PRIVÉ secret
+  (`/partage/{token}`, token de 64 caractères hexadécimaux non prédictibles, jamais l'ID WordPress
+  ni le Global Horse ID) sans jamais l'exposer publiquement — révocable, régénérable (invalide
+  immédiatement l'ancien lien), exclu de la recherche/archive/taxonomie/API REST/sitemap, permalink
+  public normal bloqué tant qu'il est actif. Le libellé "Ajouter la fiche complète" devient
+  "Inclure le lien vers la fiche" (GWS détermine seul le lien approprié, public ou privé). Open
+  Graph fonctionne désormais aussi sur la route de partage privé (og:url correct, noindex
+  systématique — jamais un mécanisme de sécurité en soi). Lot 1 sur 5 de la suite demandée ;
+  sélection multi-chevaux, point d'entrée mobile GWS et audit mobile de la fiche Cheval suivront
+  après recette réelle de ce lot. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.26.0) pour le détail
+  complet, y compris les limites connues.
+
 ## 1.28.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Partager un cheval : correctifs du transport vers les canaux (GWS Equestrian 0.25.0).** Premier

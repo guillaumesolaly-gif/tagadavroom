@@ -47,6 +47,13 @@ function register_taxonomy($taxonomy, $object_type, $args = array()) {
 }
 function register_post_meta($object_type, $meta_key, $args = array()) {}
 function wp_get_environment_type() { return 'production'; }
+function add_rewrite_tag($tag, $regex) {}
+function add_rewrite_rule($regex, $redirect, $after = 'bottom') {}
+// Déclencheur de flush par version (module.php, réutilisant l'option déjà en place côté gws-core) :
+// ce test isole module.php seul, get_option()/update_option() n'ont besoin que d'exister ici.
+$GLOBALS['__gwseq_test_options'] = array();
+function get_option($name, $default = false) { return $GLOBALS['__gwseq_test_options'][$name] ?? $default; }
+function update_option($name, $value, $autoload = null) { $GLOBALS['__gwseq_test_options'][$name] = $value; return true; }
 
 define('ABSPATH', __DIR__ . '/');
 define('GWS_CORE_DIR', dirname(__DIR__) . '/wp-content/plugins/gws-core/');

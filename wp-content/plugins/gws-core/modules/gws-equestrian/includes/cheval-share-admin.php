@@ -379,7 +379,240 @@ function gwseq_render_horse_share_meta_box($post) {
   <p><a class="button button-primary" style="width:100%;text-align:center;" href="<?php echo esc_url(gwseq_horse_share_page_url(array('cheval_id' => $post->ID))); ?>"><?php esc_html_e('Partager ce cheval', 'gws-core'); ?></a></p>
   <p class="description"><?php esc_html_e('Préparez un message (WhatsApp, SMS, copier) à partir des informations déjà renseignées sur cette fiche.', 'gws-core'); ?></p>
   <?php
+  gwseq_render_horse_private_share_controls($post);
 }
+
+/* -------------------------------------------------------------------------------------------
+ * Partage privé (suite V1 « Partager & vendre », Lot 1) — §2.B de la demande : un cheval que le
+ * professionnel ne veut pas exposer publiquement doit pouvoir être envoyé quand même à des
+ * acheteurs précis, via un lien secret révocable/régénérable. Toute la logique de token
+ * (génération/lecture/activation/révocation/URL/recherche inverse) vit dans includes/cheval-
+ * share.php (couche métier, réutilisable sans connaître wp-admin) ; ce fichier-ci ne fait QUE la
+ * glue WordPress : règle de réécriture, blocage du permalink normal, rendu de la route privée,
+ * exclusion recherche/sitemap/REST, et les deux actions de formulaire classique (activer/révoquer).
+ * ----------------------------------------------------------------------------------------- */
+
+const GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR = 'gwseq_partage_token';
+const GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION = 'gwseq_partage_prive';
+
+/**
+ * Formulaire classique WordPress (admin-post.php + nonce), volontairement PAS un point d'entrée
+ * AJAX supplémentaire : créer/révoquer/régénérer un lien privé est une action ponctuelle et rare,
+ * contrairement aux interactions fréquentes de l'écran Partager (recherche, cases à cocher) qui,
+ * elles, justifient l'AJAX. Rendu dans la MÊME boîte latérale que le bouton "Partager ce cheval" —
+ * jamais une seconde interface.
+ */
+function gwseq_render_horse_private_share_controls($post) {
+  if (!current_user_can('edit_post', $post->ID)) return;
+
+  $is_active = gwseq_horse_private_share_is_active($post->ID);
+  echo '<hr>';
+  echo '<p><strong>' . esc_html__('Partage privé', 'gws-core') . '</strong></p>';
+
+  if ($is_active) {
+    $url = gwseq_horse_private_share_url($post->ID);
+    echo '<p class="description">' . esc_html__('Ce cheval est accessible uniquement via ce lien secret, jamais publiquement (recherche, catalogue, sitemap).', 'gws-core') . '</p>';
+    echo '<p><input type="text" readonly value="' . esc_attr($url) . '" style="width:100%;" onclick="this.select();"></p>';
+    ?>
+    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block;margin-right:6px;">
+      <?php wp_nonce_field(GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION . '_' . $post->ID, '_wpnonce'); ?>
+      <input type="hidden" name="action" value="gwseq_partage_prive_activer">
+      <input type="hidden" name="cheval_id" value="<?php echo (int) $post->ID; ?>">
+      <button type="submit" class="button"><?php esc_html_e('Régénérer (invalide l’ancien lien)', 'gws-core'); ?></button>
+    </form>
+    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block;">
+      <?php wp_nonce_field(GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION . '_' . $post->ID, '_wpnonce'); ?>
+      <input type="hidden" name="action" value="gwseq_partage_prive_revoquer">
+      <input type="hidden" name="cheval_id" value="<?php echo (int) $post->ID; ?>">
+      <button type="submit" class="button"><?php esc_html_e('Révoquer', 'gws-core'); ?></button>
+    </form>
+    <?php
+  } else {
+    echo '<p class="description">' . esc_html__('Envoyer ce cheval à des acheteurs précis sans l’afficher publiquement sur le site.', 'gws-core') . '</p>';
+    ?>
+    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+      <?php wp_nonce_field(GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION . '_' . $post->ID, '_wpnonce'); ?>
+      <input type="hidden" name="action" value="gwseq_partage_prive_activer">
+      <input type="hidden" name="cheval_id" value="<?php echo (int) $post->ID; ?>">
+      <button type="submit" class="button button-secondary"><?php esc_html_e('Créer un lien de partage privé', 'gws-core'); ?></button>
+    </form>
+    <?php
+  }
+}
+
+/**
+ * Prédicat extrait à part (jamais mêlé à wp_die()/redirection ci-dessous) précisément pour rester
+ * testable unitairement : mêmes règles que partout ailleurs dans ce fichier — la fiche doit
+ * exister, être un Cheval, et l'utilisateur courant doit pouvoir l'éditer (§16 : "utilisateur sans
+ * permission ne peut pas générer un lien pour un cheval qu'il ne peut pas éditer").
+ */
+function gwseq_horse_private_share_user_can_manage($cheval_id) {
+  $cheval_id = (int) $cheval_id;
+  return $cheval_id > 0 && get_post_type($cheval_id) === GWSEQ_CPT_CHEVAL && current_user_can('edit_post', $cheval_id);
+}
+
+function gwseq_horse_private_share_handle_admin_post($activate) {
+  $cheval_id = isset($_POST['cheval_id']) ? absint($_POST['cheval_id']) : 0;
+  check_admin_referer(GWSEQ_HORSE_PRIVATE_SHARE_NONCE_ACTION . '_' . $cheval_id);
+
+  if (!gwseq_horse_private_share_user_can_manage($cheval_id)) {
+    wp_die(esc_html__('Action non autorisée.', 'gws-core'), '', array('response' => 403));
+  }
+
+  if ($activate) {
+    gwseq_horse_private_share_activate($cheval_id);
+  } else {
+    gwseq_horse_private_share_revoke($cheval_id);
+  }
+
+  wp_safe_redirect(get_edit_post_link($cheval_id, 'raw'));
+  exit;
+}
+
+function gwseq_horse_private_share_admin_post_activate() {
+  gwseq_horse_private_share_handle_admin_post(true);
+}
+add_action('admin_post_gwseq_partage_prive_activer', 'gwseq_horse_private_share_admin_post_activate');
+
+function gwseq_horse_private_share_admin_post_revoke() {
+  gwseq_horse_private_share_handle_admin_post(false);
+}
+add_action('admin_post_gwseq_partage_prive_revoquer', 'gwseq_horse_private_share_admin_post_revoke');
+
+/* -------------------------------------------------------------------------------------------
+ * Route front `/partage/{token}` — §2.B : accessible sans compte par quiconque possède le lien,
+ * pour n'importe quel post_status (brouillon inclus, voir gwseq_horse_private_share_find_cheval_id()
+ * dans cheval-share.php). Réutilise get_single_template() — la hiérarchie de gabarits NATIVE de
+ * WordPress, jamais un second système de rendu : dès qu'un gabarit dédié single-gwseq_cheval.php
+ * existera côté thème, cette route l'utilisera automatiquement sans aucune modification ici.
+ * ----------------------------------------------------------------------------------------- */
+
+function gwseq_horse_private_share_register_rewrite() {
+  add_rewrite_tag('%' . GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR . '%', '([a-f0-9]{64})');
+  add_rewrite_rule(
+    '^' . GWSEQ_HORSE_PRIVATE_SHARE_REWRITE_BASE . '/([a-f0-9]{64})/?$',
+    'index.php?' . GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR . '=$matches[1]',
+    'top'
+  );
+}
+add_action('init', 'gwseq_horse_private_share_register_rewrite');
+
+/**
+ * Bloque le permalink public NORMAL d'un cheval dès qu'un partage privé est actif pour lui (§2.B :
+ * "ne doit pas être accessible via le permalink public normal du cheval") — seul `/partage/{token}`
+ * reste une porte d'entrée valide. L'auteur/éditeur de la fiche continue de la voir normalement
+ * (édition, prévisualisation) : ce blocage ne vise QUE le visiteur qui ne peut pas éditer la fiche.
+ */
+function gwseq_horse_private_share_block_normal_permalink() {
+  if (!is_singular(GWSEQ_CPT_CHEVAL) || is_preview()) return;
+  $cheval_id = get_queried_object_id();
+  if (!gwseq_horse_private_share_is_active($cheval_id)) return;
+  if (current_user_can('edit_post', $cheval_id)) return;
+
+  global $wp_query;
+  $wp_query->set_404();
+  status_header(404);
+  nocache_headers();
+  include get_404_template();
+  exit;
+}
+add_action('template_redirect', 'gwseq_horse_private_share_block_normal_permalink', 5);
+
+function gwseq_horse_private_share_render() {
+  $token = get_query_var(GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR, '');
+  if ($token === '') return;
+
+  $cheval_id = gwseq_horse_private_share_find_cheval_id($token);
+  if (!$cheval_id) {
+    global $wp_query;
+    $wp_query->set_404();
+    status_header(404);
+    nocache_headers();
+    include get_404_template();
+    exit;
+  }
+
+  global $post, $wp_query;
+  $post = get_post($cheval_id);
+  setup_postdata($post);
+  $wp_query->is_404 = false;
+  $wp_query->is_singular = true;
+  $wp_query->is_single = true;
+  $wp_query->queried_object = $post;
+  $wp_query->queried_object_id = $post->ID;
+  $wp_query->post = $post;
+  $wp_query->posts = array($post);
+  $wp_query->post_count = 1;
+  $wp_query->found_posts = 1;
+  $wp_query->max_num_pages = 1;
+
+  status_header(200);
+  include get_single_template();
+  exit;
+}
+add_action('template_redirect', 'gwseq_horse_private_share_render', 10);
+
+/* -------------------------------------------------------------------------------------------
+ * Exclusion recherche/archive/sitemap/REST (§16 : "aucune fuite via recherche publique/archive/
+ * taxonomie/API REST") — un cheval en partage privé actif ne doit apparaître dans AUCUN de ces
+ * canaux, quel que soit son post_status réel. Une seule définition de "exclu du public" (jamais
+ * plusieurs clauses qui pourraient diverger), réutilisée par les quatre points d'accroche
+ * ci-dessous.
+ * ----------------------------------------------------------------------------------------- */
+
+function gwseq_horse_private_share_exclusion_meta_clause() {
+  return array(
+    'relation' => 'OR',
+    array('key' => GWSEQ_HORSE_PRIVATE_SHARE_META_KEY, 'compare' => 'NOT EXISTS'),
+    array('key' => GWSEQ_HORSE_PRIVATE_SHARE_META_KEY, 'value' => '', 'compare' => '='),
+  );
+}
+
+/**
+ * Requêtes REST de LISTE uniquement (`/wp/v2/gwseq_cheval?...`) — un accès DIRECT par identifiant
+ * ne passe pas par ce filtre, voir gwseq_horse_private_share_filter_rest_response() ci-dessous.
+ */
+function gwseq_horse_private_share_filter_rest_query($args, $request) {
+  $meta_query = (array) ($args['meta_query'] ?? array());
+  $meta_query[] = gwseq_horse_private_share_exclusion_meta_clause();
+  $args['meta_query'] = $meta_query;
+  return $args;
+}
+add_filter('rest_' . GWSEQ_CPT_CHEVAL . '_query', 'gwseq_horse_private_share_filter_rest_query', 10, 2);
+
+function gwseq_horse_private_share_filter_rest_response($response, $post, $request) {
+  if (gwseq_horse_private_share_is_active($post->ID) && !current_user_can('edit_post', $post->ID)) {
+    return new WP_Error('gwseq_horse_private', __('Cheval introuvable.', 'gws-core'), array('status' => 404));
+  }
+  return $response;
+}
+add_filter('rest_prepare_' . GWSEQ_CPT_CHEVAL, 'gwseq_horse_private_share_filter_rest_response', 10, 3);
+
+function gwseq_horse_private_share_filter_sitemap_args($args, $post_type) {
+  if ($post_type !== GWSEQ_CPT_CHEVAL) return $args;
+  $meta_query = (array) ($args['meta_query'] ?? array());
+  $meta_query[] = gwseq_horse_private_share_exclusion_meta_clause();
+  $args['meta_query'] = $meta_query;
+  return $args;
+}
+add_filter('wp_sitemaps_posts_query_args', 'gwseq_horse_private_share_filter_sitemap_args', 10, 2);
+
+/**
+ * Recherche publique/archive/taxonomie Cheval UNIQUEMENT (jamais appliqué à une requête sans
+ * rapport, pour ne pas ajouter une jointure meta inutile à chaque page du site) — jamais notre
+ * propre route `/partage/{token}`, qui doit au contraire toujours réussir à trouver le cheval.
+ */
+function gwseq_horse_private_share_filter_public_query($query) {
+  if (is_admin() || !$query->is_main_query()) return;
+  if (get_query_var(GWSEQ_HORSE_PRIVATE_SHARE_QUERY_VAR, '') !== '') return;
+  $touches_cheval = in_array(GWSEQ_CPT_CHEVAL, (array) $query->get('post_type'), true) || $query->is_post_type_archive(GWSEQ_CPT_CHEVAL);
+  if (!$query->is_search() && !$touches_cheval && !$query->is_tax(GWSEQ_TAX_CATEGORIE_CHEVAL)) return;
+
+  $meta_query = (array) $query->get('meta_query');
+  $meta_query[] = gwseq_horse_private_share_exclusion_meta_clause();
+  $query->set('meta_query', $meta_query);
+}
+add_action('pre_get_posts', 'gwseq_horse_private_share_filter_public_query');
 
 /* -------------------------------------------------------------------------------------------
  * Assets — uniquement sur l'écran Partager.
@@ -412,7 +645,13 @@ function gwseq_enqueue_horse_share_admin_assets($hook) {
       'personalMessagePlaceholder' => __('Ex. Bonjour Pierre, je pensais à cette jument suite à notre échange...', 'gws-core'),
       'infoToSendLabel' => __('Informations à envoyer', 'gws-core'),
       'videosLabel' => __('Vidéos', 'gws-core'),
-      'ficheLabel' => __('Ajouter la fiche complète', 'gws-core'),
+      // §3 de la suite « Partager & vendre » : vocabulaire utilisateur, l'ancien libellé "Ajouter
+      // la fiche complète" laissait entendre à tort un choix de permalink à comprendre — GWS
+      // détermine désormais lui-même le lien approprié (voir gwseq_horse_share_fiche_info(),
+      // includes/cheval-share.php) ; seul le libellé change selon qu'il s'agit d'un lien public ou
+      // privé (fiche_type), jamais le comportement de sélection lui-même.
+      'ficheLabel' => __('Inclure le lien vers la fiche', 'gws-core'),
+      'ficheLabelPrivee' => __('Inclure le lien privé vers la fiche', 'gws-core'),
       'previewLabel' => __('Aperçu du message', 'gws-core'),
       'whatsapp' => __('WhatsApp', 'gws-core'),
       'sms' => __('SMS / Messages', 'gws-core'),

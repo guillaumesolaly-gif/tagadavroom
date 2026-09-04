@@ -5,6 +5,85 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.26.0 — Suite V1 « Partager & vendre » — Lot 1 : visibilité public/privé, liens, Open Graph
+
+Premier lot de la suite « Partager & vendre » (0.25.0 validé en principe : recherche/filtres,
+composition, sélection d'informations/vidéos, message personnel, aperçu, WhatsApp/SMS/Copier,
+accroche commerciale, Open Graph amorcé, accès BO). Ce lot livre UNIQUEMENT la visibilité
+public/privé, les liens qui en découlent et l'Open Graph associé — conformément à la méthode de
+développement demandée (par lots, arrêt et recette réelle avant le lot suivant). Sélection
+multi-chevaux (Lot 2), point d'entrée mobile GWS (Lot 3) et audit mobile de la fiche Cheval (Lot 4)
+ne sont volontairement PAS développés dans ce lot.
+
+**Partage privé (`includes/cheval-share.php`, nouvelles fonctions `gwseq_horse_private_share_*()`).**
+Un cheval que le professionnel ne veut pas exposer publiquement peut désormais être envoyé à des
+acheteurs précis via un lien secret `/partage/{token}`, sans jamais "publier la fiche puis la
+retirer des menus". Le token : 32 octets générés par `random_bytes()` (64 caractères hexadécimaux,
+non énumérables) — jamais l'ID WordPress ni le Global Horse ID, qui restent des identifiants
+métier prévisibles et ne deviennent jamais un secret d'accès. Stocké dans une seule meta postmeta
+déjà existante comme mécanisme (`_gwseq_partage_prive_token`, aucune nouvelle table) : sa seule
+présence non vide fait office de drapeau actif. Créer/régénérer/révoquer sont exposés dans la boîte
+latérale "Partage" déjà existante de l'écran d'édition d'une fiche (jamais une seconde interface),
+via un formulaire classique `admin-post.php` + nonce (action ponctuelle et rare, contrairement aux
+interactions fréquentes de l'écran Partager qui, elles, restent en AJAX). Régénérer invalide
+immédiatement l'ancien lien (même opération que créer : le nouveau token remplace simplement
+l'ancien). Un partage privé actif bloque le permalink public NORMAL du cheval, quel que soit son
+post_status réel (`gwseq_horse_private_share_block_normal_permalink()`,
+`includes/cheval-share-admin.php`) — sauf pour l'éditeur de la fiche lui-même. La route
+`/partage/{token}` (`gwseq_horse_private_share_render()`) réutilise `get_single_template()`, la
+hiérarchie de gabarits NATIVE de WordPress : aucun second système de rendu, un futur
+`single-gwseq_cheval.php` côté thème s'appliquera automatiquement à cette route sans aucun code
+supplémentaire.
+
+**Exclusion recherche/archive/taxonomie/API REST/sitemap.** Une seule clause meta_query
+(`gwseq_horse_private_share_exclusion_meta_clause()`) réutilisée aux quatre points d'accroche
+natifs de WordPress : `pre_get_posts` (recherche publique, archive Cheval, taxonomie Catégorie de
+cheval — jamais une requête sans rapport, pour ne pas ajouter de jointure meta inutile ailleurs sur
+le site), `rest_{post_type}_query` (listes REST), `rest_prepare_{post_type}` (accès direct par
+identifiant, bloqué en 404 pour qui ne peut pas éditer la fiche), et `wp_sitemaps_posts_query_args`
+(sitemap natif WordPress). Limite documentée : un plugin SEO tiers actif construit ses propres
+requêtes de sitemap indépendamment de ces filtres WordPress natifs — non couvert par ce mécanisme,
+hors de notre contrôle (le partage privé d'un cheval resté en post_status non publié reste, lui,
+protégé de la même façon vis-à-vis de tout plugin, publié ou non, puisqu'aucun système ne liste par
+défaut des posts non publiés).
+
+**Vocabulaire utilisateur (§3).** L'ancien libellé "Ajouter la fiche complète" laissait entendre à
+tort un choix de permalink à comprendre — remplacé par "Inclure le lien vers la fiche"
+("Inclure le lien privé vers la fiche" lorsque le lien est un partage privé). GWS détermine
+désormais seul le lien approprié (`gwseq_horse_share_fiche_info()`, nouveau champ `fiche_type`
+exposé par `gwseq_get_horse_shareable_data()`) : privé en priorité si actif (même si le cheval est
+par ailleurs publié), sinon public si réellement publique, sinon aucun lien — jamais à l'utilisateur
+de choisir. Comportement de sélection (case à cocher) totalement inchangé.
+
+**Open Graph (§4) : fonctionne aussi sur la route de partage privé.** `gwseq_render_horse_og_meta()`
+s'active désormais également sur `/partage/{token}` (en plus d'une fiche publiquement visible) :
+`og:url` reflète l'URL RÉELLEMENT visitée (privée ou publique — corrigé, elle pointait auparavant
+toujours vers le permalink normal, ce qui aurait affiché la mauvaise URL dans un aperçu WhatsApp
+généré depuis un lien privé), une balise `noindex` est systématiquement ajoutée sur cette route
+(jamais un mécanisme de sécurité en soi — seulement une indication aux moteurs de recherche,
+puisque le blocage réel se fait par `gwseq_horse_private_share_block_normal_permalink()`), et notre
+balisage reste actif MÊME si un plugin SEO tiers est détecté (limite documentée : ce dernier peut
+malgré tout émettre en plus ses propres balises sur cette route, hors de notre contrôle). Le prix
+n'est, comme avant, jamais exposé. `og:title`/`og:description`/`og:image` inchangés (la description
+déterministe identité+origines+accroche existait déjà — aucun changement nécessaire pour §4).
+
+**Déclencheur de flush des règles de réécriture par version** (`module.php`,
+`gwseq_maybe_flag_rewrite_flush_for_version()`) : le mécanisme existant côté gws-core ne se
+déclenche que lorsque la LISTE des modules actifs change, jamais lorsqu'un module déjà actif ajoute
+une nouvelle règle de réécriture à une version ultérieure — ce déclencheur générique, comparé à la
+version stockée en base, couvre ce cas précis (la nouvelle route `/partage/{token}`) ET tout ajout
+futur de règle de réécriture dans ce module.
+
+**Limites connues de ce lot** (documentées, pas des oublis) : la création/révocation d'un lien
+privé se fait depuis l'écran d'édition classique de la fiche (boîte latérale "Partage"), pas encore
+intégrée dans l'écran mobile "Partager" lui-même (l'écran Partager LIT déjà correctement le lien
+privé une fois créé, via `fiche_type`/`fiche_url`) ; un plugin SEO tiers actif peut émettre ses
+propres balises en plus des nôtres sur la route privée, et construire son sitemap indépendamment de
+nos filtres WordPress natifs. Aucun gabarit `single-gwseq_cheval.php` dédié n'existe encore côté
+thème (prévu à une étape ultérieure déjà documentée) : la route privée comme la route publique
+utilisent aujourd'hui toutes deux le gabarit générique `single.php`, strictement inchangé par ce
+lot.
+
 ## 0.25.0 — Partager un cheval : correctifs du transport vers les canaux (premier test réel WhatsApp)
 
 Retour du premier test réel du bouton WhatsApp de `Chevaux → Partager` (0.24.0) : le message était

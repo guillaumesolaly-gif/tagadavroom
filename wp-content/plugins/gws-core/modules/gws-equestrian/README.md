@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.25.0 — Partager un cheval (0.22.0) : premier test réel du bouton WhatsApp corrigé — sauts de ligne et pictogramme vidéo perdus dans le transport (cause exacte : le lien court `wa.me`, remplacé par le point d'entrée canonique `api.whatsapp.com/send` ; pictogramme retiré à la source), bug de "Ajouter la fiche complète" découvert et corrigé au passage (booléen JS transitant comme chaîne littérale), adaptateur `sms:` audité pour la différence iOS/Android — aucune autre évolution engagée dans ce lot. En attente d'une nouvelle recette runtime en conditions réelles (WhatsApp/SMS/Copier) avant de considérer ce lot clos. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime — aucune autre évolution engagée avant celle-ci.
+## État actuel : GWS Equestrian 0.26.0 — Suite V1 « Partager & vendre », Lot 1 sur 5 : visibilité public/privé (lien de partage privé `/partage/{token}`, révocable/régénérable, exclu recherche/archive/API REST/sitemap), vocabulaire "Inclure le lien vers la fiche" (GWS détermine seul le lien approprié), Open Graph fonctionnel aussi sur la route privée (og:url correct, noindex systématique). Développement par lots avec recette réelle entre chaque étape (méthode explicitement demandée) : Lot 2 (sélection multi-chevaux), Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent à développer APRÈS validation de ce Lot 1, aucun engagé par avance. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1. Prochaine étape : recette runtime réelle de ce Lot 1 (navigateur + accès sans compte au lien privé) avant d'engager le Lot 2.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -703,6 +703,22 @@ chaîne littérale `"false"`, interprétée à tort comme vraie par l'ancienne s
 (`!empty('false')`) — corrigé par `filter_var(..., FILTER_VALIDATE_BOOLEAN)`. Adaptateur `sms:`
 audité et corrigé : séparateur `&` requis sur iOS contre `?` sur Android (`buildSmsUrl()`), même
 encodage des deux côtés. Voir `CHANGELOG.md` de ce dossier (0.25.0) pour le détail complet.
+
+**Suite V1 « Partager & vendre » — Lot 1 : visibilité public/privé, liens, Open Graph (0.26.0).**
+Lien de partage PRIVÉ `/partage/{token}` (token de 64 caractères hexadécimaux générés par
+`random_bytes()`, jamais l'ID WordPress ni le Global Horse ID) : révocable, régénérable (invalide
+immédiatement l'ancien lien), exclu de la recherche/archive/taxonomie/API REST/sitemap, permalink
+public normal bloqué tant qu'actif — géré depuis la boîte latérale "Partage" existante de l'écran
+d'édition (`gwseq_render_horse_private_share_controls()`, `includes/cheval-share-admin.php`),
+jamais une seconde interface. `gwseq_horse_share_fiche_info()` (`includes/cheval-share.php`)
+détermine seul le lien approprié (privé en priorité, sinon public, sinon aucun) : le libellé de
+l'écran Partager devient "Inclure le lien vers la fiche" ("...privé..." si `fiche_type === 'privee'`),
+plus jamais "Ajouter la fiche complète". Open Graph fonctionne désormais aussi sur la route de
+partage privé (`og:url` reflète l'URL réellement visitée, `noindex` systématique — jamais un
+mécanisme de sécurité en soi). Voir `CHANGELOG.md` de ce dossier (0.26.0) pour le détail complet, y
+compris les limites connues (création du lien privé pas encore intégrée dans l'écran mobile
+Partager lui-même ; un plugin SEO tiers actif peut émettre ses propres balises en plus des nôtres
+sur la route privée).
 
 Voir `tests/gws-equestrian-cheval-share-logic-test.php`,
 `tests/gws-equestrian-cheval-share-admin-test.php` et

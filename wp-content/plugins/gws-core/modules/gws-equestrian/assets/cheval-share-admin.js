@@ -395,7 +395,13 @@
       ficheCheckbox.id = 'gwseq-partager-fiche';
       ficheCheckbox.checked = !!shareable.fiche_default_checked;
       ficheLabel.appendChild(ficheCheckbox);
-      ficheLabel.appendChild(el('span', null, t('ficheLabel', 'Ajouter la fiche complète')));
+      // §3 de la suite « Partager & vendre » : GWS a déjà déterminé le lien approprié côté serveur
+      // (gwseq_horse_share_fiche_info()) — seul le LIBELLÉ change selon son type (fiche_type),
+      // jamais une case supplémentaire ni un choix de permalink à faire comprendre à l'utilisateur.
+      var ficheLabelText = shareable.fiche_type === 'privee'
+        ? t('ficheLabelPrivee', 'Inclure le lien privé vers la fiche')
+        : t('ficheLabel', 'Inclure le lien vers la fiche');
+      ficheLabel.appendChild(el('span', null, ficheLabelText));
       ficheRow.appendChild(ficheLabel);
       wrapper.appendChild(ficheRow);
     }

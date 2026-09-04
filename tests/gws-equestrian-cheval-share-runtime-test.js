@@ -141,6 +141,7 @@ const FIXTURE_SHAREABLE = {
     { index: 0, label: 'Allures à 3 ans', url: 'https://example.test/v1', default_checked: true },
   ],
   fiche_url: 'https://example.test/chevaux/cheval-10/',
+  fiche_type: 'publique',
   fiche_default_checked: true,
 };
 
@@ -172,6 +173,7 @@ const FIXTURE_SHAREABLE_ENCODING = {
     { index: 0, label: 'GP Amat 2 110 Hôpital le Grand', url: 'https://www.youtube.com/watch?v=abc123XYZ', default_checked: true },
   ],
   fiche_url: 'https://example.test/chevaux/cheval-99/',
+  fiche_type: 'privee',
   fiche_default_checked: true,
 };
 
@@ -458,6 +460,16 @@ async function run() {
   const ficheCheckboxEncoding = composeRootEncoding.querySelector('#gwseq-partager-fiche');
   ok('Fiche complète : cochée par défaut (fiche_default_checked de la fixture)', ficheCheckboxEncoding.checked === true);
   ok('Fiche complète cochée : le bloc "Fiche complète, photos et pedigree :" + URL est bien présent dans l’aperçu', sourceText.indexOf('Fiche complète, photos et pedigree :') !== -1 && sourceText.indexOf(FIXTURE_SHAREABLE_ENCODING.fiche_url) !== -1);
+
+  // --- §3 : GWS détermine seul le lien approprié — seul le LIBELLÉ change selon fiche_type, jamais
+  // une case ni un choix de permalink à faire comprendre à l'utilisateur ---
+  // Le DOM factice de ce fichier ne fait PAS remonter le texte des descendants via .textContent
+  // (contrairement à un vrai navigateur) — on lit donc directement le <span> qui porte le libellé.
+  const ficheLabelSpanEncoding = composeRootEncoding.querySelector('.gwseq-partager-fiche-row').querySelector('span');
+  ok('Libellé du lien de fiche : "Inclure le lien privé vers la fiche" pour un cheval en partage privé (fiche_type "privee")', ficheLabelSpanEncoding.textContent === 'Inclure le lien privé vers la fiche');
+
+  const ficheLabelSpanPublique = composeRoot.querySelector('.gwseq-partager-fiche-row').querySelector('span');
+  ok('Libellé du lien de fiche : "Inclure le lien vers la fiche" (sans mention "privé") pour un cheval publiquement partagé (fiche_type "publique")', ficheLabelSpanPublique.textContent === 'Inclure le lien vers la fiche');
 
   ficheCheckboxEncoding.checked = false;
   ficheCheckboxEncoding.dispatchEvent({ type: 'change' });
