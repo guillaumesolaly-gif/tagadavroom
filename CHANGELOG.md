@@ -1,5 +1,19 @@
 # Changelog — GWS Starter
 
+## 1.42.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Diagnostic instrumenté de performance, itération 4 (GWS Equestrian 0.39.0) — cause principale
+  localisée.** La mesure réelle de l'itération 3 (1.41.0) a attribué 36 065,0 ms des ~36 secondes
+  perdues à l'ouverture d'une fiche Cheval à UN SEUL callback :
+  `gwseq_add_cheval_pedigree_meta_boxes()` (cheval-pedigree.php:670) — le rendu de la boîte
+  Pedigree elle-même ne prenant que 49,7 ms. Cette version instrumente son contenu (trois
+  instructions seulement) via le mécanisme natif `SAVEQUERIES`/`$wpdb->queries` de WordPress
+  (déjà utilisé par des outils comme Query Monitor), étendu au profileur générique existant : pour
+  chaque callback déjà mesuré, nombre de requêtes SQL exécutées et leur temps cumulé, avec un
+  échantillon des plus lentes au-delà d'un seuil. Toujours aucun correctif — mesurer avant de
+  corriger. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.39.0) pour
+  le détail complet.
+
 ## 1.41.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Diagnostic instrumenté de performance, itération 3 (GWS Equestrian 0.38.0).** Les mesures

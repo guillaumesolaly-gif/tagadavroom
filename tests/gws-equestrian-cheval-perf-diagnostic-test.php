@@ -36,6 +36,10 @@ function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES)
 function get_the_ID() { return $GLOBALS['__gwseq_test_current_post_id'] ?? 0; }
 function wp_normalize_path($path) { return str_replace('\\', '/', (string) $path); }
 
+// $wpdb minimal (itération 4) : seule la propriété ->queries, alimentée par SAVEQUERIES en
+// conditions réelles, est jamais lue par ce diagnostic — aucune méthode wpdb n'est appelée.
+$GLOBALS['wpdb'] = (object) array('queries' => array());
+
 // Arborescence FICTIVE (créée uniquement pour ce test, jamais dans le vrai dépôt) reproduisant les
 // emplacements réels que gwseq_perf_diag_describe_callable() doit savoir classer par réflexion :
 // un plugin précis, un thème précis, un mu-plugin, et le cœur WordPress (wp-admin/wp-includes) —
@@ -109,6 +113,7 @@ echo json_encode(array(
   'hooks' => array_keys(\$GLOBALS['__gwseq_test_actions']),
   'diag_initialized' => isset(\$GLOBALS['__gwseq_perf_diag']),
   'target_hooks' => defined('GWSEQ_PERF_DIAG_TARGET_HOOKS') ? GWSEQ_PERF_DIAG_TARGET_HOOKS : null,
+  'query_sample_threshold' => defined('GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD') ? GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD : null,
 ));
 PHP
 );
@@ -135,6 +140,14 @@ if (is_array($sub_result)) {
 // pour être appelée directement plus bas, sans jamais la dupliquer à la main ni risquer une valeur
 // de complaisance qui masquerait une régression du fichier réel.
 if ($target_hooks !== array()) { define('GWSEQ_PERF_DIAG_TARGET_HOOKS', $target_hooks); }
+// Même limitation, même remède (itération 4) pour le seuil de signalement SQL — également un
+// `const` jamais atteint par le require en mode "production" ci-dessus.
+$query_sample_threshold = is_array($sub_result ?? null) ? ($sub_result['query_sample_threshold'] ?? null) : null;
+// json_encode()/json_decode() ramène 1.0 à l'entier 1 (aucune partie fractionnaire) : comparaison
+// numérique volontaire, jamais stricte, pour ne pas confondre un vrai écart avec cet artefact JSON.
+gws_test_assert($query_sample_threshold !== null && (float) $query_sample_threshold === 1.0, 'Gating : GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD vaut bien 1 seconde (valeur réelle du fichier de production)');
+$query_sample_threshold = $query_sample_threshold !== null ? (float) $query_sample_threshold : null;
+if ($query_sample_threshold !== null) { define('GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD', $query_sample_threshold); }
 
 // =====================================================================================
 // gwseq_perf_diag_active_screen() : portée strictement limitée à UNE fiche Cheval en édition.
@@ -314,6 +327,76 @@ gwseq_perf_diag_wrap_hook_callbacks('hook_sans_callbacks');
 gws_test_assert(true, 'Enveloppement générique : un hook absent, mal formé, ou sans callback n’entraîne jamais d’erreur (no-op silencieux)');
 
 // =====================================================================================
+// gwseq_perf_diag_capture_queries_since() (itération 4) — lit $wpdb->queries (natif WordPress,
+// SAVEQUERIES) sans jamais le modifier ; l'échantillon SQL n'est renseigné que si le callback
+// dépasse le seuil de signalement.
+// =====================================================================================
+
+global $wpdb;
+$wpdb->queries = array(
+  array('SELECT 1 -- déjà présente avant cet appel', 0.001, 'backtrace'),
+);
+$queries_before_count = count($wpdb->queries);
+$wpdb->queries[] = array('SELECT * FROM wp_posts', 0.010, 'backtrace');
+$wpdb->queries[] = array('SELECT * FROM wp_postmeta WHERE meta_key = "_gwseq_pere_id"', 0.900, 'backtrace');
+
+$result_fast = gwseq_perf_diag_capture_queries_since($queries_before_count, 0.5);
+gws_test_assert($result_fast['count'] === 2, 'Capture SQL : compte exactement les requêtes exécutées DEPUIS le point de départ, jamais celles d’avant');
+gws_test_assert(abs($result_fast['time'] - 0.910) < 0.0001, 'Capture SQL : temps cumulé exact des seules requêtes capturées');
+gws_test_assert($result_fast['sample'] === array(), 'Capture SQL : aucun échantillon SQL en dessous du seuil de signalement (callback jugé rapide)');
+
+$result_slow = gwseq_perf_diag_capture_queries_since($queries_before_count, GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD + 0.1);
+gws_test_assert(count($result_slow['sample']) === 2, 'Capture SQL : au-dessus du seuil, l’échantillon des requêtes de CE callback est renseigné');
+gws_test_assert($result_slow['sample'][0]['sql'] === 'SELECT * FROM wp_postmeta WHERE meta_key = "_gwseq_pere_id"' && abs($result_slow['sample'][0]['time'] - 0.900) < 0.0001, 'Capture SQL : l’échantillon est classé par durée décroissante — la requête la plus lente en premier');
+gws_test_assert($result_slow['sample'][1]['sql'] === 'SELECT * FROM wp_posts', 'Capture SQL : la requête la plus rapide de l’échantillon apparaît en second');
+
+$wpdb->queries = array();
+$result_no_wpdb_activity = gwseq_perf_diag_capture_queries_since(0, 5.0);
+gws_test_assert($result_no_wpdb_activity['count'] === 0 && $result_no_wpdb_activity['time'] === 0.0 && $result_no_wpdb_activity['sample'] === array(), 'Capture SQL : zéro requête (jamais null) quand $wpdb->queries existe mais est vide — SAVEQUERIES actif, callback simplement sans requête');
+
+unset($wpdb->queries);
+$result_no_savequeries = gwseq_perf_diag_capture_queries_since(0, 5.0);
+gws_test_assert($result_no_savequeries['count'] === null && $result_no_savequeries['time'] === null, 'Capture SQL : null (jamais zéro, qui serait trompeur) quand $wpdb->queries est indisponible — SAVEQUERIES inactif');
+$wpdb->queries = array();
+
+// =====================================================================================
+// gwseq_perf_diag_wrap_hook_callbacks() (itération 4) — chaque callback enveloppé relève
+// désormais aussi les requêtes SQL exécutées PENDANT son propre appel, jamais celles d’avant ni
+// d’après, et jamais celles d’un AUTRE callback enveloppé.
+// =====================================================================================
+
+$wpdb->queries = array();
+$hook_sql_a = function () { $GLOBALS['wpdb']->queries[] = array('SELECT * FROM wp_posts -- callback A', 0.005, ''); return 'a'; };
+// Le seuil de signalement (GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD) compare la durée RÉELLE
+// (temps horloge) du callback, jamais la somme fictive de ses requêtes — un usleep() réel est donc
+// nécessaire ici pour exercer authentiquement ce branchement plutôt que de le contourner.
+$hook_sql_b = function () use ($query_sample_threshold) {
+  $GLOBALS['wpdb']->queries[] = array('SELECT * FROM wp_postmeta -- callback B, requête 1', 0.700, '');
+  $GLOBALS['wpdb']->queries[] = array('SELECT * FROM wp_postmeta -- callback B, requête 2', 0.400, '');
+  usleep((int) (($query_sample_threshold + 0.05) * 1000000));
+  return 'b';
+};
+$wp_filter['test_hook_sql'] = (object) array(
+  'callbacks' => array(
+    10 => array('entree-a' => array('function' => $hook_sql_a, 'accepted_args' => 0)),
+    20 => array('entree-b' => array('function' => $hook_sql_b, 'accepted_args' => 0)),
+  ),
+);
+gwseq_perf_diag_wrap_hook_callbacks('test_hook_sql');
+$GLOBALS['__gwseq_perf_diag']['hook_callbacks'] = array();
+call_user_func($wp_filter['test_hook_sql']->callbacks[10]['entree-a']['function']);
+call_user_func($wp_filter['test_hook_sql']->callbacks[20]['entree-b']['function']);
+
+$sql_entries = $GLOBALS['__gwseq_perf_diag']['hook_callbacks'];
+gws_test_assert(count($sql_entries) === 2, 'Enveloppement générique + SQL : une entrée par callback, jamais fusionnées');
+$entry_a = $sql_entries[0];
+$entry_b = $sql_entries[1];
+gws_test_assert($entry_a['query_count'] === 1 && abs($entry_a['query_time'] - 0.005) < 0.0001, 'Enveloppement générique + SQL : le callback A ne se voit attribuer QUE sa propre requête, jamais celles du callback B exécuté ensuite');
+gws_test_assert($entry_a['query_sample'] === array(), 'Enveloppement générique + SQL : callback A rapide (5 ms) — aucun échantillon SQL, même avec une requête réelle');
+gws_test_assert($entry_b['query_count'] === 2 && abs($entry_b['query_time'] - 1.100) < 0.0001, 'Enveloppement générique + SQL : le callback B se voit attribuer SES DEUX requêtes, jamais celle du callback A qui a précédé');
+gws_test_assert(count($entry_b['query_sample']) === 2 && strpos($entry_b['query_sample'][0]['sql'], 'requête 1') !== false, 'Enveloppement générique + SQL : callback B lent (plus d’1 s au total) — échantillon renseigné, requête la plus lente en tête');
+
+// =====================================================================================
 // gwseq_perf_diag_install_hook_profilers() (itération 2, cible étendue en itération 3) — n'agit
 // que sur l'écran actif, et enveloppe alors TOUS les hooks cibles (current_screen/admin_init/
 // load-post(-new).php/admin_enqueue_scripts/add_meta_boxes/add_meta_boxes_gwseq_cheval), jamais
@@ -383,8 +466,8 @@ $GLOBALS['__gwseq_perf_diag'] = array(
     array('current_screen:fin', $t0 + 0.100),
   ),
   'hook_callbacks' => array(
-    array('hook' => 'current_screen', 'priority' => 20, 'label' => 'callback_b', 'source' => 'plugin:y', 'elapsed' => 0.02),
-    array('hook' => 'current_screen', 'priority' => 10, 'label' => 'callback_a', 'source' => 'plugin:x', 'elapsed' => 0.03),
+    array('hook' => 'current_screen', 'priority' => 20, 'label' => 'callback_b', 'source' => 'plugin:y', 'elapsed' => 0.02, 'query_count' => null, 'query_time' => null, 'query_sample' => array()),
+    array('hook' => 'current_screen', 'priority' => 10, 'label' => 'callback_a', 'source' => 'plugin:x', 'elapsed' => 0.03, 'query_count' => null, 'query_time' => null, 'query_sample' => array()),
   ),
 );
 ob_start();
@@ -401,6 +484,39 @@ $pos_a = strpos($report_text_hooks, '[current_screen] callback_a -> plugin:x -> 
 $pos_b = strpos($report_text_hooks, '[current_screen] callback_b -> plugin:y -> 20.0 ms');
 gws_test_assert($pos_a !== false && $pos_b !== false, 'Rapport : chaque callback natif mesuré apparaît au format "[hook] callback -> source -> durée"');
 gws_test_assert($pos_a !== false && $pos_b !== false && $pos_a < $pos_b, 'Rapport : la table des callbacks natifs est classée du PLUS LENT au plus rapide (30 ms avant 20 ms)');
+
+// =====================================================================================
+// gwseq_perf_diag_render_report() (itération 4) — détail SQL par callback (nombre/temps de
+// requêtes, échantillon des plus lentes) reproduisant la mesure réelle sur Jamerose.
+// =====================================================================================
+
+// SAVEQUERIES n'est jamais défini dans CE processus (le require initial en mode "production"
+// s'est arrêté avant la ligne qui la définit — même limitation que les deux `const` ci-dessus,
+// mais ici une VRAIE constante WordPress que le rapport lit directement) : on la définit ici pour
+// exercer authentiquement la ligne de statut du rapport, exactement comme le fichier réel le
+// ferait en local/développement.
+if (!defined('SAVEQUERIES')) { define('SAVEQUERIES', true); }
+
+$GLOBALS['__gwseq_perf_diag'] = array(
+  'boxes' => array(),
+  'phases' => array(),
+  'hook_callbacks' => array(
+    array(
+      'hook' => 'add_meta_boxes_gwseq_cheval', 'priority' => 10,
+      'label' => 'gwseq_add_cheval_pedigree_meta_boxes (cheval-pedigree.php:670)',
+      'source' => 'plugin:gws-core', 'elapsed' => 36.0650,
+      'query_count' => 1, 'query_time' => 36.0600,
+      'query_sample' => array(array('sql' => 'SELECT * FROM wp_postmeta WHERE meta_key = "_gwseq_pere_id"', 'time' => 36.0600)),
+    ),
+  ),
+);
+ob_start();
+gwseq_perf_diag_render_report();
+$report_text_sql = html_entity_decode(ob_get_clean(), ENT_QUOTES);
+
+gws_test_assert(strpos($report_text_sql, 'Détail SQL par callback (SAVEQUERIES) : actif') !== false, 'Rapport : indique explicitement si SAVEQUERIES est actif (jamais silencieux sur cette dépendance)');
+gws_test_assert(strpos($report_text_sql, 'gwseq_add_cheval_pedigree_meta_boxes (cheval-pedigree.php:670) -> plugin:gws-core -> 36065.0 ms (dont 1 requête(s) SQL = 36060.0 ms)') !== false, 'Rapport : un callback avec détail SQL affiche son nombre de requêtes ET leur temps cumulé, en plus de sa durée totale');
+gws_test_assert(strpos($report_text_sql, '36060.0 ms : SELECT * FROM wp_postmeta WHERE meta_key = "_gwseq_pere_id"') !== false, 'Rapport : la requête SQL la plus lente du callback est affichée avec sa durée réelle et son texte');
 
 echo "\n";
 if ($failures > 0) {

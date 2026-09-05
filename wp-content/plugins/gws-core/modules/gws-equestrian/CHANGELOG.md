@@ -5,6 +5,42 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.39.0 — Diagnostic instrumenté de performance, itération 4 (détail SQL par callback — cause principale localisée)
+
+Mesure RÉELLE de l'itération 3, sur Jamerose : `add_meta_boxes_gwseq_cheval` = 36 065,4 ms, dont
+36 065,0 ms attribués très exactement à UN SEUL callback, `gwseq_add_cheval_pedigree_meta_boxes()`
+(cheval-pedigree.php:670) — le rendu ultérieur de la boîte Pedigree elle-même ne prenant que
+49,7 ms. La cause est désormais localisée à un seul callback, dont le corps ne compte que trois
+instructions : un premier `add_meta_box()` (jamais coûteux), un appel conditionnel à
+`gwseq_get_horse_offspring($post->ID)` (un `get_posts()` avec `meta_query` portant sur l'ensemble
+des fiches Cheval), puis un second `add_meta_box()` local/développement uniquement.
+
+**Mesure plutôt que supposition** : PHP ne permet pas d'envelopper un simple appel de fonction
+nommée comme on enveloppe un callback de hook (une entrée mutable de `$wp_filter`). Plutôt que de
+deviner laquelle des trois instructions est en cause, cette itération réutilise un mécanisme NATIF
+de WordPress — `SAVEQUERIES` (`$wpdb->queries`, le même mécanisme qu'utilisent des outils comme
+Query Monitor) — pour journaliser CHAQUE requête SQL réellement exécutée, avec son texte et sa
+durée réelle. Activé au chargement du plugin (uniquement si rien ne l'a déjà explicitement
+désactivé ; le rapport l'indique explicitement si c'est le cas plutôt que de prétendre mesurer des
+requêtes qu'il ne peut pas voir). `gwseq_perf_diag_wrap_hook_callbacks()` (inchangée dans son
+principe depuis l'itération 2) relève désormais aussi, pour CHAQUE callback qu'elle enveloppe déjà
+— pas seulement celui du pedigree, la même mesure généraliste s'applique automatiquement à tout
+hook déjà profilé — le nombre de requêtes SQL exécutées pendant cet appel précis et leur temps
+cumulé ; au-delà d'un seuil (callback mesuré à plus d'1 seconde), le texte et la durée des requêtes
+les plus lentes de ce callback sont conservés (5 au maximum, jamais toutes) et affichés dans le
+rapport. Répond directement à la demande de mesurer les requêtes `WP_Query`/`get_posts`, le
+parcours de l'ensemble des chevaux, et toute opération exécutée plusieurs fois (un nombre de
+requêtes élevé pour un seul callback trahirait une boucle ; une seule requête très longue
+trahirait plutôt la requête elle-même ou l'absence d'index) — sans réadapter le mécanisme à ce cas
+précis ni trancher à l'avance laquelle des trois instructions est en cause.
+
+**Aucun correctif n'est livré dans cette version** — toujours la même demande explicite : mesurer
+avant de corriger. Aucun changement de comportement métier. Tests étendus (nouvelle fonction pure
+`gwseq_perf_diag_capture_queries_since()`, intégration avec l'enveloppement générique existant,
+affichage du détail SQL dans le rapport), vérifiés par retrait/restauration sur deux bugs
+délibérément introduits (attribution de requêtes d'AVANT l'appel, échantillon jamais gated par le
+seuil) — chacun fait échouer exactement les assertions dédiées, aucune autre.
+
 ## 0.38.0 — Diagnostic instrumenté de performance, itération 3 (add_meta_boxes / add_meta_boxes_gwseq_cheval)
 
 Mesures RÉELLES de l'itération 2, obtenues sur Jamerose : `current_screen` (18 ms), `load-post.php`

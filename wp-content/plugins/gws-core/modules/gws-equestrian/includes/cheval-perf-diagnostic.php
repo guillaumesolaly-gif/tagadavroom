@@ -85,10 +85,44 @@
  * GWS (candidat plausible pour expliquer l'indépendance au contenu de la fiche), ou encore ENTRE ces
  * repères et `admin_enqueue_scripts` (le reste de `register_and_do_post_meta_boxes()` — boucle des
  * taxonomies, révisions, etc. — et le reste d'`edit-form-advanced.php` avant `admin-header.php`).
+ *
+ * ITÉRATION 4 (mesure réelle sur Jamerose : `add_meta_boxes_gwseq_cheval` = 36 065,4 ms, dont
+ * 36 065,0 ms attribués très exactement à un seul callback, `gwseq_add_cheval_pedigree_meta_boxes()`
+ * — cheval-pedigree.php:670 — le rendu ultérieur de la boîte Pedigree elle-même ne prenant que
+ * 49,7 ms) : la cause est désormais localisée à UN SEUL callback. Lecture de son corps (trois
+ * instructions seulement) : un premier `add_meta_box()` (jamais coûteux), un appel conditionnel à
+ * `gwseq_get_horse_offspring($post->ID)` — un `get_posts()` avec `meta_query` portant sur
+ * l'ensemble des fiches Cheval — puis un second `add_meta_box()` local/développement uniquement.
+ * PHP ne permet pas d'envelopper un simple appel de fonction nommée (contrairement à un callback de
+ * hook, une entrée mutable de `$wp_filter`) : plutôt que de deviner laquelle de ces trois
+ * instructions est en cause, cette itération réutilise un mécanisme NATIF de WordPress, jamais une
+ * invention propre à ce fichier — `SAVEQUERIES` (`$wpdb->queries`, déjà utilisé par des outils comme
+ * Query Monitor) journalise CHAQUE requête SQL réellement exécutée, avec son texte et sa durée
+ * réelle. Activée ici (uniquement si aucun autre code ne l'a déjà explicitement désactivée — une
+ * simple `define()`, jamais une modification de wpdb) SUFFISAMMENT TÔT (au chargement du plugin,
+ * bien avant `init`/`admin_init`/`add_meta_boxes`) pour couvrir la fenêtre déjà instrumentée.
+ * `gwseq_perf_diag_wrap_hook_callbacks()` (inchangée dans son principe) relève désormais aussi,
+ * pour CHAQUE callback qu'elle enveloppe déjà (pas seulement celui du pedigree — la même mesure
+ * s'applique automatiquement à tout hook déjà profilé), le nombre de requêtes SQL exécutées PENDANT
+ * cet appel précis et leur temps cumulé ; au-delà d'un seuil (callback mesuré à plus d'1 seconde),
+ * le texte et la durée des requêtes les plus lentes de CE callback sont conservés (jamais toutes,
+ * pour rester lisible) et affichés dans le rapport — répond directement à la demande de mesurer
+ * "requêtes WP_Query/get_posts", "parcours de l'ensemble des chevaux" et "toute opération qui
+ * pourrait être exécutée plusieurs fois" (un nombre de requêtes élevé pour un seul callback trahirait
+ * une boucle, une seule requête très longue trahirait plutôt la requête elle-même ou l'absence
+ * d'index) — sans réadapter le mécanisme à ce cas précis ni supposer laquelle des trois instructions
+ * est en cause avant la mesure réelle.
  */
 
 if (!defined('ABSPATH')) exit;
 if (!in_array(wp_get_environment_type(), array('local', 'development'), true)) return;
+
+// Itération 4 — voir la note de fichier en tête. Mécanisme NATIF de WordPress (jamais une invention
+// propre à ce fichier), jamais activé s'il a déjà été explicitement désactivé ailleurs (auquel cas
+// le rapport l'indique explicitement plutôt que de prétendre mesurer les requêtes SQL).
+if (!defined('SAVEQUERIES')) {
+  define('SAVEQUERIES', true);
+}
 
 $GLOBALS['__gwseq_perf_diag'] = array('boxes' => array(), 'phases' => array(), 'hook_callbacks' => array());
 
@@ -186,11 +220,54 @@ function gwseq_perf_diag_describe_callable($callable) {
   return array('label' => $label . ' (' . basename($file) . ':' . $reflection->getStartLine() . ')', 'source' => $source);
 }
 
+// Itération 4 — un callback mesuré en dessous de ce seuil (secondes) n'a jamais son détail SQL
+// affiché : jamais utile pour un callback déjà rapide, et cela noierait le rapport.
+const GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD = 1.0;
+
+/**
+ * Lit — jamais ne modifie — `$wpdb->queries` (mécanisme NATIF WordPress, alimenté par `SAVEQUERIES`,
+ * voir la note de fichier en tête) pour isoler les requêtes SQL exécutées DEPUIS l'index
+ * $count_before, c'est-à-dire PENDANT l'appel qu'on vient de chronométrer. Renvoie leur nombre et
+ * leur temps cumulé (fiables même pour un callback rapide) ; l'échantillon des requêtes les plus
+ * lentes (5 au maximum, jamais toutes) n'est renseigné QUE si $elapsed dépasse
+ * GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD — jamais pour un callback sans intérêt diagnostique.
+ * Renvoie `null` pour count/time si `$wpdb->queries` est indisponible (SAVEQUERIES inactif, par
+ * exemple déjà explicitement désactivé avant le chargement de ce fichier) — jamais un zéro trompeur.
+ */
+function gwseq_perf_diag_capture_queries_since($count_before, $elapsed) {
+  global $wpdb;
+  if (!isset($wpdb->queries) || !is_array($wpdb->queries)) {
+    return array('count' => null, 'time' => null, 'sample' => array());
+  }
+
+  $new_queries = array_slice($wpdb->queries, $count_before);
+  $count = count($new_queries);
+  $time = 0.0;
+  foreach ($new_queries as $query) {
+    $time += isset($query[1]) ? (float) $query[1] : 0.0;
+  }
+
+  $sample = array();
+  if ($elapsed > GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD) {
+    usort($new_queries, function ($a, $b) { return ($b[1] ?? 0) <=> ($a[1] ?? 0); });
+    foreach (array_slice($new_queries, 0, 5) as $query) {
+      $sample[] = array(
+        'sql' => isset($query[0]) ? (string) $query[0] : '',
+        'time' => isset($query[1]) ? (float) $query[1] : 0.0,
+      );
+    }
+  }
+
+  return array('count' => $count, 'time' => $time, 'sample' => $sample);
+}
+
 /**
  * Substitue EN PLACE, dans le registre natif `$wp_filter`, chaque callback déjà enregistré sur
  * $hook par un intermédiaire chronométré — jamais un changement de comportement (mêmes arguments,
  * transmis tels quels ; même valeur de retour ; une exception éventuelle continue de se propager
- * normalement, seulement observée en passant via `finally`).
+ * normalement, seulement observée en passant via `finally`). Itération 4 : relève en plus, pour
+ * CHAQUE callback ainsi enveloppé (jamais un traitement spécial pour un callback en particulier),
+ * les requêtes SQL exécutées PENDANT son appel (voir gwseq_perf_diag_capture_queries_since()).
  */
 function gwseq_perf_diag_wrap_hook_callbacks($hook) {
   global $wp_filter;
@@ -204,16 +281,23 @@ function gwseq_perf_diag_wrap_hook_callbacks($hook) {
       $described = gwseq_perf_diag_describe_callable($original);
 
       $wp_filter[$hook]->callbacks[$priority][$entry_id]['function'] = function (...$args) use ($original, $hook, $priority, $described) {
+        global $wpdb;
+        $queries_before = (isset($wpdb->queries) && is_array($wpdb->queries)) ? count($wpdb->queries) : 0;
         $start = microtime(true);
         try {
           return call_user_func_array($original, $args);
         } finally {
+          $elapsed = microtime(true) - $start;
+          $queries = gwseq_perf_diag_capture_queries_since($queries_before, $elapsed);
           $GLOBALS['__gwseq_perf_diag']['hook_callbacks'][] = array(
             'hook' => $hook,
             'priority' => $priority,
             'label' => $described['label'],
             'source' => $described['source'],
-            'elapsed' => microtime(true) - $start,
+            'elapsed' => $elapsed,
+            'query_count' => $queries['count'],
+            'query_time' => $queries['time'],
+            'query_sample' => $queries['sample'],
           );
         }
       };
@@ -303,6 +387,7 @@ function gwseq_perf_diag_render_report() {
   }
   $boxes_total = array_sum($boxes);
   $lines[] = sprintf('Somme du temps RÉELLEMENT passé dans les boîtes méta Cheval (%d boîtes) : %.1f ms', count($boxes), $boxes_total * 1000);
+  $lines[] = sprintf('Détail SQL par callback (SAVEQUERIES) : %s', (defined('SAVEQUERIES') && SAVEQUERIES) ? 'actif' : 'INACTIF — une autre partie du site l’a explicitement désactivé avant le chargement de ce diagnostic, le nombre/temps de requêtes ci-dessous restera vide');
 
   // Somme des callbacks mesurés PAR HOOK (itération 2) — sert au calcul du temps "non expliqué"
   // par étape (voir la boucle des phases plus bas).
@@ -350,9 +435,25 @@ function gwseq_perf_diag_render_report() {
     usort($ranked, function ($a, $b) { return $b['elapsed'] <=> $a['elapsed']; });
     $lines[] = '';
     $lines[] = 'Callbacks natifs mesurés sur ' . implode('/', GWSEQ_PERF_DIAG_TARGET_HOOKS) . ',';
-    $lines[] = 'du plus lent au plus rapide (callback -> source -> durée) :';
+    $lines[] = 'du plus lent au plus rapide (callback -> source -> durée, dont N requêtes SQL = X ms';
+    $lines[] = 'quand SAVEQUERIES est actif) :';
     foreach ($ranked as $entry) {
-      $lines[] = sprintf('  [%s] %s -> %s -> %.1f ms', $entry['hook'], $entry['label'], $entry['source'], $entry['elapsed'] * 1000);
+      if ($entry['query_count'] !== null) {
+        $lines[] = sprintf(
+          '  [%s] %s -> %s -> %.1f ms (dont %d requête(s) SQL = %.1f ms)',
+          $entry['hook'], $entry['label'], $entry['source'], $entry['elapsed'] * 1000,
+          $entry['query_count'], $entry['query_time'] * 1000
+        );
+      } else {
+        $lines[] = sprintf('  [%s] %s -> %s -> %.1f ms', $entry['hook'], $entry['label'], $entry['source'], $entry['elapsed'] * 1000);
+      }
+      // Itération 4 — échantillon des requêtes SQL les plus lentes de CE callback, uniquement
+      // renseigné par gwseq_perf_diag_capture_queries_since() quand le callback dépasse le seuil de
+      // signalement (jamais pour un callback déjà rapide, sans intérêt diagnostique).
+      foreach ($entry['query_sample'] as $query) {
+        $sql = strlen($query['sql']) > 300 ? substr($query['sql'], 0, 300) . '…' : $query['sql'];
+        $lines[] = sprintf('      %.1f ms : %s', $query['time'] * 1000, $sql);
+      }
     }
   }
 

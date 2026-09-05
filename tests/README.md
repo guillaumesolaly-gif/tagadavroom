@@ -1576,3 +1576,34 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   nouveaux hooks de la liste cible fait échouer exactement l'assertion dédiée à leur présence,
   aucune autre. Intégralité de la suite (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après
   restauration : aucune régression.
+- **Diagnostic instrumenté de performance, itération 4 (0.39.0) — cause principale localisée** —
+  mêmes fichiers étendus. La mesure réelle de l'itération 3 a attribué 36 065,0 ms des ~36 s à UN
+  SEUL callback, `gwseq_add_cheval_pedigree_meta_boxes()` (cheval-pedigree.php:670, trois
+  instructions seulement) — le rendu de la boîte Pedigree ne prenant que 49,7 ms. PHP ne permettant
+  pas d'envelopper un simple appel de fonction nommée, cette itération réutilise `SAVEQUERIES`/
+  `$wpdb->queries` (mécanisme natif WordPress, celui de Query Monitor) : une nouvelle fonction pure
+  `gwseq_perf_diag_capture_queries_since($count_before, $elapsed)` isole les requêtes SQL exécutées
+  DEPUIS un index donné et calcule leur nombre/temps cumulé, avec un échantillon des plus lentes (5
+  au maximum) uniquement si `$elapsed` dépasse `GWSEQ_PERF_DIAG_QUERY_SAMPLE_THRESHOLD` (1 seconde,
+  sa valeur réelle également récupérée depuis le sous-processus "local", jamais dupliquée à la
+  main). `gwseq_perf_diag_wrap_hook_callbacks()` étendue pour appeler cette fonction autour de
+  CHAQUE callback qu'elle enveloppe déjà, avec un `$wpdb` minimal (une simple propriété `->queries`
+  mutable, aucune méthode wpdb n'étant jamais appelée par ce diagnostic).
+
+  Couverture ajoutée : comptage/temps cumulé exacts des SEULES requêtes exécutées depuis le point de
+  départ (jamais celles d'avant) ; absence d'échantillon en dessous du seuil, présence et tri par
+  durée décroissante au-dessus ; `null` (jamais un zéro trompeur) quand `$wpdb->queries` est
+  indisponible (SAVEQUERIES inactif) contre `0` quand il est actif mais vide ; intégration avec
+  l'enveloppement générique — deux callbacks successifs sur le même hook ne se voient JAMAIS
+  attribuer les requêtes l'un de l'autre, vérifié avec un second callback réellement ralenti par un
+  `usleep()` (plutôt qu'une durée SQL fictive) pour exercer authentiquement le seuil réel sur le
+  temps horloge, jamais un raccourci qui contournerait le branchement testé ; rendu du rapport
+  (ligne de statut SAVEQUERIES actif/inactif, format `callback -> source -> durée (dont N
+  requête(s) SQL = X ms)`, requêtes SQL affichées avec leur texte et leur durée). Correctifs
+  vérifiés par retrait/restauration sur deux bugs délibérément introduits : (1) attribuer à un
+  callback les requêtes exécutées AVANT son propre appel (suppression du découpage par index) fait
+  échouer exactement les assertions de comptage/temps/échantillon/intégrité-inter-callbacks,
+  aucune autre ; (2) ignorer le seuil de signalement (échantillon toujours renseigné) fait échouer
+  exactement les deux assertions dédiées à son absence en dessous du seuil, aucune autre.
+  Intégralité de la suite (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après chaque
+  restauration : aucune régression.
