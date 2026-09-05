@@ -55,7 +55,30 @@ function wp_footer() {}
 $GLOBALS['__gwseq_test_actions'] = array();
 function add_action($hook, $callback, $priority = 10, $accepted_args = 1) { $GLOBALS['__gwseq_test_actions'][$hook][] = $callback; }
 function do_action($hook) { foreach ($GLOBALS['__gwseq_test_actions'][$hook] ?? array() as $cb) call_user_func($cb); }
-function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
+// Correctif "double <title>" (Lot 2C) : add_filter()/apply_filters() DOIVENT réellement distribuer
+// (contrairement à un simple no-op) pour vérifier que pre_get_document_title() court-circuite bien
+// wp_get_document_title() — exactement le mécanisme WordPress natif utilisé par le correctif.
+$GLOBALS['__gwseq_test_filters'] = array();
+function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) { $GLOBALS['__gwseq_test_filters'][$hook][] = $callback; }
+function apply_filters($hook, $value) {
+  foreach ($GLOBALS['__gwseq_test_filters'][$hook] ?? array() as $cb) { $value = call_user_func($cb, $value); }
+  return $value;
+}
+// Réplique le comportement réel de wp_get_document_title() (WordPress core) pour ce qui nous
+// concerne ici : `pre_get_document_title` court-circuite tout le reste dès qu'un filtre renvoie une
+// valeur non vide — sinon, repli sur un titre par défaut REPRÉSENTATIF de ce que WordPress produirait
+// pour une route non reconnue (le nom du site), volontairement DIFFÉRENT du titre de la sélection
+// pour que le test puisse distinguer sans ambiguïté "notre titre" de "le repli natif".
+function wp_get_document_title() {
+  $title = apply_filters('pre_get_document_title', '');
+  return $title !== '' ? $title : 'GWS Equestrian';
+}
+// Simule _wp_render_title_tag() (WordPress core, wp-includes/general-template.php) — accrochée sur
+// `wp_head` à la priorité 1 UNIQUEMENT si le thème déclare add_theme_support('title-tag') (c'est le
+// cas de gws-starter, cause exacte du bug corrigé ici) : reproduit fidèlement le SEUL mécanisme
+// natif responsable du second <title>, pour vérifier que le correctif (retrait du <title> manuel +
+// filtre pre_get_document_title) suffit à n'en produire plus qu'un seul au total.
+add_action('wp_head', function () { echo '<title>' . esc_html(wp_get_document_title()) . '</title>'; });
 function add_meta_box($id, $title, $callback, $post_type = null, $context = 'advanced', $priority = 'default') {}
 $GLOBALS['__gwseq_test_registered_meta'] = array();
 function register_post_meta($object_type, $meta_key, $args = array()) { $GLOBALS['__gwseq_test_registered_meta'][$meta_key] = $args; }
@@ -259,6 +282,14 @@ $html = ob_get_clean();
 gws_test_assert(strpos($html, '<!DOCTYPE html>') === 0, 'Rendu : document HTML complet, jamais un fragment');
 gws_test_assert(strpos($html, '<meta name="robots" content="noindex, nofollow">') !== false, 'Rendu : noindex systématique (§ confidentialité)');
 gws_test_assert(strpos($html, 'Chevaux pour Juliette') !== false, 'Rendu : titre de la sélection affiché');
+
+// CORRECTIF DE RECETTE (Lot 2C) : un SEUL <title>, jamais deux — voir la simulation de
+// _wp_render_title_tag() (WordPress core) enregistrée en tête de ce fichier, qui reproduit
+// fidèlement le mécanisme natif responsable du second <title> avant ce correctif.
+gws_test_assert(substr_count($html, '<title>') === 1, 'Correctif "double <title>" : exactement UN SEUL <title> dans le document produit (le mécanisme natif _wp_render_title_tag(), déclenché par wp_head(), est bien court-circuité par pre_get_document_title, jamais retiré arbitrairement)');
+gws_test_assert(strpos($html, '<title>Chevaux pour Juliette</title>') !== false, 'Correctif "double <title>" : ce <title> unique contient bien le titre de la sélection');
+gws_test_assert(strpos($html, 'GWS Equestrian') === false, 'Correctif "double <title>" : le repli natif de WordPress (nom du site) n’apparaît plus nulle part — le filtre pre_get_document_title l’a bien court-circuité');
+
 gws_test_assert(substr_count($html, 'gwseq-selection-page__card') >= 2, 'Rendu : une carte par cheval présentable (2 chevaux ici)');
 gws_test_assert(strpos($html, 'JAMEROSE DE FELINES') !== false, 'Rendu : nom du cheval affiché (convention de présentation déjà en place)');
 gws_test_assert(strpos($html, 'Jument très franche &amp; sociable') !== false, 'Rendu : accroche commerciale échappée en HTML (esc_html() à l’affichage — sécurité XSS, jamais un "&" brut qui casserait le document)');
@@ -295,6 +326,9 @@ ob_start();
 gwseq_selection_render_public_html($selection_sans_titre);
 $html_sans_titre = ob_get_clean();
 gws_test_assert(strpos($html_sans_titre, 'Sélection de chevaux') !== false, 'Rendu : libellé neutre de repli si aucun titre n’a été saisi');
+gws_test_assert(substr_count($html_sans_titre, '<title>') === 1, 'Correctif "double <title>" (sans titre) : exactement UN SEUL <title>');
+gws_test_assert(strpos($html_sans_titre, '<title>Sélection de chevaux</title>') !== false, 'Correctif "double <title>" (sans titre) : ce <title> unique contient le libellé de repli PROPRE À LA SÉLECTION (gwseq_selection_display_title()), jamais le repli générique WordPress');
+gws_test_assert(strpos($html_sans_titre, 'GWS Equestrian') === false, 'Correctif "double <title>" (sans titre) : le repli natif de WordPress n’apparaît pas non plus dans ce cas');
 
 // =====================================================================================
 // Lot 2C — Open Graph (§3-4 de la demande) : gwseq_selection_render_og_meta() n'échoue QUE les

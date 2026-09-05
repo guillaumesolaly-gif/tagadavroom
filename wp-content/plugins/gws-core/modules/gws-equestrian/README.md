@@ -959,7 +959,7 @@ activation de `SAVEQUERIES`, test dédié) — voir `tests/gws-equestrian-pedigr
 pour la couverture du correctif lui-même (inchangé depuis 0.40.0) et le `CHANGELOG.md` de ce
 dossier (0.36.0 à 0.41.0) pour le détail complet de chaque étape du diagnostic.
 
-## Partager une sélection (Lot 2C, 0.41.0)
+## Partager une sélection (Lot 2C, 0.41.0 ; correctif de recette en 0.41.1)
 
 Une sélection (Lot 2B) devient partageable depuis le BO sur le même principe que le partage
 individuel d'un cheval (`Chevaux → Partager`) — en réutilisant, jamais en dupliquant, ses
@@ -994,6 +994,16 @@ Aucun CRM, destinataire, historique d'envoi, tracking commercial ou statut "envo
 n'est jamais régénéré par le partage, modifier une sélection ne change jamais son URL, aucun
 changement du modèle Cheval ni des règles de diffusion. Voir les fichiers de test de la Sélection
 (logic/admin/front/runtime) et le `CHANGELOG.md` de ce dossier (0.41.0) pour le détail complet.
+
+**Correctif de recette (0.41.1)** : la recette a signalé un double `<title>` dans le `<head>` de
+`/selection/{token}/` — le titre GWS écrit à la main, suivi d'un second `<title>` généré par
+WordPress (nom du site). Cause : le thème déclare `add_theme_support('title-tag')`, qui accroche le
+mécanisme natif `_wp_render_title_tag()` sur `wp_head()`, appelé par cette page pour charger ses
+assets globaux. Corrigé en retirant le `<title>` manuel et en utilisant le filtre WordPress prévu
+pour ce cas, `pre_get_document_title`, via une fermeture locale à cet appel précis — aucun effet
+sur le reste du site. Vérifié que `/partage/{token}/` (Cheval) n'a jamais ce problème (architecture
+différente, `get_single_template()` natif) ; rien n'y a été changé. Open Graph/noindex/tokens/
+diffusion/partage inchangés. Voir `CHANGELOG.md` de ce dossier (0.41.1) pour le détail complet.
 
 ## Mises en avant (Pop-in / Sticky bar) — retiré (0.21.0)
 

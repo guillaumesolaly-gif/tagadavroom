@@ -5,6 +5,47 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.41.1 — Correctif de recette Lot 2C : double `<title>` sur `/selection/{token}/`
+
+Recette du Lot 2C validée fonctionnellement ; un défaut constaté pendant la recette : le `<head>`
+de `/selection/{token}/` contenait DEUX balises `<title>` — le titre GWS écrit à la main
+(`Chevaux pour Juliette`/`Sélection de chevaux`), puis un second `<title>` généré par WordPress
+(`GWS Equestrian`, le nom du site).
+
+**Cause exacte** : le thème `gws-starter` déclare `add_theme_support('title-tag')`
+(inc/setup.php), ce qui accroche `_wp_render_title_tag()` (WordPress core) sur le hook `wp_head` —
+un mécanisme NATIF qui échoue lui-même un `<title>` complet dès que `wp_head()` est appelé. Cette
+page appelant `wp_head()` (pour charger les assets globaux déjà enregistrés), ce mécanisme
+s'exécutait donc EN PLUS du `<title>` déjà écrit à la main juste avant, WordPress ne reconnaissant
+pas cette route comme une page/un article réel et retombant sur le nom du site. Vérifié :
+`/partage/{token}/` (Cheval) n'a JAMAIS ce problème — cette route réutilise `get_single_template()`
+(la hiérarchie de gabarits native de WordPress, `get_header()`/`wp_head()` ne s'exécutent qu'une
+fois, dans le contexte d'une vraie requête singulière simulée) et n'écrit elle-même aucun `<title>`
+manuel nulle part ; la même cause architecturale ne s'y applique donc pas — rien n'y a été changé.
+
+**Correctif** : retiré le `<title>` écrit à la main dans `gwseq_selection_render_public_html()`
+(includes/cheval-selection-front.php), remplacé par le mécanisme WordPress prévu exactement pour
+ce cas — le filtre `pre_get_document_title`, qui court-circuite `wp_get_document_title()` avant
+tout autre traitement (celui-là même que `_wp_render_title_tag()` appelle) — plutôt que de
+supprimer arbitrairement le `<title>` natif ou de filtrer la sortie HTML a posteriori
+(bufferisation). Le filtre est ajouté via une fermeture LOCALE à cet appel précis (jamais un
+`add_filter()` global gated par une query var) : il n'existe que le temps de cet appel de
+fonction, qui ne s'exécute lui-même que pour un token de sélection déjà résolu sur cette route
+précise — aucun effet possible sur une autre page/article/fiche Cheval/route du site, aucune
+requête supplémentaire (le titre déjà résolu dans `$view['titre']` est réutilisé tel quel).
+`og:title`/`og:description`/`og:url`/`og:image`, `noindex`, le nocache, les tokens, les règles de
+diffusion, les liens public/privé et le partage WhatsApp/SMS/Copier restent strictement inchangés.
+
+Tests étendus (`tests/gws-equestrian-cheval-selection-front-test.php`) : une simulation fidèle de
+`_wp_render_title_tag()` (accrochée sur `wp_head`, reproduisant exactement le mécanisme natif en
+cause) est ajoutée à l'environnement de test, avec un titre de repli délibérément DIFFÉRENT
+("GWS Equestrian") pour distinguer sans ambiguïté "notre titre" du repli natif. Vérifié : exactement
+UN SEUL `<title>` dans le document produit (avec et sans titre de sélection), contenant le bon
+texte, sans plus jamais aucune trace du repli natif WordPress. Vérifié par retrait/restauration :
+réintroduire le `<title>` manuel fait échouer exactement les quatre assertions dédiées (avec/sans
+titre × unicité/absence du repli natif), aucune autre. Intégralité de la suite (24 fichiers PHP +
+4 suites JS runtime) ré-exécutée : aucune régression.
+
 ## 0.41.0 — Nettoyage du diagnostic de performance + Lot 2C : partage d'une Sélection (WhatsApp/SMS/Copier, Open Graph)
 
 **A. Clôture de l'anomalie performance.** Correctif validé en recette réelle sur Jamerose :

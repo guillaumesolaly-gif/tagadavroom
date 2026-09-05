@@ -1684,3 +1684,21 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   (2) casser le séparateur SMS fait échouer exactement l'assertion dédiée, aucune autre.
   Intégralité de la suite (24 fichiers PHP + 4 suites JS runtime) ré-exécutée après chaque
   restauration : aucune régression.
+- **Correctif de recette Lot 2C : double `<title>` sur `/selection/{token}/` (0.41.1)** —
+  `gws-equestrian-cheval-selection-front-test.php` (fichier existant, étendu). L'environnement de
+  test gagne une simulation FIDÈLE de `_wp_render_title_tag()` (WordPress core, hooké sur
+  `wp_head` — le mécanisme exact responsable du second `<title>` avant ce correctif) et de vrais
+  `add_filter()`/`apply_filters()` distribuant réellement (l'ancien stub `add_filter()` était un
+  no-op, insuffisant pour vérifier qu'un filtre `pre_get_document_title` court-circuite bien
+  `wp_get_document_title()`) ; le titre de repli simulé ("GWS Equestrian") est délibérément
+  DIFFÉRENT du titre de la sélection pour distinguer sans ambiguïté "notre titre" du repli natif.
+
+  Vérifié, avec ET sans titre de sélection : exactement UN SEUL `<title>` dans le document produit
+  (`substr_count($html, '<title>') === 1`), contenant le bon texte (le titre de la sélection, ou
+  son libellé de repli propre — jamais celui, générique, de WordPress), et absence totale du
+  repli natif simulé dans le HTML final. Correctif vérifié par retrait/restauration : réintroduire
+  le `<title>` écrit à la main (l'ancien code) fait échouer exactement les quatre assertions
+  dédiées (avec/sans titre × unicité/absence du repli natif), aucune autre — le reste de la suite,
+  y compris les assertions Open Graph déjà existantes (og:title/description/url/image), reste vert
+  sans modification. Intégralité de la suite (24 fichiers PHP + 4 suites JS runtime) ré-exécutée
+  après restauration : aucune régression.

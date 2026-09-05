@@ -1,5 +1,18 @@
 # Changelog — GWS Starter
 
+## 1.44.1 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif de recette Lot 2C : double `<title>` sur `/selection/{token}/` (GWS Equestrian
+  0.41.1).** Le thème déclare `add_theme_support('title-tag')`, ce qui accroche le mécanisme
+  natif `_wp_render_title_tag()` sur `wp_head()` — cette page l'appelant pour charger ses assets
+  globaux, un second `<title>` (le nom du site) s'ajoutait à celui déjà écrit à la main. Corrigé
+  en retirant le `<title>` manuel et en utilisant le filtre WordPress prévu pour ce cas exact,
+  `pre_get_document_title`, scopé par une fermeture locale à cet appel précis — aucun effet sur le
+  reste du site. Vérifié : `/partage/{token}/` (Cheval) n'a jamais eu ce problème (architecture
+  différente), rien n'y a été changé. Open Graph/noindex/tokens/diffusion/partage inchangés. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.41.1) pour le détail
+  complet.
+
 ## 1.44.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Nettoyage du diagnostic de performance + Lot 2C, partage d'une Sélection (GWS Equestrian

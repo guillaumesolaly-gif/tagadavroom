@@ -145,9 +145,38 @@ add_action('wp_enqueue_scripts', 'gwseq_selection_enqueue_public_assets');
  * Document HTML complet (§9/§3) : jamais get_header()/get_footer() (qui supposeraient un contexte
  * de page/article normal, absent ici), mais wp_head()/wp_footer() bien appelés pour les assets
  * globaux déjà enregistrés (§ voir note de fichier en tête) — dont ceux enregistrés ci-dessus.
+ *
+ * CORRECTIF DE RECETTE (Lot 2C : deux `<title>` constatés dans le `<head>` produit) — CAUSE
+ * EXACTE : le thème déclare `add_theme_support('title-tag')` (wp-content/themes/gws-starter/inc/
+ * setup.php), ce qui accroche `_wp_render_title_tag()` (WordPress core, wp-includes/general-
+ * template.php) sur le hook `wp_head`, à la priorité 1 — un mécanisme NATIF qui échoue lui-même un
+ * `<title>` complet dès que `wp_head()` est appelé, quel que soit le contexte. Cette page appelant
+ * `wp_head()` (voir ci-dessus), ce mécanisme s'exécutait donc ICI AUSSI, produisant un second
+ * `<title>` (celui du site, WordPress ne reconnaissant pas cette route comme une page/un article
+ * réel) EN PLUS de celui déjà écrit à la main juste avant. Vérifié : `/partage/{token}/` (Cheval,
+ * gwseq_horse_private_share_render(), includes/cheval-share-admin.php) n'a JAMAIS ce problème — ce
+ * fichier réutilise `get_single_template()`, la hiérarchie de gabarits NATIVE de WordPress (donc
+ * `get_header()`/`wp_head()` s'exécutent une seule fois, dans le contexte d'une vraie requête
+ * singulière simulée), il n'écrit lui-même AUCUN `<title>` manuel nulle part — la même cause
+ * architecturale ne s'applique donc pas là-bas, rien n'y a été changé.
+ *
+ * CORRECTIF : retiré le `<title>` écrit à la main, remplacé par le mécanisme WordPress prévu
+ * EXACTEMENT pour ce cas — le filtre `pre_get_document_title`, qui court-circuite
+ * `wp_get_document_title()` avant tout autre traitement (celui-là même que `_wp_render_title_tag()`
+ * appelle) — plutôt que de supprimer arbitrairement le `<title>` natif ou de filtrer la sortie HTML
+ * a posteriori (bufferisation) : UN SEUL `<title>`, rendu UNE SEULE FOIS par le mécanisme natif
+ * lui-même. Le filtre est ajouté via une fermeture LOCALE à cet appel précis (jamais un
+ * `add_filter()` global gated par une query var) : il n'existe que le temps de CET appel de
+ * fonction, qui ne s'exécute lui-même que pour un token de sélection déjà résolu sur cette route
+ * précise (voir gwseq_selection_render_public_page() plus bas) — aucun effet possible sur une
+ * autre page/article/fiche Cheval/route du site, aucune requête supplémentaire (le titre déjà
+ * résolu dans `$view['titre']` est réutilisé tel quel, jamais un second calcul). N'affecte JAMAIS
+ * og:title (gwseq_selection_render_og_meta() ci-dessous reste indépendante, sa propre donnée
+ * provenant de gwseq_selection_get_og_data()).
  */
 function gwseq_selection_render_public_html($selection_id) {
   $view = gwseq_selection_get_public_view($selection_id);
+  add_filter('pre_get_document_title', function () use ($view) { return $view['titre']; });
   ?>
 <!DOCTYPE html>
 <html <?php language_attributes(); ?>>
@@ -155,7 +184,6 @@ function gwseq_selection_render_public_html($selection_id) {
 <meta charset="<?php bloginfo('charset'); ?>">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title><?php echo esc_html($view['titre']); ?></title>
 <?php gwseq_selection_render_og_meta($selection_id); ?>
 <?php wp_head(); ?>
 </head>
