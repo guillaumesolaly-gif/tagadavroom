@@ -58,6 +58,33 @@
  * la somme des callbacks mesurés sur un hook n'explique pas tout l'écart entre deux repères de
  * temps, le rapport l'indique explicitement comme "non expliqué" plutôt que de laisser croire à
  * une mesure complète.
+ *
+ * ITÉRATION 3 (mesure réelle sur Jamerose : `current_screen`, `load-post.php` et
+ * `admin_enqueue_scripts` eux-mêmes sont rapides — 18 ms / ~0 ms / 11,9 ms — et le callback le plus
+ * lent mesuré par l'itération 2, `wp_enqueue_command_palette_assets`, ne fait que 10,3 ms. Les
+ * ~36 secondes se situent donc ENTRE la fin de `load-post.php` et le début de `admin_enqueue_
+ * scripts`, dans du code qui ne passe par AUCUN des hooks déjà instrumentés) : le code source réel
+ * de WordPress (`wp-admin/post.php`, `wp-admin/edit-form-advanced.php` et `wp-admin/includes/
+ * meta-boxes.php`, vérifiés ligne à ligne plutôt que supposés) montre que, pour un type de contenu
+ * en éditeur classique — c'est le cas de Cheval, `supports` ne déclare pas `'editor'`, donc
+ * `use_block_editor_for_post()` est faux et `wp-admin/edit-form-advanced.php` est bien le fichier
+ * chargé — `wp-admin/post.php` inclut directement `edit-form-advanced.php`, qui appelle
+ * `register_and_do_post_meta_boxes($post)` (`wp-admin/includes/meta-boxes.php`) ; cette fonction
+ * déclenche `do_action('add_meta_boxes', $post_type, $post)` PUIS `do_action("add_meta_boxes_
+ * {$post_type}", $post)` — donc `add_meta_boxes_gwseq_cheval`, où les 9 callbacks GWS existants
+ * (cheval-fields.php, cheval-pedigree.php, cheval-media.php, cheval-indices.php, cheval-
+ * labels.php, cheval-editorial.php, cheval-share-admin.php ×2, admin-ui.php) ENREGISTRENT leurs
+ * boîtes — puis SEULEMENT ENSUITE, plus bas dans `edit-form-advanced.php`, `admin-header.php` est
+ * chargé (ce qui déclenche `admin_enqueue_scripts`). Autrement dit, la REGISTRATION des boîtes
+ * (l'exécution des 9 callbacks eux-mêmes, jamais mesurée jusqu'ici — l'itération 1 ne chronométrait
+ * que leur RENDU, bien plus tard) se situe très exactement dans la fenêtre non expliquée. Cette
+ * itération ajoute donc `add_meta_boxes` et `add_meta_boxes_{$post_type}` à la liste des hooks
+ * profilés par callback (même technique, aucune nouveauté), avec des repères de temps encadrant
+ * précisément ces deux hooks, pour savoir si le temps perdu est DANS l'un des 9 callbacks de
+ * registration GWS (et lequel), DANS un hook `add_meta_boxes` générique d'un plugin tiers non lié à
+ * GWS (candidat plausible pour expliquer l'indépendance au contenu de la fiche), ou encore ENTRE ces
+ * repères et `admin_enqueue_scripts` (le reste de `register_and_do_post_meta_boxes()` — boucle des
+ * taxonomies, révisions, etc. — et le reste d'`edit-form-advanced.php` avant `admin-header.php`).
  */
 
 if (!defined('ABSPATH')) exit;
@@ -96,13 +123,20 @@ add_action('load-post-new.php', function () { gwseq_perf_diag_mark('load-post-ne
 add_action('load-post-new.php', function () { gwseq_perf_diag_mark('load-post-new.php:fin'); }, PHP_INT_MAX);
 add_action('admin_enqueue_scripts', function () { gwseq_perf_diag_mark('admin_enqueue_scripts:début'); }, PHP_INT_MIN);
 add_action('admin_enqueue_scripts', function () { gwseq_perf_diag_mark('admin_enqueue_scripts:fin'); }, PHP_INT_MAX);
+// Itération 3 — voir la note de fichier en tête : `register_and_do_post_meta_boxes()` (wp-admin/
+// includes/meta-boxes.php), appelée depuis wp-admin/edit-form-advanced.php AVANT `admin-header.php`
+// (donc avant `admin_enqueue_scripts`), déclenche ces deux hooks dans cet ordre exact.
+add_action('add_meta_boxes', function () { gwseq_perf_diag_mark('add_meta_boxes:début'); }, PHP_INT_MIN);
+add_action('add_meta_boxes', function () { gwseq_perf_diag_mark('add_meta_boxes:fin'); }, PHP_INT_MAX);
+add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, function () { gwseq_perf_diag_mark('add_meta_boxes_' . GWSEQ_CPT_CHEVAL . ':début'); }, PHP_INT_MIN);
+add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, function () { gwseq_perf_diag_mark('add_meta_boxes_' . GWSEQ_CPT_CHEVAL . ':fin'); }, PHP_INT_MAX);
 
 /* -------------------------------------------------------------------------------------------
- * Profileur générique par callback (itération 2) — voir la note de fichier en tête pour la
- * technique et sa limite connue.
+ * Profileur générique par callback (itération 2, étendu en itération 3) — voir la note de fichier
+ * en tête pour la technique et sa limite connue.
  * ----------------------------------------------------------------------------------------- */
 
-const GWSEQ_PERF_DIAG_TARGET_HOOKS = array('current_screen', 'admin_init', 'load-post.php', 'load-post-new.php', 'admin_enqueue_scripts');
+const GWSEQ_PERF_DIAG_TARGET_HOOKS = array('current_screen', 'admin_init', 'load-post.php', 'load-post-new.php', 'admin_enqueue_scripts', 'add_meta_boxes', 'add_meta_boxes_' . GWSEQ_CPT_CHEVAL);
 
 /**
  * Résout la PROVENANCE réelle d'un callable par réflexion — jamais une supposition : classe
@@ -189,10 +223,11 @@ function gwseq_perf_diag_wrap_hook_callbacks($hook) {
 
 /**
  * Installé sur `current_screen`, à la priorité la plus basse possible (PHP_INT_MIN) : le premier
- * des cinq hooks cibles à se déclencher dans la séquence réelle de WordPress
- * (`current_screen` -> `admin_init` -> `load-post.php`/`load-post-new.php` -> ... ->
- * `admin_enqueue_scripts`), donc le seul point où l'on peut encore substituer les callbacks des
- * QUATRE AUTRES hooks avant qu'ils ne se déclenchent (voir la limite connue en tête de fichier).
+ * des hooks cibles à se déclencher dans la séquence réelle de WordPress (`current_screen` ->
+ * `admin_init` -> `load-post.php`/`load-post-new.php` -> `add_meta_boxes` ->
+ * `add_meta_boxes_{post_type}` -> ... -> `admin_enqueue_scripts`), donc le seul point où l'on peut
+ * encore substituer les callbacks de TOUS LES AUTRES hooks cibles avant qu'ils ne se déclenchent
+ * (voir la limite connue en tête de fichier).
  */
 function gwseq_perf_diag_install_hook_profilers() {
   if (!gwseq_perf_diag_active_screen()) return;
@@ -285,7 +320,7 @@ function gwseq_perf_diag_render_report() {
   $lines[] = '';
   $lines[] = 'Étapes du cycle de chargement (délai depuis l’étape précédente ; "non expliqué" =';
   $lines[] = 'délai moins la somme des callbacks mesurés sur le hook qui VIENT DE SE TERMINER, quand';
-  $lines[] = 'ce hook fait partie des cinq ci-dessous instrumentés en détail) :';
+  $lines[] = 'ce hook fait partie de ceux instrumentés en détail ci-dessous) :';
   $previous = $request_start;
   foreach ($phases as $phase) {
     list($label, $time) = $phase;
@@ -314,8 +349,8 @@ function gwseq_perf_diag_render_report() {
     $ranked = $diag['hook_callbacks'];
     usort($ranked, function ($a, $b) { return $b['elapsed'] <=> $a['elapsed']; });
     $lines[] = '';
-    $lines[] = 'Callbacks natifs mesurés sur current_screen/admin_init/load-post(-new).php/';
-    $lines[] = 'admin_enqueue_scripts, du plus lent au plus rapide (callback -> source -> durée) :';
+    $lines[] = 'Callbacks natifs mesurés sur ' . implode('/', GWSEQ_PERF_DIAG_TARGET_HOOKS) . ',';
+    $lines[] = 'du plus lent au plus rapide (callback -> source -> durée) :';
     foreach ($ranked as $entry) {
       $lines[] = sprintf('  [%s] %s -> %s -> %.1f ms', $entry['hook'], $entry['label'], $entry['source'], $entry['elapsed'] * 1000);
     }

@@ -1,5 +1,20 @@
 # Changelog — GWS Starter
 
+## 1.41.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Diagnostic instrumenté de performance, itération 3 (GWS Equestrian 0.38.0).** Les mesures
+  réelles de l'itération 2 (1.40.0) montrent que `current_screen`, `load-post.php` et
+  `admin_enqueue_scripts` sont tous rapides (moins de 20 ms chacun) : les ~36 secondes se situent
+  intégralement entre la fin de `load-post.php` et le début de `admin_enqueue_scripts`. Un audit du
+  code source réel de WordPress (`wp-admin/post.php`, `edit-form-advanced.php`,
+  `wp-admin/includes/meta-boxes.php`) montre que c'est exactement dans cette fenêtre que les 9
+  callbacks de GWS qui ENREGISTRENT les boîtes méta de la fiche Cheval s'exécutent (sur les hooks
+  `add_meta_boxes`/`add_meta_boxes_gwseq_cheval`) — un moment jamais mesuré jusqu'ici, l'itération
+  précédente ne chronométrant que leur RENDU, bien plus tard. Ces deux hooks sont ajoutés au
+  profileur générique existant, sans nouvelle technique ni changement de comportement. Toujours
+  aucun correctif. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.38.0)
+  pour le détail complet.
+
 ## 1.40.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Diagnostic instrumenté de performance, itération 2 (GWS Equestrian 0.37.0).** Mesures réelles

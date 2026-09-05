@@ -5,6 +5,45 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.38.0 — Diagnostic instrumenté de performance, itération 3 (add_meta_boxes / add_meta_boxes_gwseq_cheval)
+
+Mesures RÉELLES de l'itération 2, obtenues sur Jamerose : `current_screen` (18 ms), `load-post.php`
+(~0 ms) et `admin_enqueue_scripts` (11,9 ms) sont tous rapides — le callback le plus lent mesuré
+sur l'ensemble de ces hooks, `wp_enqueue_command_palette_assets`, ne fait que 10,3 ms. Les ~36
+secondes se situent donc intégralement entre la FIN de `load-post.php` et le DÉBUT de
+`admin_enqueue_scripts`, dans une portion de code qui ne passait par aucun des hooks déjà
+instrumentés jusque-là.
+
+**Audit du code source réel de WordPress** (`wp-admin/post.php`, `wp-admin/edit-form-advanced.php`
+et `wp-admin/includes/meta-boxes.php`, lus ligne à ligne plutôt que supposés, conformément à la
+demande explicite de ne pas ajouter de hooks arbitraires) : pour un type de contenu en éditeur
+classique — Cheval ne déclare pas `'editor'` dans `supports`, donc `use_block_editor_for_post()`
+est faux et `edit-form-advanced.php` est bien le fichier chargé — `wp-admin/post.php` inclut
+directement ce fichier, qui appelle `register_and_do_post_meta_boxes($post)`. Cette fonction
+déclenche `do_action('add_meta_boxes', $post_type, $post)` PUIS `do_action("add_meta_boxes_
+{$post_type}", $post)` — où les 9 callbacks GWS existants (répartis dans cheval-fields.php,
+cheval-pedigree.php, cheval-media.php, cheval-indices.php, cheval-labels.php, cheval-editorial.php,
+cheval-share-admin.php ×2 et admin-ui.php) ENREGISTRENT leurs boîtes — et ce n'est QU'ENSUITE, plus
+bas dans `edit-form-advanced.php`, qu'`admin-header.php` est chargé (ce qui déclenche
+`admin_enqueue_scripts`). Autrement dit : la REGISTRATION des boîtes méta (l'exécution des 9
+callbacks eux-mêmes) n'avait encore jamais été chronométrée — l'itération 1 ne mesurait que leur
+RENDU, bien plus tard dans la requête, une fois `admin_enqueue_scripts` déjà passé.
+
+**Extension du profileur générique par callback** (même technique que l'itération 2, aucune
+nouveauté) : `add_meta_boxes` et `add_meta_boxes_gwseq_cheval` ajoutés à la liste des hooks
+profilés, avec de nouveaux repères de temps encadrant précisément ces deux hooks. Permettra de
+déterminer si le temps perdu est dans l'un des 9 callbacks de registration GWS (et lequel), dans un
+callback `add_meta_boxes` générique d'un plugin tiers sans rapport avec GWS (candidat plausible
+pour expliquer l'indépendance déjà observée au contenu de la fiche), ou encore dans le reste de
+`register_and_do_post_meta_boxes()`/`edit-form-advanced.php` non couvert par un hook nommé.
+
+**Aucun correctif n'est livré dans cette version** — toujours la même demande explicite. Aucun
+changement de comportement métier. Tests étendus : les deux nouveaux hooks sont vérifiés comme
+enregistrés en environnement local, comme faisant partie de `GWSEQ_PERF_DIAG_TARGET_HOOKS`, et
+comme enveloppés par `gwseq_perf_diag_install_hook_profilers()` au même titre que les hooks déjà
+couverts ; vérifié par retrait/restauration (retirer les deux hooks de la liste cible fait échouer
+exactement l'assertion dédiée à leur présence, aucune autre).
+
 ## 0.37.0 — Diagnostic instrumenté de performance, itération 2 (localisation précise dans la fenêtre current_screen → admin_enqueue_scripts)
 
 Mesures RÉELLES obtenues sur le site de recette (Local) avec l'outil de la version 0.36.0, sur

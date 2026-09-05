@@ -1538,7 +1538,7 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   callback original (mêmes arguments transmis dans le même ordre, même valeur de retour, une
   exception éventuelle continue de se propager normalement via `finally`) ; aucun effet si le hook
   est absent, mal formé ou sans callback. `gwseq_perf_diag_install_hook_profilers()` vérifié comme
-  n'agissant que sur l'écran d'édition Cheval actif, et alors sur les CINQ hooks cibles
+  n'agissant que sur l'écran d'édition Cheval actif, et alors sur TOUS les hooks cibles
   (`GWSEQ_PERF_DIAG_TARGET_HOOKS`, sa valeur réelle récupérée depuis le sous-processus "local" —
   jamais dupliquée à la main dans le test, pour ne jamais diverger silencieusement du fichier de
   production) jamais un hook non listé. Rapport enrichi vérifié : annotation "non expliqué" par
@@ -1555,3 +1555,24 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   retour du callback natif enveloppé (comme pour les boîtes méta) fait échouer exactement
   l'assertion "PROPRIÉTÉ CRITIQUE" correspondante, aucune autre. Intégralité de la suite
   (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après chaque restauration : aucune régression.
+- **Diagnostic instrumenté de performance, itération 3 (0.38.0)** — mêmes fichiers étendus, pas de
+  nouveau fichier. Les mesures réelles de l'itération 2 (`current_screen` 18 ms, `load-post.php`
+  ~0 ms, `admin_enqueue_scripts` 11,9 ms, callback le plus lent mesuré 10,3 ms) ont montré que les
+  ~36 s se situent intégralement entre la fin de `load-post.php` et le début de
+  `admin_enqueue_scripts`. Plutôt que d'ajouter un hook supposé, le vrai code source WordPress
+  (`wp-admin/post.php`, `edit-form-advanced.php`, `wp-admin/includes/meta-boxes.php`) a été lu :
+  `register_and_do_post_meta_boxes()`, appelée avant que `admin-header.php` ne déclenche
+  `admin_enqueue_scripts`, exécute `do_action('add_meta_boxes', ...)` puis
+  `do_action('add_meta_boxes_gwseq_cheval', ...)` — où les 9 callbacks GWS de registration des
+  boîtes méta (jamais chronométrés jusqu'ici, l'itération précédente ne mesurant que leur rendu)
+  s'exécutent. `GWSEQ_PERF_DIAG_TARGET_HOOKS` étendu à ces deux hooks, avec de nouveaux repères de
+  temps encadrant précisément leur exécution.
+
+  Couverture ajoutée : les deux nouveaux hooks apparaissent bien dans la liste des hooks enregistrés
+  en environnement local (sous-processus dédié) ; `GWSEQ_PERF_DIAG_TARGET_HOOKS` contient
+  exactement la liste attendue, dans l'ordre réel de déclenchement WordPress (source : lecture du
+  code core, pas une supposition) ; `gwseq_perf_diag_install_hook_profilers()` les enveloppe au même
+  titre que les hooks déjà couverts. Correctif vérifié par retrait/restauration : retirer les deux
+  nouveaux hooks de la liste cible fait échouer exactement l'assertion dédiée à leur présence,
+  aucune autre. Intégralité de la suite (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après
+  restauration : aucune régression.

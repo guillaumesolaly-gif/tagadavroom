@@ -123,12 +123,12 @@ gws_test_assert(is_array($sub_result), 'Gating : le sous-processus "local" s’e
 // à la main dans ce test (ce qui pourrait diverger silencieusement du fichier de production).
 $target_hooks = array();
 if (is_array($sub_result)) {
-  $expected_hooks = array('plugins_loaded', 'init', 'admin_init', 'current_screen', 'load-post.php', 'load-post-new.php', 'admin_enqueue_scripts', 'add_meta_boxes_gwseq_cheval', 'admin_footer');
+  $expected_hooks = array('plugins_loaded', 'init', 'admin_init', 'current_screen', 'load-post.php', 'load-post-new.php', 'admin_enqueue_scripts', 'add_meta_boxes', 'add_meta_boxes_gwseq_cheval', 'admin_footer');
   $missing = array_diff($expected_hooks, $sub_result['hooks']);
   gws_test_assert($missing === array(), 'Gating : en local, tous les hooks attendus sont enregistrés (manquants : ' . implode(',', $missing) . ')');
   gws_test_assert($sub_result['diag_initialized'] === true, 'Gating : en local, la structure de mesure est bien initialisée');
   $target_hooks = is_array($sub_result['target_hooks']) ? $sub_result['target_hooks'] : array();
-  gws_test_assert($target_hooks === array('current_screen', 'admin_init', 'load-post.php', 'load-post-new.php', 'admin_enqueue_scripts'), 'Gating : GWSEQ_PERF_DIAG_TARGET_HOOKS liste exactement les cinq hooks de la fenêtre concernée, dans l’ordre réel de déclenchement WordPress');
+  gws_test_assert($target_hooks === array('current_screen', 'admin_init', 'load-post.php', 'load-post-new.php', 'admin_enqueue_scripts', 'add_meta_boxes', 'add_meta_boxes_gwseq_cheval'), 'Gating : GWSEQ_PERF_DIAG_TARGET_HOOKS liste exactement les hooks de la fenêtre concernée, dans l’ordre réel de déclenchement WordPress (itération 3 : + add_meta_boxes / add_meta_boxes_gwseq_cheval, vérifiés contre le code source réel de wp-admin/includes/meta-boxes.php)');
 }
 // Réinjecte la valeur RÉELLE (obtenue ci-dessus depuis le sous-processus qui a exécuté le vrai
 // fichier de production) dans CE processus : gwseq_perf_diag_install_hook_profilers() en a besoin
@@ -314,9 +314,10 @@ gwseq_perf_diag_wrap_hook_callbacks('hook_sans_callbacks');
 gws_test_assert(true, 'Enveloppement générique : un hook absent, mal formé, ou sans callback n’entraîne jamais d’erreur (no-op silencieux)');
 
 // =====================================================================================
-// gwseq_perf_diag_install_hook_profilers() (itération 2) — n'agit que sur l'écran actif, et
-// enveloppe alors les CINQ hooks cibles (current_screen/admin_init/load-post(-new).php/
-// admin_enqueue_scripts), jamais un hook non listé.
+// gwseq_perf_diag_install_hook_profilers() (itération 2, cible étendue en itération 3) — n'agit
+// que sur l'écran actif, et enveloppe alors TOUS les hooks cibles (current_screen/admin_init/
+// load-post(-new).php/admin_enqueue_scripts/add_meta_boxes/add_meta_boxes_gwseq_cheval), jamais
+// un hook non listé.
 // =====================================================================================
 
 function gws_test_make_hook_stub() { return function () { return 'original'; }; }
@@ -345,7 +346,7 @@ $all_wrapped = true;
 foreach ($target_hooks as $hook_name) {
   if ($wp_filter[$hook_name]->callbacks[10]['entree']['function'] === $install_originals[$hook_name]) { $all_wrapped = false; }
 }
-gws_test_assert($all_wrapped, 'Installation des profileurs : sur l’écran d’édition Cheval, les CINQ hooks cibles sont bien enveloppés');
+gws_test_assert($all_wrapped, 'Installation des profileurs : sur l’écran d’édition Cheval, TOUS les hooks cibles sont bien enveloppés');
 gws_test_assert($wp_filter['un_hook_non_cible']->callbacks[10]['entree']['function'] === $non_cible_original, 'Installation des profileurs : un hook NON listé dans GWSEQ_PERF_DIAG_TARGET_HOOKS n’est jamais touché');
 
 // =====================================================================================
