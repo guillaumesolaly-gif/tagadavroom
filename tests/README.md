@@ -1522,3 +1522,36 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   enveloppé (bug introduit délibérément) fait échouer exactement l'assertion "PROPRIÉTÉ CRITIQUE"
   dédiée à la valeur de retour, aucune autre assertion affectée. Intégralité de la suite
   (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après restauration : aucune régression.
+- **Diagnostic instrumenté de performance, itération 2 (0.37.0)** — `gws-equestrian-cheval-perf-
+  diagnostic-test.php` (même fichier, étendu, pas un nouveau fichier) couvre le profileur générique
+  par callback qui localise précisément la cause dans la fenêtre `current_screen` →
+  `admin_enqueue_scripts` (mesurée à ~36 s sur le site réel de recette). Une arborescence fictive
+  est créée dans un répertoire temporaire (jamais dans le dépôt, nettoyée automatiquement en fin de
+  script via `register_shutdown_function()`) reproduisant un plugin tiers, un thème, un mu-plugin
+  et le cœur WordPress (`wp-admin`/`wp-includes`), pour vérifier que
+  `gwseq_perf_diag_describe_callable()` classe correctement CHAQUE forme de callable PHP (fonction
+  nommée, méthode statique/d'instance sous forme tableau ou chaîne `Classe::méthode`, fonction
+  native sans fichier réflexible, callable illisible) par sa provenance réelle résolue par
+  réflexion, sans jamais connaître ces chemins à l'avance. **PROPRIÉTÉ CRITIQUE** de
+  `gwseq_perf_diag_wrap_hook_callbacks()` (même exigence que l'enveloppement des boîtes méta) :
+  substitution en place dans le registre natif `$wp_filter` sans jamais changer le comportement du
+  callback original (mêmes arguments transmis dans le même ordre, même valeur de retour, une
+  exception éventuelle continue de se propager normalement via `finally`) ; aucun effet si le hook
+  est absent, mal formé ou sans callback. `gwseq_perf_diag_install_hook_profilers()` vérifié comme
+  n'agissant que sur l'écran d'édition Cheval actif, et alors sur les CINQ hooks cibles
+  (`GWSEQ_PERF_DIAG_TARGET_HOOKS`, sa valeur réelle récupérée depuis le sous-processus "local" —
+  jamais dupliquée à la main dans le test, pour ne jamais diverger silencieusement du fichier de
+  production) jamais un hook non listé. Rapport enrichi vérifié : annotation "non expliqué" par
+  étape (délai total moins la part expliquée par les callbacks mesurés sur le hook qui vient de se
+  terminer) et table classée callback → source → durée, absente quand aucun callback n'a été
+  mesuré.
+
+  Un bug réel a été détecté PENDANT l'écriture de ces tests (pas après coup) : l'annotation "non
+  expliqué" se rattachait par erreur à l'étape SUIVANT celle réellement terminée (test de l'étape
+  `current_screen:fin` échouant contre l'implémentation initiale), corrigé en vérifiant le libellé
+  de l'étape COURANTE plutôt que celui de l'étape précédente dans la boucle. Correctifs vérifiés par
+  retrait/restauration, chacun isolément : (1) réintroduire cette confusion fait échouer exactement
+  l'assertion dédiée à l'étape `current_screen:fin`, aucune autre ; (2) faire perdre la valeur de
+  retour du callback natif enveloppé (comme pour les boîtes méta) fait échouer exactement
+  l'assertion "PROPRIÉTÉ CRITIQUE" correspondante, aucune autre. Intégralité de la suite
+  (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après chaque restauration : aucune régression.

@@ -1,5 +1,23 @@
 # Changelog — GWS Starter
 
+## 1.40.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Diagnostic instrumenté de performance, itération 2 (GWS Equestrian 0.37.0).** Mesures réelles
+  obtenues sur le site de recette (Local) avec l'outil de la version 1.39.0 : le temps perdu à
+  l'ouverture d'une fiche Cheval (~36-38 s) est indépendant du contenu de la fiche, n'est pas causé
+  par les boîtes méta, et se concentre presque entièrement entre les repères `current_screen` et
+  `admin_enqueue_scripts`. Sur demande explicite, cette version poursuit l'instrumentation
+  uniquement dans cette fenêtre, sans aucun correctif : un nouveau profileur générique substitue en
+  place chaque callback natif enregistré sur `current_screen`/`admin_init`/`load-post.php`/
+  `load-post-new.php`/`admin_enqueue_scripts` par un intermédiaire chronométré (mêmes arguments,
+  même valeur de retour, aucune altération du comportement réel), quelle que soit sa provenance
+  (GWS, thème, ou tout plugin tiers déjà installé sur le site) — la provenance de chaque callback
+  est résolue par réflexion et classée automatiquement. Le rapport affiche désormais, par étape,
+  la part du délai expliquée par les callbacks mesurés et la part "non expliquée", ainsi qu'une
+  table classée callback → source → durée. Aucun changement de comportement métier. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.37.0) pour le détail
+  complet.
+
 ## 1.39.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Diagnostic instrumenté de performance (GWS Equestrian 0.36.0).** Le Lot 2B (Sélections) est

@@ -5,6 +5,54 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.37.0 — Diagnostic instrumenté de performance, itération 2 (localisation précise dans la fenêtre current_screen → admin_enqueue_scripts)
+
+Mesures RÉELLES obtenues sur le site de recette (Local) avec l'outil de la version 0.36.0, sur
+deux fiches Cheval (Jamerose, très remplie, et une fiche quasi vide) : temps total ~36,6-36,9 s
+dans les deux cas, somme des boîtes méta ~95-110 ms dans les deux cas, et l'écart entre les repères
+`current_screen` et `admin_enqueue_scripts` mesure à lui seul ~36,1-36,4 s — soit la quasi-totalité
+du temps perdu. Conclusion mesurée (pas une hypothèse) : la lenteur est INDÉPENDANTE du contenu de
+la fiche, n'est PAS causée par les boîtes méta GWS, et se situe précisément dans cette fenêtre du
+cycle de chargement WordPress. Sur demande explicite, cette version poursuit l'instrumentation
+UNIQUEMENT dans cette zone, sans toucher au moindre comportement métier ni proposer de correctif.
+
+**Nouveau profileur générique par callback**, installé sur les hooks natifs qui s'exécutent
+exactement dans cette fenêtre — `current_screen`, `admin_init`, `load-post.php`/
+`load-post-new.php` (l'un ou l'autre selon création/édition), `admin_enqueue_scripts` — quelle que
+soit leur PROVENANCE (GWS, thème `gws-starter`, ou n'importe quel plugin tiers déjà installé sur ce
+site précis, invisible depuis ce dépôt de code). Technique : un premier `add_action` à priorité
+`PHP_INT_MIN` sur `current_screen` (le premier des cinq hooks à se déclencher) substitue EN PLACE,
+dans le registre natif `$wp_filter`, chaque callback déjà enregistré sur les cinq hooks cibles par
+un intermédiaire chronométré qui appelle l'ORIGINAL avec exactement les mêmes arguments et renvoie
+exactement sa valeur — même garantie de non-altération du comportement que l'enveloppement des
+boîtes méta de la version 0.36.0, jamais une réimplémentation. La PROVENANCE de chaque callback
+(fichier où il est réellement défini) est résolue par réflexion (`ReflectionFunction`/
+`ReflectionMethod`) et classée automatiquement (`plugin:<slug>`, `theme:<slug>`, `mu-plugin`,
+`wordpress-core`, ou son chemin brut en dernier recours) — sans connaître à l'avance quels plugins
+tiers sont installés sur le site du cabinet. Limite documentée : un callback enregistré
+dynamiquement DEPUIS L'INTÉRIEUR d'un callback `current_screen` (donc après le passage du
+profileur) échappe à cette mesure ; quand la somme des callbacks mesurés n'explique pas tout
+l'écart entre deux repères de temps, le rapport l'indique explicitement comme "non expliqué"
+plutôt que de laisser croire à une mesure complète.
+
+**Rapport enrichi** : chaque étape "…:fin" du cycle de chargement affiche désormais, en plus du
+délai total déjà présent en 0.36.0, la part de ce délai expliquée par les callbacks natifs mesurés
+sur le hook correspondant et la part "non expliquée" restante ; une table classée (callback →
+source → durée, du plus lent au plus rapide) liste individuellement chaque callback natif mesuré
+sur les cinq hooks cibles.
+
+**Aucun correctif n'est livré dans cette version** — même demande explicite qu'en 0.36.0 : cette
+itération identifie, elle ne corrige pas. Aucun changement de comportement métier, aucune
+migration, aucune modification du modèle Cheval/diffusion/Sélections. Tests dédiés étendus pour
+couvrir la résolution de provenance par réflexion (plugin/thème/mu-plugin/cœur WordPress/repli),
+la propriété critique de non-altération de l'enveloppement générique par callback (arguments,
+valeur de retour, et propagation d'une exception éventuelle strictement identiques à l'original,
+vérifié par inversion délibérée du correctif puis restauration), la portée de l'installation des
+profileurs (jamais hors de l'écran d'édition Cheval, jamais un hook non listé), et les nouvelles
+sections du rapport — un bug réel a d'ailleurs été détecté et corrigé pendant l'écriture de ces
+tests : l'annotation "non expliqué" par étape se rattachait par erreur à l'étape SUIVANT celle
+réellement terminée plutôt qu'à elle-même, corrigé avant toute livraison.
+
 ## 0.36.0 — Diagnostic instrumenté de performance (anomalie de recette : ~38 s à l'ouverture d'une fiche Cheval)
 
 Recette du Lot 2B validée intégralement (voir CR de recette) — le modèle Sélection est confirmé

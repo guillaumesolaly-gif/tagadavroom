@@ -34,12 +34,36 @@
  * s'exécute dans le processus PHP réel de ce site, avec ses vraies données et sa vraie
  * configuration — aucun environnement WordPress+MySQL n'étant disponible pour reproduire cela
  * ailleurs, ce fichier est le seul moyen d'obtenir des chiffres réels plutôt qu'une hypothèse.
+ *
+ * ITÉRATION 2 (mesure réelle : ~36 s concentrées entre `current_screen` et `admin_enqueue_
+ * scripts`, indépendamment du contenu de la fiche et des boîtes méta — voir CHANGELOG.md 0.37.0) :
+ * ajoute un PROFILEUR GÉNÉRIQUE PAR CALLBACK sur les hooks WordPress natifs qui s'exécutent dans
+ * exactement cette fenêtre (`current_screen`, `admin_init`, `load-post.php`/`load-post-new.php`,
+ * `admin_enqueue_scripts`), quelle que soit leur PROVENANCE (GWS, thème, ou N'IMPORTE QUEL plugin
+ * tiers déjà installé sur ce site précis — invisibles depuis ce dépôt de code, jamais audités
+ * autrement). Technique : `add_action($hook, ..., PHP_INT_MIN)` sur chacun de ces hooks pour
+ * s'exécuter EN PREMIER, puis substitution EN PLACE de chaque callback déjà enregistré dans le
+ * registre natif `$wp_filter[$hook]->callbacks` par un intermédiaire chronométré qui appelle
+ * l'ORIGINAL avec EXACTEMENT les mêmes arguments et renvoie EXACTEMENT sa valeur — jamais une
+ * réimplémentation, jamais un changement de comportement, même limite déjà démontrée par
+ * gwseq_perf_diag_wrap_meta_boxes() ci-dessous, appliquée ici au registre de hooks natif plutôt
+ * qu'aux boîtes méta. La SOURCE de chaque callback (fichier où il est réellement défini) est
+ * résolue par réflexion (`ReflectionFunction`/`ReflectionMethod`) et classée automatiquement
+ * (plugin précis, thème, cœur WordPress, mu-plugin) — sans connaître à l'avance quels plugins tiers
+ * sont installés sur ce site.
+ *
+ * LIMITE CONNUE, documentée plutôt que masquée : un plugin qui enregistrerait dynamiquement un
+ * callback sur `admin_init`/`load-post.php`/etc. DEPUIS L'INTÉRIEUR d'un callback `current_screen`
+ * (donc APRÈS le passage du profileur) échapperait à cette mesure — motif rare, mais possible. Si
+ * la somme des callbacks mesurés sur un hook n'explique pas tout l'écart entre deux repères de
+ * temps, le rapport l'indique explicitement comme "non expliqué" plutôt que de laisser croire à
+ * une mesure complète.
  */
 
 if (!defined('ABSPATH')) exit;
 if (!in_array(wp_get_environment_type(), array('local', 'development'), true)) return;
 
-$GLOBALS['__gwseq_perf_diag'] = array('boxes' => array(), 'phases' => array());
+$GLOBALS['__gwseq_perf_diag'] = array('boxes' => array(), 'phases' => array(), 'hook_callbacks' => array());
 
 /**
  * Portée STRICTEMENT limitée à l'écran d'édition d'UNE fiche Cheval précise (`post.php?action=
@@ -60,10 +84,123 @@ function gwseq_perf_diag_mark($label) {
 add_action('plugins_loaded', function () { gwseq_perf_diag_mark('plugins_loaded'); }, 9999);
 add_action('init', function () { gwseq_perf_diag_mark('init:début'); }, 0);
 add_action('init', function () { gwseq_perf_diag_mark('init:fin'); }, 9999);
-add_action('admin_init', function () { gwseq_perf_diag_mark('admin_init:début'); }, 0);
-add_action('admin_init', function () { gwseq_perf_diag_mark('admin_init:fin'); }, 9999);
-add_action('current_screen', function () { gwseq_perf_diag_mark('current_screen'); });
-add_action('admin_enqueue_scripts', function () { gwseq_perf_diag_mark('admin_enqueue_scripts'); }, 9999);
+add_action('current_screen', function () { gwseq_perf_diag_mark('current_screen:début'); }, PHP_INT_MIN);
+add_action('current_screen', function () { gwseq_perf_diag_mark('current_screen:fin'); }, PHP_INT_MAX);
+add_action('admin_init', function () { gwseq_perf_diag_mark('admin_init:début'); }, PHP_INT_MIN);
+add_action('admin_init', function () { gwseq_perf_diag_mark('admin_init:fin'); }, PHP_INT_MAX);
+// `load-post.php` (édition d'une fiche existante) / `load-post-new.php` (création) — l'un ou
+// l'autre se déclenche selon le contexte, jamais les deux dans la même requête.
+add_action('load-post.php', function () { gwseq_perf_diag_mark('load-post.php:début'); }, PHP_INT_MIN);
+add_action('load-post.php', function () { gwseq_perf_diag_mark('load-post.php:fin'); }, PHP_INT_MAX);
+add_action('load-post-new.php', function () { gwseq_perf_diag_mark('load-post-new.php:début'); }, PHP_INT_MIN);
+add_action('load-post-new.php', function () { gwseq_perf_diag_mark('load-post-new.php:fin'); }, PHP_INT_MAX);
+add_action('admin_enqueue_scripts', function () { gwseq_perf_diag_mark('admin_enqueue_scripts:début'); }, PHP_INT_MIN);
+add_action('admin_enqueue_scripts', function () { gwseq_perf_diag_mark('admin_enqueue_scripts:fin'); }, PHP_INT_MAX);
+
+/* -------------------------------------------------------------------------------------------
+ * Profileur générique par callback (itération 2) — voir la note de fichier en tête pour la
+ * technique et sa limite connue.
+ * ----------------------------------------------------------------------------------------- */
+
+const GWSEQ_PERF_DIAG_TARGET_HOOKS = array('current_screen', 'admin_init', 'load-post.php', 'load-post-new.php', 'admin_enqueue_scripts');
+
+/**
+ * Résout la PROVENANCE réelle d'un callable par réflexion — jamais une supposition : classe
+ * automatiquement n'importe quel plugin/thème déjà installé sur ce site précis, y compris un
+ * plugin tiers totalement absent de ce dépôt de code.
+ */
+function gwseq_perf_diag_describe_callable($callable) {
+  try {
+    if (is_array($callable)) {
+      $reflection = new ReflectionMethod($callable[0], $callable[1]);
+      $class_name = is_object($callable[0]) ? get_class($callable[0]) : $callable[0];
+      $label = $class_name . '::' . $callable[1];
+    } elseif (is_string($callable) && strpos($callable, '::') !== false) {
+      $reflection = new ReflectionMethod($callable);
+      $label = $callable;
+    } else {
+      $reflection = new ReflectionFunction($callable);
+      $label = is_string($callable) ? $callable : '{closure}';
+    }
+  } catch (\Throwable $e) {
+    return array('label' => is_string($callable) ? $callable : '(callable illisible)', 'source' => 'inconnu');
+  }
+
+  $file = $reflection->getFileName();
+  if (!$file) {
+    return array('label' => $label, 'source' => 'php/wordpress (fonction native)');
+  }
+
+  $file = wp_normalize_path($file);
+  $content_dir = defined('WP_CONTENT_DIR') ? wp_normalize_path(WP_CONTENT_DIR) : '';
+  $abspath = wp_normalize_path(ABSPATH);
+
+  if ($content_dir !== '' && strpos($file, $content_dir . '/plugins/') === 0) {
+    $relative = substr($file, strlen($content_dir . '/plugins/'));
+    $source = 'plugin:' . strtok($relative, '/');
+  } elseif ($content_dir !== '' && strpos($file, $content_dir . '/mu-plugins/') === 0) {
+    $source = 'mu-plugin';
+  } elseif ($content_dir !== '' && strpos($file, $content_dir . '/themes/') === 0) {
+    $relative = substr($file, strlen($content_dir . '/themes/'));
+    $source = 'theme:' . strtok($relative, '/');
+  } elseif (strpos($file, $abspath . 'wp-admin/') === 0 || strpos($file, $abspath . 'wp-includes/') === 0) {
+    $source = 'wordpress-core';
+  } else {
+    $source = $file;
+  }
+
+  return array('label' => $label . ' (' . basename($file) . ':' . $reflection->getStartLine() . ')', 'source' => $source);
+}
+
+/**
+ * Substitue EN PLACE, dans le registre natif `$wp_filter`, chaque callback déjà enregistré sur
+ * $hook par un intermédiaire chronométré — jamais un changement de comportement (mêmes arguments,
+ * transmis tels quels ; même valeur de retour ; une exception éventuelle continue de se propager
+ * normalement, seulement observée en passant via `finally`).
+ */
+function gwseq_perf_diag_wrap_hook_callbacks($hook) {
+  global $wp_filter;
+  if (empty($wp_filter[$hook]) || !is_object($wp_filter[$hook]) || empty($wp_filter[$hook]->callbacks)) return;
+
+  foreach ($wp_filter[$hook]->callbacks as $priority => $entries) {
+    if (!is_array($entries)) continue;
+    foreach ($entries as $entry_id => $entry) {
+      if (empty($entry['function']) || !is_callable($entry['function'])) continue;
+      $original = $entry['function'];
+      $described = gwseq_perf_diag_describe_callable($original);
+
+      $wp_filter[$hook]->callbacks[$priority][$entry_id]['function'] = function (...$args) use ($original, $hook, $priority, $described) {
+        $start = microtime(true);
+        try {
+          return call_user_func_array($original, $args);
+        } finally {
+          $GLOBALS['__gwseq_perf_diag']['hook_callbacks'][] = array(
+            'hook' => $hook,
+            'priority' => $priority,
+            'label' => $described['label'],
+            'source' => $described['source'],
+            'elapsed' => microtime(true) - $start,
+          );
+        }
+      };
+    }
+  }
+}
+
+/**
+ * Installé sur `current_screen`, à la priorité la plus basse possible (PHP_INT_MIN) : le premier
+ * des cinq hooks cibles à se déclencher dans la séquence réelle de WordPress
+ * (`current_screen` -> `admin_init` -> `load-post.php`/`load-post-new.php` -> ... ->
+ * `admin_enqueue_scripts`), donc le seul point où l'on peut encore substituer les callbacks des
+ * QUATRE AUTRES hooks avant qu'ils ne se déclenchent (voir la limite connue en tête de fichier).
+ */
+function gwseq_perf_diag_install_hook_profilers() {
+  if (!gwseq_perf_diag_active_screen()) return;
+  foreach (GWSEQ_PERF_DIAG_TARGET_HOOKS as $hook) {
+    gwseq_perf_diag_wrap_hook_callbacks($hook);
+  }
+}
+add_action('current_screen', 'gwseq_perf_diag_install_hook_profilers', PHP_INT_MIN);
 
 /**
  * Enveloppe CHAQUE callback de boîte déjà enregistrée pour Cheval (natif `$wp_meta_boxes`,
@@ -132,6 +269,13 @@ function gwseq_perf_diag_render_report() {
   $boxes_total = array_sum($boxes);
   $lines[] = sprintf('Somme du temps RÉELLEMENT passé dans les boîtes méta Cheval (%d boîtes) : %.1f ms', count($boxes), $boxes_total * 1000);
 
+  // Somme des callbacks mesurés PAR HOOK (itération 2) — sert au calcul du temps "non expliqué"
+  // par étape (voir la boucle des phases plus bas).
+  $callback_time_by_hook = array();
+  foreach ($diag['hook_callbacks'] as $entry) {
+    $callback_time_by_hook[$entry['hook']] = ($callback_time_by_hook[$entry['hook']] ?? 0) + $entry['elapsed'];
+  }
+
   $lines[] = '';
   $lines[] = 'Boîtes, du plus lent au plus rapide :';
   foreach ($boxes as $id => $elapsed) {
@@ -139,14 +283,42 @@ function gwseq_perf_diag_render_report() {
   }
 
   $lines[] = '';
-  $lines[] = 'Étapes du cycle de chargement (délai depuis l’étape précédente) :';
+  $lines[] = 'Étapes du cycle de chargement (délai depuis l’étape précédente ; "non expliqué" =';
+  $lines[] = 'délai moins la somme des callbacks mesurés sur le hook qui VIENT DE SE TERMINER, quand';
+  $lines[] = 'ce hook fait partie des cinq ci-dessous instrumentés en détail) :';
   $previous = $request_start;
   foreach ($phases as $phase) {
     list($label, $time) = $phase;
     if ($previous !== null) {
-      $lines[] = sprintf('  %s : +%.1f ms', $label, ($time - $previous) * 1000);
+      $delta_ms = ($time - $previous) * 1000;
+      $explained = null;
+      // Le libellé de L'ÉTAPE COURANTE (ex. "current_screen:fin") correspond au hook natif dont le
+      // délai qu'on vient de calculer ($delta_ms, depuis son ":début") est exactement la durée
+      // totale d'exécution — c'est cette ligne-ci qu'il faut annoter, jamais la suivante.
+      if (substr($label, -4) === ':fin') {
+        $hook_name = substr($label, 0, -4);
+        if (isset($callback_time_by_hook[$hook_name])) {
+          $explained = $callback_time_by_hook[$hook_name] * 1000;
+        }
+      }
+      if ($explained !== null) {
+        $lines[] = sprintf('  %s : +%.1f ms (dont %.1f ms dans les callbacks mesurés sur ce hook, %.1f ms non expliqué)', $label, $delta_ms, $explained, $delta_ms - $explained);
+      } else {
+        $lines[] = sprintf('  %s : +%.1f ms', $label, $delta_ms);
+      }
     }
     $previous = $time;
+  }
+
+  if ($diag['hook_callbacks']) {
+    $ranked = $diag['hook_callbacks'];
+    usort($ranked, function ($a, $b) { return $b['elapsed'] <=> $a['elapsed']; });
+    $lines[] = '';
+    $lines[] = 'Callbacks natifs mesurés sur current_screen/admin_init/load-post(-new).php/';
+    $lines[] = 'admin_enqueue_scripts, du plus lent au plus rapide (callback -> source -> durée) :';
+    foreach ($ranked as $entry) {
+      $lines[] = sprintf('  [%s] %s -> %s -> %.1f ms', $entry['hook'], $entry['label'], $entry['source'], $entry['elapsed'] * 1000);
+    }
   }
 
   $report_text = implode("\n", $lines);
