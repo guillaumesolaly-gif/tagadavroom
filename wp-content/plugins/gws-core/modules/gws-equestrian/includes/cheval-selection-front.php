@@ -27,6 +27,12 @@
  *
  * CONFIDENTIALITÉ : `noindex, nofollow` systématique, aucune mise en cache (mêmes en-têtes que la
  * route de partage privé Cheval), jamais d'ID WordPress exposé (seul le token figure dans l'URL).
+ *
+ * LOT 2C (§3 de la demande) : Open Graph ajouté (gwseq_selection_render_og_meta() plus bas) —
+ * DONNÉES calculées exclusivement par gwseq_selection_get_og_data() (includes/cheval-
+ * selection.php), jamais un second calcul ici, même séparation métier/rendu que le reste de ce
+ * fichier. `noindex`/nocache/inaccessibilité sans token restent strictement inchangés : Open Graph
+ * n'est qu'un enrichissement de la même page déjà protégée, jamais un second point d'entrée.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -92,6 +98,34 @@ function gwseq_selection_render_public_card($card) {
 }
 
 /**
+ * Open Graph (Lot 2C, §3 de la demande) — DONNÉES calculées exclusivement par gwseq_selection_get_
+ * og_data() (includes/cheval-selection.php, couche métier pure) : ce fichier-ci n'échoue QUE les
+ * balises `<meta>` elles-mêmes, jamais un second calcul de titre/description/image (même
+ * séparation que gwseq_selection_render_public_card()/gwseq_selection_get_public_card()
+ * ci-dessus). Même forme que gwseq_render_horse_og_meta() (includes/cheval-share.php, jamais une
+ * deuxième architecture OG parallèle) : og:type/og:title/og:description/og:url puis og:image(+
+ * dimensions) UNIQUEMENT si une image a été trouvée — aucune balise Twitter/X dédiée, exactement
+ * comme le partage individuel Cheval, qui n'en émet pas non plus (repose sur le repli natif de
+ * Twitter/X vers les balises `og:`, déjà la seule architecture de ce projet). `og:url` reflète le
+ * lien RÉELLEMENT partagé (`gwseq_selection_url()`, le même que celui composé dans le message de
+ * partage) — jamais un autre identifiant.
+ */
+function gwseq_selection_render_og_meta($selection_id) {
+  $og = gwseq_selection_get_og_data($selection_id);
+
+  echo '<meta property="og:type" content="website">' . "\n";
+  echo '<meta property="og:title" content="' . esc_attr($og['title']) . '">' . "\n";
+  echo '<meta property="og:description" content="' . esc_attr($og['description']) . '">' . "\n";
+  echo '<meta property="og:url" content="' . esc_url(gwseq_selection_url($selection_id)) . '">' . "\n";
+
+  if ($og['image']) {
+    echo '<meta property="og:image" content="' . esc_url($og['image']['url']) . '">' . "\n";
+    if (!empty($og['image']['width'])) echo '<meta property="og:image:width" content="' . (int) $og['image']['width'] . '">' . "\n";
+    if (!empty($og['image']['height'])) echo '<meta property="og:image:height" content="' . (int) $og['image']['height'] . '">' . "\n";
+  }
+}
+
+/**
  * Chargement conditionnel (§9/§3) — hook standard `wp_enqueue_scripts`, jamais un enregistrement
  * inconditionnel qui chargerait ces styles sur tout le reste du site : gated sur la présence de la
  * query var de cette route précise. Réutilise gws-media-placeholder.css (§9 : "réutiliser le
@@ -122,6 +156,7 @@ function gwseq_selection_render_public_html($selection_id) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title><?php echo esc_html($view['titre']); ?></title>
+<?php gwseq_selection_render_og_meta($selection_id); ?>
 <?php wp_head(); ?>
 </head>
 <body class="gwseq-selection-page">

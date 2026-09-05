@@ -5,6 +5,78 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.41.0 — Nettoyage du diagnostic de performance + Lot 2C : partage d'une Sélection (WhatsApp/SMS/Copier, Open Graph)
+
+**A. Clôture de l'anomalie performance.** Correctif validé en recette réelle sur Jamerose :
+temps total ~35,7 s → 589,3 ms ; `gwseq_add_cheval_pedigree_meta_boxes()` ~35,1 s → 7,8 ms ; les
+deux nouvelles requêtes SQL de `gwseq_get_horse_offspring()` : 5,5 ms cumulés. Contrôle
+fonctionnel sur Faline : ses deux produits restent bien présents dans Production. L'instrumentation
+temporaire de diagnostic, sa mission terminée, est intégralement retirée : `includes/cheval-perf-
+diagnostic.php` supprimé, son chargement retiré de `module.php`, `SAVEQUERIES` n'est plus jamais
+activé par ce module. Le fichier de test dédié (`tests/gws-equestrian-cheval-perf-diagnostic-
+test.php`) est supprimé avec le code qu'il couvrait (même convention que le retrait du module
+Mises en avant, 0.21.0). Le correctif de `gwseq_get_horse_offspring()` lui-même (0.40.0) N'EST PAS
+modifié. Suite passée à 24 fichiers PHP + 4 suites JS runtime après ce retrait.
+
+**B. Lot 2C — Partager une sélection.** La sélection de plusieurs chevaux (Lot 2B, validé) devient
+partageable depuis le BO, sur le même principe que le partage individuel d'un cheval — en
+réutilisant, jamais en dupliquant, les mécanismes déjà éprouvés de `includes/cheval-share.php`/
+`assets/cheval-share-admin.js`.
+
+**Message de partage WhatsApp/SMS/Copier** (`gwseq_build_selection_share_message()`, includes/
+cheval-selection.php) : texte brut ENTIÈREMENT déterministe (titre éventuel + phrase fixe + lien),
+volontairement plus simple que le partage Cheval — aucune composition interactive, aucune case à
+cocher identité/prix/vidéo : la page de sélection elle-même est le support destiné à cette
+information, jamais le message qui y renvoie. Calculé UNE FOIS côté serveur
+(`gwseq_selection_admin_row()`) et transmis tel quel au script : contrairement à l'écran
+« Partager », aucun nouvel endpoint AJAX n'est nécessaire. Le lien figure toujours explicitement
+dans le corps du message, même si une preview Open Graph est disponible (WhatsApp/SMS/iMessage ne
+la garantissent jamais). `buildWhatsappUrl()`/`buildSmsUrl()` (assets/cheval-selection-admin.js)
+sont une copie verbatim des mêmes fonctions déjà validées de assets/cheval-share-admin.js
+(`api.whatsapp.com/send` plutôt que `wa.me`, séparateur `sms:&body=`/`sms:?body=` selon iOS/
+Android) — jamais une seconde logique divergente. Interface BO : trois nouveaux boutons WhatsApp/
+SMS/Copier (message complet) dans la colonne Actions de chaque sélection, aux côtés de "Supprimer"
+déjà existant — la colonne "Lien" (URL + "Copier le lien") reste inchangée, distincte (elle copie
+le lien SEUL). Aucun CRM, destinataire, historique d'envoi, tracking commercial ou statut "envoyé"
+n'est ajouté.
+
+**Open Graph de `/selection/{token}/`** (`gwseq_selection_get_og_data()`, includes/cheval-
+selection.php ; `gwseq_selection_render_og_meta()`, includes/cheval-selection-front.php) : og:title
+= titre de la sélection, ou "Sélection de chevaux" sans titre (réutilise exactement
+`gwseq_selection_display_title()`, jamais une seconde règle de repli) ; description déterministe
+fixe ("Découvrez cette sélection de chevaux."), jamais générée à partir du contenu (contrairement à
+Cheval) — §2 interdit toute injection de contenu inventé ou dérivé des chevaux dans les canaux de
+partage. Image : photo principale du PREMIER cheval ACTUELLEMENT diffusable qui EN A UNE
+(`gwseq_selection_get_og_image()`, recalculée à chaque appel à partir de `gwseq_selection_get_
+public_view()` — jamais un second calcul d'éligibilité) ; un cheval diffusable sans photo est
+silencieusement ignoré pour ce seul calcul, jamais retiré de l'affichage de la sélection
+elle-même. Si aucun cheval diffusable n'a de photo, aucune balise `og:image` n'est émise : ce
+projet ne dispose aujourd'hui d'aucun fallback visuel générique GWS/site pour les métadonnées
+sociales (vérifié dans gws-core et le thème gws-starter) — §3 est explicite ("ne jamais générer
+artificiellement une image"), aucun fallback n'a donc été inventé pour l'occasion. Aucune balise
+Twitter/X dédiée, exactement comme le partage individuel Cheval (repli natif de Twitter/X vers
+`og:`, une seule architecture, jamais un second système SEO/social parallèle). `noindex`/nocache/
+inaccessibilité sans token/absence d'exposition du token restent strictement inchangés — Open
+Graph n'est qu'un enrichissement de la même page déjà protégée.
+
+**Sécurité/compatibilité** : le token n'est jamais régénéré par le partage (fonctions de LECTURE
+pure) ; modifier une sélection ne change jamais son URL (déjà garanti depuis le Lot 2B, revérifié
+ici) ; supprimer une sélection continue d'invalider immédiatement son lien ; aucun changement du
+modèle de données Cheval, des règles public/diffusion privée/en préparation, ni du schéma SQL.
+
+Tests étendus sur les quatre fichiers déjà existants de la Sélection (logic/admin/front/runtime) :
+message avec/sans titre (conforme à l'exemple exact de la demande, aucune fuite du libellé de
+repli d'affichage dans le message), lien présent explicitement, token stable après composition
+répétée ET après modification ultérieure, OG avec/sans titre, image du premier cheval diffusable
+ayant une photo (le précédent, sans photo, correctement ignoré sans être retiré de l'affichage),
+absence de balise si aucune photo, cheval passé "En préparation" qui cesse de fournir l'image OG,
+absence de toute balise Twitter/X, sélection inexistante/supprimée toujours inaccessible (déjà
+couvert, revérifié), `noindex` conservé, boutons WhatsApp/SMS/Copier réellement exécutés (JS,
+liens `href`/copie presse-papier vérifiés, aucun appel AJAX déclenché), et l'intégralité de la
+suite « Partager un cheval » (logic/admin/runtime) repassée sans aucune régression. Deux bugs
+délibérément introduits (repli d'affichage fuité dans le message, séparateur SMS cassé) : chacun
+fait échouer exactement l'assertion dédiée, aucune autre.
+
 ## 0.40.0 — Correctif performance : requête Production (gwseq_get_horse_offspring) — anomalie ~35 s résolue
 
 Mesure RÉELLE de l'itération 4 : 1 seule requête SQL, 35 144,1 ms, dans

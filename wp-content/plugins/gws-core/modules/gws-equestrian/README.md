@@ -8,7 +8,7 @@ actualités (adaptation du système natif WordPress). Voir le pendant présentat
 **Préfixe du module : `gwseq_`** (jamais `gws_` ni `gws_core_`, réservés au cœur — voir
 `modules/README.md` et `AI-AGENT.md` §3). Consigné dans le registre de `modules/README.md`.
 
-## État actuel : GWS Equestrian 0.40.0 — Suite V1 « Partager & vendre », Lot 1 validé en recette réelle (voir CHANGELOG.md, 0.32.0/0.33.0), Lot 2 (sélection persistante de plusieurs chevaux) validé intégralement en recette (voir CHANGELOG.md, 0.34.0/0.35.0). Le Lot 1 pilote la diffusion d'une fiche Cheval avec le SEUL vocabulaire métier GWS (boîte "État de diffusion" remplaçant, uniquement pour Cheval, la boîte native "Publier"), avec un filtre "Tous les états de diffusion/En préparation/Diffusion privée/Visible sur le site" cumulable sur `Chevaux → Tous les chevaux` ET `Chevaux → Partager`. Le Lot 2, développé par petits lots avec recette réelle entre chaque étape (méthode explicitement demandée), a introduit l'écran `Chevaux → Sélections` (2A, 0.34.0) puis, après un correctif bloquant et un ajustement de modèle demandés en recette, la MODIFICATION d'une sélection existante et sa PAGE DESTINATAIRE publique (2B, 0.35.0) : un professionnel constitue une sélection PERSISTANTE de plusieurs chevaux (contrairement au partage individuel, entièrement éphémère) en réutilisant exactement le moteur de recherche/filtrage de l'écran « Partager », avec ordre explicite (Monter/Descendre) et un token de partage au même niveau de sécurité que le partage privé Cheval. Le titre d'une sélection dans la liste l'ouvre pour modification (ajouter/retirer un cheval, réordonner, changer le titre) SANS jamais régénérer son token — le lien déjà envoyé reste identique ; mettre fin à une sélection se fait en la SUPPRIMANT (corbeille WordPress, jamais les chevaux référencés touchés) — "Révoquer"/"Régénérer" ont été retirés de l'interface après la recette du Lot 2A (le token reste un mécanisme technique interne). Un cheval "En préparation" n'entre jamais dans une sélection, et une sélection ne stocke que des identifiants — jamais une copie des données du cheval, toujours relues à jour à l'affichage, y compris sur la page destinataire publique `/selection/{token}/` (accessible sans compte, noindex, une carte par cheval réellement diffusable). **Chantier suivant suspendu (0.36.0, diagnostic itérations 2 à 4 en 0.37.0/0.38.0/0.39.0, correctif en 0.40.0) — anomalie de performance résolue, recette runtime en cours** : la recette du Lot 2B avait signalé une anomalie de performance indépendante des Sélections (~38 s à l'ouverture d'une fiche Cheval en édition) — un diagnostic instrumenté (local/développement uniquement, aucun changement de comportement métier) a localisé la cause avec précision, mesure à l'appui à chaque étape : la fenêtre `current_screen`/`admin_enqueue_scripts` (0.37.0), puis les callbacks GWS de registration des boîtes méta (0.38.0), puis très exactement 35 144,1 ms dans UNE SEULE requête SQL générée par `gwseq_get_horse_offspring()` (0.39.0). Cause confirmée par lecture du code source réel de `WP_Meta_Query` (WordPress core) : un `meta_query` combinant en un seul OR deux groupes AND sur des clés meta différentes génère mécaniquement 4 `INNER JOIN` sur `wp_postmeta` — un problème de forme de requête, jamais un index manquant. **Corrigé en 0.40.0** : deux requêtes séparées et simples (une par rôle Père/Mère) remplacent la requête unique à 4 JOIN, fusionnées et triées en PHP — aucune règle métier modifiée, aucun schéma SQL touché, aucun index ajouté. Le diagnostic reste actif en local/développement le temps de la recette runtime qui doit confirmer la résolution sur le site réel avant de le retirer. Le prochain chantier de « Partager & vendre » (partage WhatsApp/SMS/Copier, Open Graph, etc.) ne reprend qu'après cette recette. Voir CHANGELOG.md (0.40.0, 0.39.0, 0.38.0, 0.37.0 et 0.36.0) pour le détail complet. Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent également à développer après validation des lots précédents. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1.
+## État actuel : GWS Equestrian 0.41.0 — Suite V1 « Partager & vendre », Lot 1 validé en recette réelle (voir CHANGELOG.md, 0.32.0/0.33.0), Lot 2 (sélection persistante de plusieurs chevaux) validé intégralement en recette (voir CHANGELOG.md, 0.34.0/0.35.0). Le Lot 1 pilote la diffusion d'une fiche Cheval avec le SEUL vocabulaire métier GWS (boîte "État de diffusion" remplaçant, uniquement pour Cheval, la boîte native "Publier"), avec un filtre "Tous les états de diffusion/En préparation/Diffusion privée/Visible sur le site" cumulable sur `Chevaux → Tous les chevaux` ET `Chevaux → Partager`. Le Lot 2, développé par petits lots avec recette réelle entre chaque étape (méthode explicitement demandée), a introduit l'écran `Chevaux → Sélections` (2A, 0.34.0) puis, après un correctif bloquant et un ajustement de modèle demandés en recette, la MODIFICATION d'une sélection existante et sa PAGE DESTINATAIRE publique (2B, 0.35.0) : un professionnel constitue une sélection PERSISTANTE de plusieurs chevaux (contrairement au partage individuel, entièrement éphémère) en réutilisant exactement le moteur de recherche/filtrage de l'écran « Partager », avec ordre explicite (Monter/Descendre) et un token de partage au même niveau de sécurité que le partage privé Cheval. Le titre d'une sélection dans la liste l'ouvre pour modification (ajouter/retirer un cheval, réordonner, changer le titre) SANS jamais régénérer son token — le lien déjà envoyé reste identique ; mettre fin à une sélection se fait en la SUPPRIMANT (corbeille WordPress, jamais les chevaux référencés touchés) — "Révoquer"/"Régénérer" ont été retirés de l'interface après la recette du Lot 2A (le token reste un mécanisme technique interne). Un cheval "En préparation" n'entre jamais dans une sélection, et une sélection ne stocke que des identifiants — jamais une copie des données du cheval, toujours relues à jour à l'affichage, y compris sur la page destinataire publique `/selection/{token}/` (accessible sans compte, noindex, une carte par cheval réellement diffusable). **Anomalie de performance résolue et validée en recette réelle (0.36.0 à 0.40.0)** : la recette du Lot 2B avait signalé ~38 s à l'ouverture d'une fiche Cheval — diagnostic instrumenté localisant la cause avec précision (une requête `meta_query` à 4 `INNER JOIN` dans `gwseq_get_horse_offspring()`, un problème de forme de requête plutôt qu'un index manquant), corrigée en 0.40.0 (deux requêtes séparées et simples, aucune règle métier ni schéma SQL modifié) et confirmée en recette réelle : 35,7 s → 589,3 ms sur Jamerose. L'instrumentation temporaire de diagnostic est intégralement retirée en 0.41.0, sa mission terminée. **Lot 2C — Partager une sélection (0.41.0)** : une sélection devient partageable depuis le BO comme un cheval individuel — boutons WhatsApp/SMS/Copier (message déterministe titre+phrase fixe+lien, mêmes adapters que le partage Cheval, jamais une logique divergente) et Open Graph sur `/selection/{token}/` (titre/description déterministes, image du premier cheval diffusable ayant une photo, jamais une image fabriquée, recalculée selon les états de diffusion actuels). Voir CHANGELOG.md (0.41.0 et antérieurs) pour le détail complet. Lot 3 (point d'entrée mobile GWS) et Lot 4 (audit mobile de la fiche Cheval) restent également à développer après validation des lots précédents. Module Mises en avant (Pop-in/Sticky bar, 0.20.0) retiré en 0.21.0 à la suite d'une décision produit après recette UX (fonctionnalité périphérique, voir `CHANGELOG.md` de ce dossier) ; ce n'est pas une régression. Actualités — cadrage de l'éditeur par blocs (0.19.0), filtre Prestations par Groupe tarifaire (0.18.0), Module Équipe (0.17.x) et back-office Cheval V1 validés en recette runtime. Duplication d'un cheval retirée de la roadmap V1.
 
 Les Étapes 1 (fondations), 2 (composant répétable), 3 (Prestations/Groupes tarifaires) et 4
 (Cheval) ont été recettées en conditions réelles et validées — gel à GWS Core 1.7.1 / GWS
@@ -935,91 +935,65 @@ Voir `tests/gws-equestrian-cheval-selection-logic-test.php`,
 `tests/gws-equestrian-cheval-selection-runtime-test.js` pour la couverture dédiée, et le
 `CHANGELOG.md` de ce dossier (0.35.0 et 0.34.0) pour le détail complet.
 
-## Diagnostic et correctif de performance — fiche Cheval (0.36.0, itérations 2 à 4 en 0.37.0/0.38.0/0.39.0, correctif en 0.40.0)
+## Anomalie de performance fiche Cheval — diagnostiquée, corrigée, validée (0.36.0 à 0.41.0)
 
-La recette du Lot 2B a signalé une anomalie de performance INDÉPENDANTE des Sélections : environ
-38 secondes pour ouvrir une fiche Cheval en édition, sur un site n'en comptant qu'une grosse
-dizaine. Sur demande explicite ("ne pas modifier/refactorer sur la base d'une hypothèse"), aucun
-correctif n'a été appliqué à ce stade — seule l'instrumentation nécessaire à un diagnostic réel a
-été livrée (`includes/cheval-perf-diagnostic.php`), avec la même garde que le module QA de
-gws-core : entièrement inerte hors environnement local/développement, aucun coût ni sortie en
-production. Elle chronomètre chaque boîte méta de la fiche Cheval (enveloppement non invasif du
-callback déjà enregistré — mêmes arguments, même sortie, même valeur de retour), les étapes du
-cycle de chargement WordPress, et compare ce total au temps réel écoulé depuis le tout début de la
-requête HTTP — pour déterminer si le temps perdu se trouve dans ce que GWS peut voir ou ailleurs
-(cœur WordPress, un autre plugin, le thème, l'environnement Local lui-même). Rapport affiché en
-pied de l'écran d'édition et, si `WP_DEBUG_LOG` est actif, journalisé.
+La recette du Lot 2B avait signalé une anomalie INDÉPENDANTE des Sélections : environ 38 secondes
+pour ouvrir une fiche Cheval en édition, sur un site n'en comptant qu'une grosse dizaine. Sur
+demande explicite ("mesurer avant de corriger"), un diagnostic instrumenté temporaire
+(`includes/cheval-perf-diagnostic.php`, local/développement uniquement, aucun changement de
+comportement métier) a localisé la cause avec précision par itérations successives (0.36.0 à
+0.39.0, détail complet dans `CHANGELOG.md`) : très exactement 35 144,1 ms passés dans UNE SEULE
+requête SQL, générée par `gwseq_get_horse_offspring()` (calcul de la Production d'un cheval).
+Cause confirmée par lecture du code source réel de `WP_Meta_Query` (WordPress core) : un
+`meta_query` combinant en un seul OR deux groupes AND sur des clés meta différentes
+(`_gwseq_pere_mode`/`_gwseq_pere_id`, `_gwseq_mere_mode`/`_gwseq_mere_id`) génère mécaniquement 4
+`INNER JOIN` sur `wp_postmeta` — un problème de FORME de requête, jamais un index manquant.
 
-Les mesures réelles obtenues avec cet outil (0.36.0) ont localisé la quasi-totalité du temps perdu
-(~36 s sur les ~38 s constatés, indépendamment du contenu de la fiche) entre les repères
-`current_screen` et `admin_enqueue_scripts`. L'itération 2 (0.37.0) poursuit l'instrumentation
-UNIQUEMENT dans cette fenêtre : un profileur générique substitue en place chaque callback natif
-déjà enregistré sur `current_screen`/`admin_init`/`load-post.php`/`load-post-new.php`/
-`admin_enqueue_scripts` par un intermédiaire chronométré (même garantie de non-altération du
-comportement — arguments, valeur de retour et propagation d'une exception éventuelle strictement
-identiques à l'original), quelle que soit sa provenance (GWS, thème, ou tout plugin tiers déjà
-installé sur le site, invisible depuis ce dépôt) — la provenance de chaque callback est résolue par
-réflexion et classée automatiquement (`plugin:<slug>`, `theme:<slug>`, `mu-plugin`,
-`wordpress-core`, ou son chemin brut en dernier recours). Le rapport affiche désormais, par étape,
-la part du délai expliquée par les callbacks mesurés sur le hook correspondant et la part "non
-expliquée", ainsi qu'une table classée callback → source → durée.
+**Corrigé en 0.40.0** : deux requêtes séparées et simples (une par rôle Père/Mère, 2 JOIN chacune)
+remplacent la requête unique à 4 JOIN, fusionnées et triées par titre en PHP, avec dédoublonnage
+défensif — même règle métier, même contrat de sortie, aucun schéma SQL modifié, aucun index
+personnalisé ajouté. **Validé en recette réelle** : 35,7 s → 589,3 ms sur Jamerose (chevaux
+toujours correctement présents dans Production, contrôlé sur Faline). L'instrumentation
+temporaire, sa mission terminée, est intégralement **retirée en 0.41.0** (fichier, chargement,
+activation de `SAVEQUERIES`, test dédié) — voir `tests/gws-equestrian-pedigree-logic-test.php`
+pour la couverture du correctif lui-même (inchangé depuis 0.40.0) et le `CHANGELOG.md` de ce
+dossier (0.36.0 à 0.41.0) pour le détail complet de chaque étape du diagnostic.
 
-Les mesures réelles obtenues avec l'itération 2 (sur Jamerose) montrent que `current_screen`
-(18 ms), `load-post.php` (~0 ms) et `admin_enqueue_scripts` (11,9 ms) sont tous rapides — les ~36
-secondes se situent intégralement entre la FIN de `load-post.php` et le DÉBUT de
-`admin_enqueue_scripts`. Plutôt que d'ajouter des hooks supposés, l'itération 3 (0.38.0) s'appuie
-sur une lecture ligne à ligne du code source réel de WordPress (`wp-admin/post.php`,
-`wp-admin/edit-form-advanced.php`, `wp-admin/includes/meta-boxes.php`) : pour un type de contenu en
-éditeur classique — Cheval ne déclare pas `'editor'` dans `supports`, donc c'est bien
-`edit-form-advanced.php` qui est chargé, jamais l'éditeur par blocs — la fonction
-`register_and_do_post_meta_boxes()`, appelée AVANT que `admin-header.php` ne déclenche
-`admin_enqueue_scripts`, exécute les 9 callbacks GWS qui ENREGISTRENT les boîtes méta de la fiche
-(`add_meta_boxes`/`add_meta_boxes_gwseq_cheval`) — un moment jamais mesuré jusqu'ici, l'itération
-précédente ne chronométrant que leur RENDU, bien plus tard dans la requête. Ces deux hooks sont
-désormais ajoutés au même profileur générique, sans nouvelle technique.
+## Partager une sélection (Lot 2C, 0.41.0)
 
-La mesure réelle de l'itération 3 (sur Jamerose) attribue 36 065,0 ms des ~36 secondes à UN SEUL
-callback : `gwseq_add_cheval_pedigree_meta_boxes()` (cheval-pedigree.php:670) — le rendu de la
-boîte Pedigree elle-même ne prenant que 49,7 ms. Cause principale localisée à ce stade. Son corps
-ne compte que trois instructions (un `add_meta_box()`, un appel conditionnel à
-`gwseq_get_horse_offspring($post->ID)` — un `get_posts()` avec `meta_query` sur l'ensemble des
-fiches Cheval —, et un second `add_meta_box()` local/développement uniquement) mais PHP ne permet
-pas d'envelopper un simple appel de fonction nommée comme on enveloppe un callback de hook.
-L'itération 4 (0.39.0) réutilise donc un mécanisme NATIF de WordPress plutôt que d'en inventer un :
-`SAVEQUERIES`/`$wpdb->queries` (le même que Query Monitor), qui journalise chaque requête SQL
-réellement exécutée avec son texte et sa durée. Le profileur générique existant relève désormais,
-pour CHAQUE callback qu'il enveloppe déjà, le nombre de requêtes SQL exécutées pendant son appel et
-leur temps cumulé, avec un échantillon des plus lentes au-delà d'un seuil (1 seconde) — répond
-directement à la demande de mesurer les requêtes `WP_Query`/`get_posts`, le parcours de l'ensemble
-des chevaux, et toute opération exécutée plusieurs fois, sans trancher à l'avance laquelle des
-trois instructions est en cause. Mesure réelle obtenue sur Jamerose : 1 seule requête SQL, 35 144,1
-ms — la cause est une requête, pas une boucle.
+Une sélection (Lot 2B) devient partageable depuis le BO sur le même principe que le partage
+individuel d'un cheval (`Chevaux → Partager`) — en réutilisant, jamais en dupliquant, ses
+mécanismes déjà éprouvés.
 
-**Correctif appliqué en 0.40.0**, après analyse du code source réel de `WP_Meta_Query` (WordPress
-core, wp-includes/class-wp-meta-query.php) plutôt qu'une hypothèse : `gwseq_get_horse_offspring()`
-combinait, dans un seul `meta_query`, une relation OR entre deux groupes AND portant chacun sur DEUX
-clés meta différentes (`_gwseq_pere_mode`/`_gwseq_pere_id`, `_gwseq_mere_mode`/`_gwseq_mere_id`).
-`WP_Meta_Query::find_compatible_table_alias()` ne peut jamais fusionner deux clauses AND sur des
-clés différentes (seules deux clauses partageant la MÊME clé, ou reliées par OR avec un opérateur
-positif, peuvent partager une jointure) — cette forme de requête générait donc mécaniquement 4
-`INNER JOIN` sur `wp_postmeta`, indépendamment du nombre de chevaux : un problème de FORME de
-requête, jamais un index manquant (`post_id` est déjà indexé nativement dans tout WordPress
-standard). Corrigé en exécutant deux requêtes séparées et simples (une par rôle, 2 JOIN chacune,
-jamais combinées en un seul OR SQL à 4 JOIN), fusionnées et triées par titre en PHP, avec
-dédoublonnage défensif. Le contrat de sortie de `gwseq_get_horse_offspring()` (tableau de `WP_Post`
-trié par titre) et ses trois usages existants (nettoyage à la suppression définitive, détection de
-présence, rendu de la boîte Production) restent strictement inchangés — même règle métier
-(`mode = 'gws' ET id = cheval courant`, le filtre de mode restant indispensable pour éviter un faux
-positif sur un ancien identifiant conservé après un changement de mode). Aucun schéma SQL modifié,
-aucun index personnalisé ajouté, aucune donnée existante touchée.
+**WhatsApp/SMS/Copier** : `gwseq_build_selection_share_message()` (includes/cheval-selection.php)
+compose un message TEXTE BRUT entièrement déterministe — titre de la sélection s'il existe, sinon
+rien (jamais le libellé de repli "Sélection de chevaux" injecté dans le message), une phrase fixe,
+et le lien, toujours explicitement présent même si une preview Open Graph est disponible. Aucune
+composition interactive, aucune case à cocher identité/prix/vidéo : la page de sélection est le
+support prévu pour cette information, jamais le message qui y renvoie. Calculé une seule fois côté
+serveur (`gwseq_selection_admin_row()`) — contrairement à l'écran « Partager », aucun nouvel
+endpoint AJAX. `buildWhatsappUrl()`/`buildSmsUrl()` (assets/cheval-selection-admin.js) sont une
+copie verbatim des mêmes fonctions déjà validées de assets/cheval-share-admin.js. Trois nouveaux
+boutons dans la colonne Actions de chaque sélection (WhatsApp/SMS/Copier), aux côtés de
+"Supprimer" — la colonne "Lien" (URL + "Copier le lien", inchangée) reste distincte.
 
-Le diagnostic instrumenté (`includes/cheval-perf-diagnostic.php`) reste **activé** en
-local/développement le temps de la recette runtime qui doit confirmer, mesure à l'appui, que
-l'anomalie est bien résolue sur le site réel — il sera retiré une fois cette confirmation obtenue.
-Voir `tests/gws-equestrian-pedigree-logic-test.php` (produit retrouvé via chaque rôle, ordre final
-identique malgré la fusion de deux requêtes désormais séparées, absence de doublon même face à une
-donnée incohérente simulée) et le `CHANGELOG.md` de ce dossier (0.40.0, 0.39.0, 0.38.0, 0.37.0 et
-0.36.0) pour le détail complet.
+**Open Graph de `/selection/{token}/`** : `gwseq_selection_get_og_data()`/`gwseq_selection_
+get_og_image()` (includes/cheval-selection.php) + `gwseq_selection_render_og_meta()` (includes/
+cheval-selection-front.php). og:title = titre de la sélection, ou "Sélection de chevaux" sans titre
+(réutilise `gwseq_selection_display_title()`, jamais une seconde règle) ; description déterministe
+fixe, jamais générée à partir du contenu (contrairement à Cheval — aucune injection de contenu
+dérivé des chevaux dans les canaux de partage) ; image = photo principale du PREMIER cheval
+ACTUELLEMENT diffusable qui en a une, recalculée à chaque appel à partir des états de diffusion
+réels (un cheval repassé "En préparation" cesse de la fournir). Si aucun cheval diffusable n'a de
+photo, aucune balise `og:image` n'est émise : ce projet ne dispose d'aucun fallback visuel
+générique GWS/site pour les métadonnées sociales — aucun n'a été inventé pour l'occasion. Aucune
+balise Twitter/X dédiée, exactement comme le partage individuel Cheval (repli natif vers `og:`).
+`noindex`/nocache/inaccessibilité sans token restent strictement inchangés.
+
+Aucun CRM, destinataire, historique d'envoi, tracking commercial ou statut "envoyé" — le token
+n'est jamais régénéré par le partage, modifier une sélection ne change jamais son URL, aucun
+changement du modèle Cheval ni des règles de diffusion. Voir les fichiers de test de la Sélection
+(logic/admin/front/runtime) et le `CHANGELOG.md` de ce dossier (0.41.0) pour le détail complet.
 
 ## Mises en avant (Pop-in / Sticky bar) — retiré (0.21.0)
 

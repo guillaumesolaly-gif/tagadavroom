@@ -102,6 +102,28 @@
     });
   }
 
+  /**
+   * Lot 2C — copie VERBATIM de assets/cheval-share-admin.js (jamais une seconde logique
+   * divergente, §1 de la demande : "réutiliser autant que possible les adapters déjà développés").
+   * `api.whatsapp.com/send` plutôt que `wa.me` : correctif de recette déjà validé côté Cheval
+   * (comportement de transport du texte pré-rempli moins fiable sur appareil réel avec le lien
+   * court) — s'applique identiquement ici, même mécanisme de transport, aucune raison de diverger.
+   */
+  function buildWhatsappUrl(text) {
+    return 'https://api.whatsapp.com/send?text=' + encodeURIComponent(text);
+  }
+
+  /**
+   * Lot 2C — copie VERBATIM de assets/cheval-share-admin.js : `sms:` n'est pas un standard unique,
+   * iOS exige `sms:&body=...` quand Android/les autres attendent `sms:?body=...` (utiliser le
+   * mauvais séparateur ouvre l'application Messages SANS pré-remplir le texte, silencieusement).
+   */
+  function buildSmsUrl(text) {
+    var ua = (window.navigator && window.navigator.userAgent) || '';
+    var isIOS = /iPad|iPhone|iPod/.test(ua);
+    return 'sms:' + (isIOS ? '&' : '?') + 'body=' + encodeURIComponent(text);
+  }
+
   /* -------------------------------------------------------------------------------------------
    * Vue liste (§4 de l'ajustement de recette) : Titre (ouvre la modification) | Date | Chevaux
    * diffusables | Lien (copier) | Actions (Supprimer uniquement — plus de Révoquer/Régénérer).
@@ -145,7 +167,35 @@
     tr.appendChild(tdLien);
 
     var tdActions = document.createElement('td');
-    var deleteLink = el('a', 'button', t('delete', 'Supprimer'));
+    tdActions.className = 'gwseq-selections-actions';
+
+    // Lot 2C (§1/§5 de la demande) — WhatsApp/SMS/Copier, tous les trois sur le MÊME message
+    // déterministe déjà composé côté serveur (row.message, voir gwseq_selection_admin_row()) :
+    // aucune composition interactive, aucun aller-retour AJAX, contrairement à l'écran « Partager »
+    // (Cheval). Le lien lui-même reste par ailleurs visible/copiable séparément dans la colonne
+    // "Lien" ci-dessus (row.url) — ces trois actions-ci partagent le MESSAGE complet, jamais le
+    // lien seul.
+    var whatsappLink = el('a', 'button gwseq-selections-action gwseq-selections-action--whatsapp', t('whatsapp', 'WhatsApp'));
+    whatsappLink.href = buildWhatsappUrl(row.message);
+    whatsappLink.target = '_blank';
+    whatsappLink.rel = 'noopener noreferrer';
+    tdActions.appendChild(whatsappLink);
+
+    var smsLink = el('a', 'button gwseq-selections-action gwseq-selections-action--sms', t('sms', 'SMS'));
+    smsLink.href = buildSmsUrl(row.message);
+    tdActions.appendChild(smsLink);
+
+    var copyMessageButton = el('button', 'button gwseq-selections-action gwseq-selections-action--copy', t('copyMessage', 'Copier'));
+    copyMessageButton.type = 'button';
+    copyMessageButton.addEventListener('click', function () {
+      copyTextToClipboard(row.message).then(function () {
+        copyMessageButton.textContent = t('messageCopied', 'Message copié');
+        window.setTimeout(function () { copyMessageButton.textContent = t('copyMessage', 'Copier'); }, 3000);
+      });
+    });
+    tdActions.appendChild(copyMessageButton);
+
+    var deleteLink = el('a', 'button gwseq-selections-action gwseq-selections-action--delete', t('delete', 'Supprimer'));
     deleteLink.href = row.url_supprimer;
     deleteLink.addEventListener('click', function (event) {
       if (!window.confirm(t('confirmDelete', ''))) event.preventDefault();

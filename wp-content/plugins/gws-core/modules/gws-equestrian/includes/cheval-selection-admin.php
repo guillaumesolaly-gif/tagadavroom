@@ -24,9 +24,18 @@
  * jamais toucher au token (le lien déjà envoyé reste identique après une modification).
  *
  * PÉRIMÈTRE LOT 2B : création, modification (titre/liste/ordre), suppression, page destinataire
- * (rendu + route web, voir includes/cheval-selection-front.php). Toujours volontairement absent :
- * message de partage/Open Graph/WhatsApp-SMS-Copier/PDF/QR code/catalogue/mobile/refonte
- * graphique générale du BO.
+ * (rendu + route web, voir includes/cheval-selection-front.php).
+ *
+ * PÉRIMÈTRE LOT 2C : actions WhatsApp/SMS/Copier sur une sélection existante (§1 de la demande) —
+ * le message partagé (gwseq_build_selection_share_message(), includes/cheval-selection.php) est
+ * ENTIÈREMENT déterministe (titre éventuel + phrase fixe + lien), calculé une fois par
+ * gwseq_selection_admin_row() et transmis tel quel au JS : contrairement à l'écran « Partager »
+ * (Cheval), AUCUNE composition interactive côté client, AUCUN nouvel endpoint AJAX n'est
+ * nécessaire pour ce message. `buildWhatsappUrl()`/`buildSmsUrl()` (assets/cheval-selection-
+ * admin.js) sont une copie verbatim des mêmes fonctions déjà éprouvées de assets/cheval-share-
+ * admin.js — jamais une seconde logique divergente. Toujours volontairement absent : PDF/QR code/
+ * catalogue/mobile/refonte graphique générale du BO/CRM/destinataire/historique d'envoi/tracking
+ * commercial/statut "envoyé".
  */
 
 if (!defined('ABSPATH')) exit;
@@ -192,6 +201,11 @@ function gwseq_selection_admin_row($selection_id) {
     'url' => gwseq_selection_url($selection_id),
     'url_modifier' => gwseq_selection_edit_url($selection_id),
     'url_supprimer' => gwseq_selection_action_url('supprimer', $selection_id),
+    // Lot 2C — message ENTIÈREMENT déterministe (titre éventuel + phrase fixe + lien) : calculé
+    // une seule fois ici, jamais recomposé côté client, jamais besoin d'un aller-retour AJAX pour
+    // WhatsApp/SMS/Copier (à la différence du partage individuel Cheval, dont le message dépend
+    // d'une composition interactive côté BO).
+    'message' => gwseq_build_selection_share_message($selection_id),
   );
 }
 
@@ -481,6 +495,13 @@ function gwseq_enqueue_selection_admin_assets($hook) {
       'copied' => __('Lien copié', 'gws-core'),
       'delete' => __('Supprimer', 'gws-core'),
       'confirmDelete' => __('Supprimer cette sélection ? Le lien déjà envoyé ne fonctionnera plus.', 'gws-core'),
+      // Lot 2C — distincts de copyLink/copied ci-dessus (qui copient le lien SEUL, colonne "Lien") :
+      // ces actions WhatsApp/SMS/Copier partagent le MESSAGE composé (titre éventuel + phrase fixe
+      // + lien), exactement comme les trois mêmes actions de l'écran « Partager » (Cheval).
+      'whatsapp' => __('WhatsApp', 'gws-core'),
+      'sms' => __('SMS', 'gws-core'),
+      'copyMessage' => __('Copier', 'gws-core'),
+      'messageCopied' => __('Message copié', 'gws-core'),
     ),
   ));
 }

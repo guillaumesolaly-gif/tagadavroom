@@ -148,6 +148,12 @@ function metadata_exists($type, $post_id, $key) {
 }
 $GLOBALS['__gwseq_test_attachment_urls'] = array();
 function wp_get_attachment_image_url($id, $size = 'thumbnail') { return $GLOBALS['__gwseq_test_attachment_urls'][$id][$size] ?? false; }
+// Lot 2C — pour gwseq_selection_get_og_image() (includes/cheval-selection.php), qui a besoin des
+// dimensions (comme gwseq_render_horse_og_meta(), includes/cheval-share.php, jamais une seconde
+// forme d'accès aux médias) : renvoie [url, largeur, hauteur] pour 'medium_large' uniquement,
+// indexé par ID D'ATTACHEMENT — même convention que wp_get_attachment_image_url() ci-dessus.
+$GLOBALS['__gwseq_test_attachment_src'] = array();
+function wp_get_attachment_image_src($id, $size = 'thumbnail') { return $GLOBALS['__gwseq_test_attachment_src'][$id][$size] ?? false; }
 $GLOBALS['__gwseq_test_thumbnails'] = array();
 function get_post_thumbnail_id($post_id) { return $GLOBALS['__gwseq_test_thumbnails'][$post_id] ?? 0; }
 function get_terms($args = array()) { return array(); }
@@ -200,6 +206,9 @@ function gws_test_set_horse_public_details($id, $overrides = array()) {
     $attachment_id = $id + 100000;
     $GLOBALS['__gwseq_test_thumbnails'][$id] = $attachment_id;
     $GLOBALS['__gwseq_test_attachment_urls'][$attachment_id]['medium'] = $overrides['photo_url'];
+    // Lot 2C — dimensions 'medium_large' pour gwseq_selection_get_og_image() (même attachement,
+    // même URL par simplicité de test ; seules les dimensions sont propres à cette taille).
+    $GLOBALS['__gwseq_test_attachment_src'][$attachment_id]['medium_large'] = array($overrides['photo_url'], 768, 512);
   }
 }
 
@@ -501,6 +510,90 @@ gws_test_assert($vue_vide['titre'] === 'Vue destinataire', 'Vue destinataire : l
 $selection_sans_titre = gwseq_selection_create(array('cheval_ids' => array(301)));
 $vue_sans_titre = gwseq_selection_get_public_view($selection_sans_titre);
 gws_test_assert($vue_sans_titre['titre'] === 'Sélection de chevaux', 'Vue destinataire : libellé neutre de repli si aucun titre saisi');
+
+// =====================================================================================
+// Lot 2C — Message de partage WhatsApp/SMS/Copier (§2 de la demande) : TEXTE BRUT déterministe,
+// jamais de composition/injection de contenu (identité/prix/description/vidéo) — la page de
+// sélection elle-même est le support prévu pour cela.
+// =====================================================================================
+
+gws_test_make_horse(400, 'Cheval Message', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+$selection_avec_titre = gwseq_selection_create(array('title' => 'Chevaux pour Juliette', 'cheval_ids' => array(400)));
+$url_avec_titre = gwseq_selection_url($selection_avec_titre);
+
+$message_avec_titre = gwseq_build_selection_share_message($selection_avec_titre);
+gws_test_assert(
+  $message_avec_titre === "Chevaux pour Juliette\nVoici une sélection de chevaux :\n" . $url_avec_titre,
+  'Message avec titre : exactement "{titre}\\nVoici une sélection de chevaux :\\n{url}", conforme à l’exemple de la demande'
+);
+
+$selection_sans_titre_msg = gwseq_selection_create(array('cheval_ids' => array(400)));
+$url_sans_titre = gwseq_selection_url($selection_sans_titre_msg);
+$message_sans_titre = gwseq_build_selection_share_message($selection_sans_titre_msg);
+gws_test_assert(
+  $message_sans_titre === "Voici une sélection de chevaux :\n" . $url_sans_titre,
+  'Message sans titre : AUCUNE ligne de titre générique inventée (jamais "Sélection de chevaux" injecté dans le message, contrairement à l’affichage) — seulement la phrase fixe puis le lien'
+);
+gws_test_assert(strpos($message_sans_titre, 'Sélection de chevaux') === false, 'Message sans titre : le libellé de repli d’AFFICHAGE (gwseq_selection_display_title()) ne fuite jamais dans le message de partage');
+
+gws_test_assert(strpos($message_avec_titre, $url_avec_titre) !== false, 'Message : le lien de la sélection est TOUJOURS présent explicitement dans le corps du message (§2 : même si une preview Open Graph est disponible)');
+gws_test_assert(strpos($message_avec_titre, '<') === false && strpos($message_avec_titre, '>') === false, 'Message : texte brut, jamais de HTML');
+
+// Le token reste strictement identique après composition/partage (§6 : "le partage ne doit jamais
+// régénérer le token") — gwseq_build_selection_share_message() ne fait QUE lire, jamais écrire.
+$token_before_message = gwseq_selection_token($selection_avec_titre);
+gwseq_build_selection_share_message($selection_avec_titre);
+gwseq_build_selection_share_message($selection_avec_titre);
+gws_test_assert(gwseq_selection_token($selection_avec_titre) === $token_before_message, 'Message : composer le message plusieurs fois de suite ne touche jamais au token (fonction de LECTURE pure)');
+
+// Et une MODIFICATION ultérieure (titre/liste) ne change pas non plus le token, donc pas le lien
+// déjà présent dans un message déjà envoyé (§6 : "modifier une sélection ne change pas son URL").
+gwseq_selection_update($selection_avec_titre, array('title' => 'Nouveau titre pour Juliette'));
+gws_test_assert(gwseq_selection_token($selection_avec_titre) === $token_before_message, 'Message : une modification ultérieure du titre ne régénère jamais le token — l’URL déjà partagée reste valide');
+gws_test_assert(strpos(gwseq_build_selection_share_message($selection_avec_titre), $url_avec_titre) !== false, 'Message : le nouveau message recomposé après modification contient TOUJOURS la même URL (jamais régénérée)');
+
+// =====================================================================================
+// Lot 2C — Open Graph de la page destinataire (§3-4 de la demande) : titre/description
+// déterministes, image = photo du PREMIER cheval diffusable qui EN A UNE, jamais une image
+// fabriquée, recalculée à chaque appel à partir des états de diffusion ACTUELS.
+// =====================================================================================
+
+gws_test_make_horse(410, 'Cheval OG Sans Photo', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_make_horse(411, 'Cheval OG Avec Photo', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_set_horse_public_details(411, array('photo_url' => 'https://example.test/og-411.jpg'));
+
+$selection_og = gwseq_selection_create(array('title' => 'Sélection OG', 'cheval_ids' => array(410, 411)));
+
+$og_avec_titre = gwseq_selection_get_og_data($selection_og);
+gws_test_assert($og_avec_titre['title'] === 'Sélection OG', 'OG avec titre : og:title = titre de la sélection');
+gws_test_assert($og_avec_titre['description'] === 'Découvrez cette sélection de chevaux.', 'OG : description déterministe fixe, identique quel que soit le contenu de la sélection');
+
+$og_sans_titre = gwseq_selection_get_og_data($selection_sans_titre_msg);
+gws_test_assert($og_sans_titre['title'] === 'Sélection de chevaux', 'OG sans titre : titre générique cohérent (réutilise exactement gwseq_selection_display_title(), jamais une seconde règle de repli)');
+
+gws_test_assert(
+  $og_avec_titre['image']['url'] === 'https://example.test/og-411.jpg',
+  'OG image : le premier cheval diffusable SANS photo (410) est ignoré pour ce calcul, l’image provient du cheval diffusable SUIVANT qui en a une (411) — jamais retiré de l’affichage de la sélection elle-même pour autant'
+);
+gws_test_assert($og_avec_titre['image']['width'] === 768 && $og_avec_titre['image']['height'] === 512, 'OG image : dimensions transmises (comme le partage individuel Cheval), pour og:image:width/height');
+gws_test_assert(count(gwseq_selection_get_public_view($selection_og)['cartes']) === 2, 'OG image : le cheval 410 (sans photo) reste bien affiché normalement dans la sélection, seul le calcul OG l’ignore');
+
+// Aucune photo du tout parmi les chevaux diffusables -> aucune image (jamais fabriquée, §3).
+$selection_og_sans_photo = gwseq_selection_create(array('title' => 'Sans aucune photo', 'cheval_ids' => array(410)));
+$og_sans_photo = gwseq_selection_get_og_data($selection_og_sans_photo);
+gws_test_assert($og_sans_photo['image'] === null, 'OG image : aucune photo disponible parmi les chevaux diffusables -> aucune image renvoyée, jamais un visuel de remplacement inventé (§3 : "ne jamais générer artificiellement une image")');
+
+// Cohérence avec les états de diffusion (§4) : le cheval qui fournissait l’image passe "En
+// préparation" -> il ne doit plus jamais la fournir, recalculé à chaque appel, sans qu’aucune
+// donnée de la sélection n’ait besoin d’être mise à jour.
+gwseq_horse_diffusion_set_en_preparation(411);
+$og_apres_preparation = gwseq_selection_get_og_data($selection_og);
+gws_test_assert($og_apres_preparation['image'] === null, 'OG image : un cheval passé "En préparation" après avoir fourni l’image ne la fournit plus au prochain calcul (aucun autre cheval diffusable de cette sélection n’a de photo)');
+
+// Sélection dont tous les chevaux sont introuvables/en préparation -> og:title/description restent
+// valides (jamais une erreur), simplement aucune image.
+$og_vide = gwseq_selection_get_og_data($selection_now_empty);
+gws_test_assert($og_vide['title'] !== '' && $og_vide['image'] === null, 'OG : une sélection sans aucun cheval diffusable garde un titre/une description valides, sans image (état vide propre, comme le rendu de la page elle-même)');
 
 echo "\n";
 if ($failures > 0) {

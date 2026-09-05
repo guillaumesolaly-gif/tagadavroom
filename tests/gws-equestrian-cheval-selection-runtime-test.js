@@ -141,12 +141,14 @@ const EXISTING_ROW_A = {
   url: 'https://example.test/selection/aaaa/',
   url_modifier: 'https://example.test/wp-admin/edit.php?post_type=gwseq_cheval&page=gwseq-selections&vue=modifier&selection_id=500',
   url_supprimer: 'https://example.test/wp-admin/admin-post.php?action=gwseq_selection_supprimer&selection_id=500&_wpnonce=nonce',
+  message: 'Chevaux pour Guillaume\nVoici une sélection de chevaux :\nhttps://example.test/selection/aaaa/',
 };
 const EXISTING_ROW_B = {
   id: 501, titre: 'Sélection de chevaux', date: '2026-09-03', total_chevaux: 1, chevaux_diffusables: 1,
   url: 'https://example.test/selection/bbbb/',
   url_modifier: 'https://example.test/wp-admin/edit.php?post_type=gwseq_cheval&page=gwseq-selections&vue=modifier&selection_id=501',
   url_supprimer: 'https://example.test/wp-admin/admin-post.php?action=gwseq_selection_supprimer&selection_id=501&_wpnonce=nonce',
+  message: 'Voici une sélection de chevaux :\nhttps://example.test/selection/bbbb/',
 };
 
 // Chevaux déjà présents dans la sélection 500, tels que renvoyés par gwseq_ajax_selection_get() —
@@ -279,11 +281,43 @@ async function run() {
   ok('Liste : plus AUCUN lien "Régénérer"/"Révoquer" (ajustement de recette 2A -> 2B)', actionLinks.every((a) => a.textContent !== 'Régénérer' && a.textContent !== 'Révoquer'));
   ok('Liste : action "Supprimer" proposée pour chaque sélection', actionLinks.filter((a) => a.textContent === 'Supprimer').length === 2);
 
+  /* --- Lot 2C (§1/§5) : WhatsApp/SMS/Copier sur le MESSAGE déjà composé côté serveur (row.message),
+     jamais sur le lien seul (déjà couvert séparément par "Copier le lien" ci-dessus, colonne Lien),
+     et jamais un aller-retour AJAX supplémentaire (contrairement au partage individuel Cheval). --- */
+  const whatsappLinks = listParts.root.querySelectorAll('.gwseq-selections-action--whatsapp');
+  ok('Liste : un lien WhatsApp par sélection', whatsappLinks.length === 2);
+  ok(
+    'Liste : le lien WhatsApp encode le MESSAGE complet (titre + phrase + lien), via api.whatsapp.com/send (jamais wa.me, même correctif de recette déjà validé côté Cheval)',
+    whatsappLinks[0].href === 'https://api.whatsapp.com/send?text=' + encodeURIComponent(EXISTING_ROW_A.message)
+  );
+  ok('Liste : le lien WhatsApp s’ouvre dans un nouvel onglet (target="_blank"), jamais en quittant le BO', whatsappLinks[0].target === '_blank');
+
+  const smsLinks = listParts.root.querySelectorAll('.gwseq-selections-action--sms');
+  ok('Liste : un lien SMS par sélection', smsLinks.length === 2);
+  ok(
+    'Liste : le lien SMS encode le MESSAGE complet, avec le séparateur "?" (environnement de test non-iOS)',
+    smsLinks[0].href === 'sms:?body=' + encodeURIComponent(EXISTING_ROW_A.message)
+  );
+
+  const copyMessageButtons = listParts.root.querySelectorAll('.gwseq-selections-action--copy');
+  ok('Liste : un bouton "Copier" (message) par sélection, DISTINCT du bouton "Copier le lien" de la colonne Lien', copyMessageButtons.length === 2);
+  copyMessageButtons[0].click();
+  await wait(10);
+  ok('Liste : cliquer sur "Copier" copie le MESSAGE complet (titre + phrase + lien), jamais seulement l’URL', listParts.state.lastCopied === EXISTING_ROW_A.message);
+  ok('Liste : le libellé du bouton passe à "Message copié" après la copie', copyMessageButtons[0].textContent === 'Message copié');
+
+  ok(
+    'Liste : WhatsApp/SMS/Copier ne déclenchent AUCUN appel AJAX (le message est déjà entièrement composé côté serveur, contrairement au partage individuel Cheval)',
+    listParts.state.searchCalls.length === 0 && listParts.state.createCalls.length === 0 && listParts.state.getCalls.length === 0 && listParts.state.updateCalls.length === 0
+  );
+
   // Confirmation AVANT suppression (§1 de l'ajustement de recette) — un clic annulé par
-  // l'utilisateur ne doit jamais déclencher la navigation vers admin-post.php.
+  // l'utilisateur ne doit jamais déclencher la navigation vers admin-post.php. Ciblé par sa classe
+  // dédiée (jamais par position dans le DOM, désormais partagé avec les nouveaux liens WhatsApp/SMS
+  // — Lot 2C, §1) : un ajout ultérieur de bouton ne doit jamais faire dérailler ce test.
   const cancelledParts = buildSandbox({ existantes: [EXISTING_ROW_A], confirmReturns: false });
   runScript(cancelledParts);
-  const deleteLinkCancel = cancelledParts.root.querySelectorAll('a.button')[0];
+  const deleteLinkCancel = cancelledParts.root.querySelector('.gwseq-selections-action--delete');
   const evt = deleteLinkCancel.dispatchEvent({ type: 'click' });
   ok('Liste : supprimer demande confirmation, un refus empêche la navigation (preventDefault appelé)', evt.defaultPrevented === true);
   ok('Liste : la confirmation a bien été sollicitée avant toute suppression', cancelledParts.confirmCalls.length === 1);

@@ -1633,3 +1633,54 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   exactement l'assertion de non-régression déjà existante dédiée à ce scénario, aucune autre.
   Intégralité de la suite (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après chaque
   restauration : aucune régression.
+- **Nettoyage du diagnostic de performance, correctif validé en recette réelle (0.41.0)** : le
+  correctif de `gwseq_get_horse_offspring()` (0.40.0, ci-dessus) est confirmé sur le site réel
+  (35,7 s → 589,3 ms sur Jamerose, Production de Faline vérifiée intacte) — l'instrumentation
+  temporaire de diagnostic est retirée, sa mission terminée. `gws-equestrian-cheval-perf-
+  diagnostic-test.php`, qui la couvrait, est supprimé avec le code correspondant (même convention
+  que le retrait du module Mises en avant, 0.20.0 → 0.21.0 : voir plus haut dans ce fichier).
+  Suite passée à **24 fichiers PHP + 4 suites JS runtime** à partir de cette version.
+- **Lot 2C — Partager une sélection (0.41.0)** : quatre fichiers de test EXISTANTS étendus (pas de
+  nouveau fichier) — `gws-equestrian-cheval-selection-logic-test.php`,
+  `-selection-admin-test.php`, `-selection-front-test.php`, `-selection-runtime-test.js`.
+
+  `-logic-test.php` : `gwseq_build_selection_share_message()` — message avec titre exactement
+  conforme à l'exemple de la demande (`"{titre}\nVoici une sélection de chevaux :\n{url}"`), sans
+  titre (aucune ligne de titre générique inventée — le libellé de repli d'AFFICHAGE
+  `gwseq_selection_display_title()` ne fuite jamais dans le message de partage), lien toujours
+  présent explicitement, token strictement inchangé après composition répétée ET après une
+  modification ultérieure du titre. `gwseq_selection_get_og_data()`/`get_og_image()` : titre
+  avec/sans titre (réutilise exactement la même règle de repli que l'affichage), description
+  déterministe fixe, image du premier cheval diffusable qui EN A UNE (un cheval diffusable sans
+  photo est ignoré pour ce seul calcul, jamais retiré de l'affichage de la sélection), dimensions
+  transmises, aucune image si aucune photo disponible (jamais un fallback fabriqué — vérifié
+  qu'aucun fallback visuel générique n'existe dans gws-core ni gws-starter), recalcul correct
+  quand le cheval qui fournissait l'image passe "En préparation".
+
+  `-front-test.php` : rendu réel des balises `<meta>` dans le document produit —
+  og:type/og:title/og:description/og:url/og:image(+dimensions), absence de og:image sans photo
+  disponible, disparition de og:image quand le cheval concerné passe "En préparation", absence de
+  toute balise `twitter:` (même architecture que le partage individuel Cheval), `noindex` et
+  absence d'identifiant WordPress exposé (`selection_id`) toujours vérifiés sur la même page
+  enrichie d'Open Graph. `-admin-test.php` : le nouveau champ `message` de
+  `gwseq_selection_admin_row()` correspond exactement à `gwseq_build_selection_share_message()` ;
+  nouveaux libellés i18n (whatsapp/sms/copyMessage/messageCopied) transmis au script, distincts de
+  copyLink/copied (qui copient le LIEN seul, colonne "Lien" inchangée). `-runtime-test.js` :
+  exécution RÉELLE des nouveaux boutons — lien WhatsApp construit via `api.whatsapp.com/send`
+  (jamais `wa.me`) encodant le MESSAGE complet, lien SMS avec le bon séparateur, clic sur "Copier"
+  copiant le message complet dans le presse-papier (jamais seulement l'URL), aucun appel AJAX
+  déclenché par ces trois actions (le message est déjà entièrement composé côté serveur). Le
+  sélecteur fragile par position (`querySelectorAll('a.button')[0]`) utilisé par un test
+  préexistant pour cibler le lien de suppression a été remplacé par sa classe dédiée
+  (`.gwseq-selections-action--delete`), puisque les nouveaux liens WhatsApp/SMS partagent
+  désormais la même classe générique `a.button` et auraient sinon décalé cet index.
+
+  Non-régression explicitement vérifiée : l'intégralité de la suite « Partager un cheval »
+  (logic/admin/runtime) repassée sans aucune modification ni régression — les adapters
+  `buildWhatsappUrl()`/`buildSmsUrl()` sont une copie verbatim, jamais une seconde implémentation
+  qui aurait pu diverger. Correctifs vérifiés par retrait/restauration sur deux bugs délibérément
+  introduits : (1) utiliser le libellé de repli d'affichage à la place du titre brut dans le
+  message fait échouer exactement les deux assertions dédiées à l'absence de fuite, aucune autre ;
+  (2) casser le séparateur SMS fait échouer exactement l'assertion dédiée, aucune autre.
+  Intégralité de la suite (24 fichiers PHP + 4 suites JS runtime) ré-exécutée après chaque
+  restauration : aucune régression.

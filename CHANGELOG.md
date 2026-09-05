@@ -1,5 +1,20 @@
 # Changelog — GWS Starter
 
+## 1.44.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Nettoyage du diagnostic de performance + Lot 2C, partage d'une Sélection (GWS Equestrian
+  0.41.0).** Le correctif performance (1.43.0) est validé en recette réelle (35,7 s → 589,3 ms sur
+  Jamerose) : l'instrumentation temporaire de diagnostic est intégralement retirée (fichier,
+  chargement, `SAVEQUERIES`, test dédié). Une sélection de plusieurs chevaux (Lot 2B) devient
+  partageable depuis le BO comme un cheval individuel : boutons WhatsApp/SMS/Copier envoyant un
+  message déterministe (titre éventuel + phrase fixe + lien, réutilisant les mêmes adapters
+  déjà validés côté Cheval, jamais une logique divergente), et Open Graph sur
+  `/selection/{token}/` (titre/description déterministes, image du premier cheval diffusable ayant
+  une photo, jamais une image fabriquée, recalculée selon les états de diffusion actuels). Aucun
+  changement du modèle Cheval, des règles de diffusion, ni du schéma SQL ; token jamais régénéré
+  par le partage. Voir `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.41.0)
+  pour le détail complet.
+
 ## 1.43.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Correctif performance : requête Production résolue — anomalie ~35 s (GWS Equestrian 0.40.0).**

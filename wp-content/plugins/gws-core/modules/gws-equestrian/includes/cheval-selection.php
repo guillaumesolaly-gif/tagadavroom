@@ -75,8 +75,13 @@
  * existante (ajout/retrait/réordonnancement/titre, jamais de régénération de token) + composition
  * des données de la page destinataire (gwseq_selection_get_public_view() plus bas — le RENDU HTML
  * lui-même et sa route web vivent dans includes/cheval-selection-front.php, jamais mêlés à cette
- * couche métier pure). Toujours volontairement absent : message de partage/Open Graph/WhatsApp-
- * SMS-Copier/PDF/catalogue/mobile.
+ * couche métier pure).
+ *
+ * LOT 2C — PÉRIMÈTRE : message de partage WhatsApp/SMS/Copier (gwseq_build_selection_share_
+ * message() plus bas) + données Open Graph de la page destinataire (gwseq_selection_get_og_data()
+ * plus bas — l'émission des balises `<meta>` elles-mêmes vit dans includes/cheval-selection-
+ * front.php, même séparation que le Lot 2B). Toujours volontairement absent : PDF/QR code/
+ * catalogue/mobile/refonte graphique générale du BO.
  *
  * PRÉPARATION MOBILE (§16) : toutes les fonctions ci-dessous sont volontairement INDÉPENDANTES de
  * wp-admin (aucun `current_user_can()`, aucun nonce ici) — un futur écran mobile pourra les
@@ -448,5 +453,95 @@ function gwseq_selection_get_public_view($selection_id) {
   return array(
     'titre' => gwseq_selection_display_title($selection_id),
     'cartes' => $cards,
+  );
+}
+
+/* -------------------------------------------------------------------------------------------
+ * Partage (Lot 2C) — WhatsApp/SMS/Copier depuis le BO, Open Graph de la page destinataire.
+ * Réutilise EXACTEMENT le principe déjà validé pour le partage individuel Cheval (includes/
+ * cheval-share.php : gwseq_build_horse_share_message()/gwseq_render_horse_og_meta()) — jamais une
+ * seconde logique divergente. Volontairement plus simple que pour Cheval : le message d'une
+ * sélection est ENTIÈREMENT déterministe (titre éventuel + phrase fixe + lien), sans composition
+ * interactive (pas de cases à cocher identité/origines/prix/vidéos — la page de sélection elle-même
+ * est le support destiné à cette information, jamais le message qui y renvoie).
+ * ----------------------------------------------------------------------------------------- */
+
+/**
+ * Message de partage WhatsApp/SMS/Copier (§2 du Lot 2C) — TEXTE BRUT uniquement, jamais de HTML,
+ * jamais de contenu généré (aucune IA, aucun texte commercial inventé, aucune liste de chevaux/prix/
+ * description/vidéo injectée : la page de sélection est précisément le support prévu pour cela).
+ * Le TITRE BRUT de la sélection (jamais le libellé de repli "Sélection de chevaux" de
+ * gwseq_selection_display_title() — un message SANS titre omet purement et simplement cette ligne,
+ * il n'affiche jamais un titre générique inventé) figure sur sa propre ligne quand il existe :
+ *   Avec titre :         Sans titre :
+ *     {titre}               Voici une sélection de chevaux :
+ *     Voici une sélection      {url}
+ *     de chevaux :
+ *     {url}
+ * Le lien figure TOUJOURS explicitement dans le corps du message (§2 : "même si une preview Open
+ * Graph est disponible" — WhatsApp/SMS/iMessage ne garantissent jamais l'affichage d'une preview).
+ */
+function gwseq_build_selection_share_message($selection_id) {
+  $title = trim((string) get_the_title($selection_id));
+  $url = gwseq_selection_url($selection_id);
+
+  $lines = array();
+  if ($title !== '') $lines[] = $title;
+  $lines[] = __('Voici une sélection de chevaux :', 'gws-core');
+  $lines[] = $url;
+
+  return implode("\n", $lines);
+}
+
+/**
+ * Description Open Graph — TOUJOURS la même phrase déterministe (§3 du Lot 2C : "description
+ * courte et déterministe"), jamais générée à partir du contenu de la sélection (contrairement à
+ * Cheval, dont la description agrège identité/origines/accroche : une sélection n'a pas d'identité
+ * unique à résumer ainsi, et §2 interdit explicitement toute injection de contenu inventé ou
+ * dérivé des chevaux dans les canaux de partage).
+ */
+function gwseq_selection_og_description() {
+  return __('Découvrez cette sélection de chevaux.', 'gws-core');
+}
+
+/**
+ * Image Open Graph (§3-4 du Lot 2C) — RÈGLE DÉTERMINISTE, calculée à partir des SEULS chevaux
+ * ACTUELLEMENT diffusables (gwseq_selection_get_public_view(), jamais un second calcul
+ * d'éligibilité) : la photo principale du PREMIER cheval diffusable qui EN A UNE. Un cheval
+ * diffusable sans photo est silencieusement ignoré pour CE calcul uniquement (jamais retiré de la
+ * liste ni de l'affichage de la sélection elle-même) — on continue vers le cheval diffusable
+ * suivant. Si AUCUN cheval diffusable n'a de photo, AUCUNE image n'est renvoyée : il n'existe
+ * aujourd'hui aucun fallback visuel générique GWS/site pour les métadonnées sociales dans ce projet
+ * (vérifié : ni le thème gws-starter ni gws-core n'en définissent un) — §3 est explicite
+ * ("ne jamais générer artificiellement une image") : ne PAS en inventer un pour l'occasion. Se
+ * recalcule à chaque appel : si le cheval qui fournissait l'image passe ensuite "En préparation",
+ * l'appel suivant l'ignore et cherche le cheval diffusable suivant, exactement comme pour le reste
+ * du rendu de la sélection — jamais une donnée copiée/mise en cache ici.
+ */
+function gwseq_selection_get_og_image($selection_id) {
+  foreach (gwseq_selection_get_public_view($selection_id)['cartes'] as $carte) {
+    $thumbnail_id = gwseq_get_cheval_photo_principale_id($carte['id']);
+    if (!$thumbnail_id) continue; // ce cheval diffusable n'a pas de photo -> le suivant
+    $image = wp_get_attachment_image_src($thumbnail_id, 'medium_large');
+    if (is_array($image)) {
+      return array('url' => $image[0], 'width' => $image[1] ?? 0, 'height' => $image[2] ?? 0);
+    }
+  }
+  return null;
+}
+
+/**
+ * Données Open Graph complètes de la page destinataire (§3 du Lot 2C) — composition PURE,
+ * consommée par includes/cheval-selection-front.php pour l'émission des balises `<meta>`
+ * elles-mêmes (jamais mêlée à cette couche métier, même séparation que gwseq_selection_get_public_
+ * view()/le rendu HTML des cartes). og:title réutilise EXACTEMENT gwseq_selection_display_title()
+ * (§3 : "sans titre : titre générique cohérent" — c'est très exactement déjà le rôle de cette
+ * fonction, jamais une seconde règle de repli dupliquée ici).
+ */
+function gwseq_selection_get_og_data($selection_id) {
+  return array(
+    'title' => gwseq_selection_display_title($selection_id),
+    'description' => gwseq_selection_og_description(),
+    'image' => gwseq_selection_get_og_image($selection_id),
   );
 }

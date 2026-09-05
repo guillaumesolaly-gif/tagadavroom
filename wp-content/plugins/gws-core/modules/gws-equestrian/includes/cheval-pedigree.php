@@ -564,7 +564,8 @@ function gwseq_get_horse_parent($cheval_id, $role) {
  * jamais stockée. Seules les relations entre deux vraies fiches `gwseq_cheval` comptent.
  *
  * CORRECTIF PERFORMANCE (post-diagnostic runtime, anomalie ~35-38 s à l'ouverture d'une fiche
- * Cheval — voir includes/cheval-perf-diagnostic.php et son CHANGELOG, itérations 1 à 4) : la
+ * Cheval — voir CHANGELOG.md de ce dossier, 0.36.0 à 0.40.0 ; l'outil d'instrumentation temporaire
+ * qui a permis ce diagnostic a été retiré en 0.41.0, sa mission terminée) : la
  * requête UNIQUE précédente combinait, dans un seul `meta_query`, une relation OR entre deux
  * groupes AND portant chacun sur DEUX clés meta différentes (`_gwseq_pere_mode`/`_gwseq_pere_id`,
  * `_gwseq_mere_mode`/`_gwseq_mere_id`). `WP_Meta_Query::find_compatible_table_alias()` (WordPress

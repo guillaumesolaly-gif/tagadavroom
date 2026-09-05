@@ -22,6 +22,19 @@
   font-size: 13px;
 }
 
+/* Lot 2C — WhatsApp/SMS/Copier/Supprimer : simples boutons alignés dans la cellule Actions,
+   jamais l'agencement "hero" pleine largeur de l'écran « Partager » (Cheval, une ligne de tableau
+   reste compacte, contrairement à un écran de composition dédié). */
+.gwseq-selections-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gwseq-selections-action {
+  white-space: nowrap;
+}
+
 /* Le titre ouvre la sélection pour modification (§2 de l'ajustement de recette) — rendu comme un
    lien classique, jamais un simple texte, pour signaler clairement que c'est actionnable. */
 .gwseq-selections-title-link {

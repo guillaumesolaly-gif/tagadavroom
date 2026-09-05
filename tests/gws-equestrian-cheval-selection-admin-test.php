@@ -524,6 +524,10 @@ gws_test_assert(strpos($row['url_modifier'], 'vue=modifier') !== false && strpos
 gws_test_assert(strpos($row['url_supprimer'], 'gwseq_selection_supprimer') !== false, 'Ligne d’administration : URL de suppression fournie (remplace "Révoquer"/"Régénérer")');
 gws_test_assert(!array_key_exists('token_actif', $row) && !array_key_exists('url_regenerer', $row) && !array_key_exists('url_revoquer', $row), 'Ligne d’administration : plus aucune trace de "Révoquer"/"Régénérer"/"token actif" (le token est un mécanisme technique interne, jamais exposé, §4 de l’ajustement de recette)');
 
+// Lot 2C (§1/§5) — message de partage déjà composé, prêt pour WhatsApp/SMS/Copier côté client,
+// sans aucun aller-retour AJAX supplémentaire.
+gws_test_assert($row['message'] === "À moi\nVoici une sélection de chevaux :\n" . $row['url'], 'Ligne d’administration : message de partage déterministe déjà composé (titre + phrase fixe + lien), identique à gwseq_build_selection_share_message()');
+
 // Un cheval de la sélection repasse "En préparation" après coup (§6/§19) — la ligne reflète bien
 // 0 diffusable sur 1 total, jamais une erreur, jamais la sélection retirée de la liste.
 gwseq_horse_diffusion_set_en_preparation(200);
@@ -547,6 +551,7 @@ $localized = $GLOBALS['__gwseq_test_localized']['gwseq-cheval-selection-admin'][
 gws_test_assert(is_array($localized['existantes']) && count($localized['existantes']) >= 1, 'Assets : la liste des sélections existantes est bien transmise au script');
 gws_test_assert(array_key_exists('diffusion', $localized['filters']) && count($localized['filters']['diffusion']) === 2, 'Assets : le filtre diffusion transmis exclut bien "En préparation"');
 gws_test_assert($localized['i18n']['allDiffusion'] === 'Tous les états de diffusion', 'Assets : vocabulaire identique à l’écran « Partager », jamais un second référentiel de libellés');
+gws_test_assert($localized['i18n']['whatsapp'] === 'WhatsApp' && $localized['i18n']['sms'] === 'SMS' && $localized['i18n']['copyMessage'] === 'Copier' && $localized['i18n']['messageCopied'] === 'Message copié', 'Assets Lot 2C : libellés WhatsApp/SMS/Copier transmis au script, distincts de copyLink/copied (qui copient le lien seul)');
 
 echo "\n";
 if ($failures > 0) {

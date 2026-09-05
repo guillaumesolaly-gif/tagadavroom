@@ -113,6 +113,9 @@ $GLOBALS['__gwseq_test_attachment_urls'] = array();
 function wp_get_attachment_image_url($id, $size = 'thumbnail') { return $GLOBALS['__gwseq_test_attachment_urls'][$id][$size] ?? false; }
 $GLOBALS['__gwseq_test_thumbnails'] = array();
 function get_post_thumbnail_id($post_id) { return $GLOBALS['__gwseq_test_thumbnails'][$post_id] ?? 0; }
+// Lot 2C — pour gwseq_selection_get_og_image() (includes/cheval-selection.php).
+$GLOBALS['__gwseq_test_attachment_src'] = array();
+function wp_get_attachment_image_src($id, $size = 'thumbnail') { return $GLOBALS['__gwseq_test_attachment_src'][$id][$size] ?? false; }
 
 // --- WP_Query minimal, suffisant pour gwseq_selection_find_by_token() (non appelé directement
 // ici mais chargé transitivement) ---
@@ -292,6 +295,66 @@ ob_start();
 gwseq_selection_render_public_html($selection_sans_titre);
 $html_sans_titre = ob_get_clean();
 gws_test_assert(strpos($html_sans_titre, 'Sélection de chevaux') !== false, 'Rendu : libellé neutre de repli si aucun titre n’a été saisi');
+
+// =====================================================================================
+// Lot 2C — Open Graph (§3-4 de la demande) : gwseq_selection_render_og_meta() n'échoue QUE les
+// balises, les DONNÉES viennent exclusivement de gwseq_selection_get_og_data() (includes/cheval-
+// selection.php, déjà couvert par gws-equestrian-cheval-selection-logic-test.php) — ce fichier
+// vérifie ici uniquement le RENDU des balises `<meta>` elles-mêmes dans le document réellement
+// produit, jamais un second calcul de règle.
+// =====================================================================================
+
+function gws_test_set_horse_photo($id, $url) {
+  $attachment_id = $id + 100000;
+  $GLOBALS['__gwseq_test_thumbnails'][$id] = $attachment_id;
+  $GLOBALS['__gwseq_test_attachment_src'][$attachment_id]['medium_large'] = array($url, 640, 480);
+}
+
+gws_test_make_horse(20, 'Cheval OG Sans Photo', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_make_horse(21, 'Cheval OG Avec Photo', GWSEQ_HORSE_DIFFUSION_VISIBLE_SITE);
+gws_test_set_horse_photo(21, 'https://example.test/og-photo.jpg');
+
+$selection_og = gwseq_selection_create(array('title' => 'Sélection OG', 'cheval_ids' => array(20, 21)));
+ob_start();
+gwseq_selection_render_public_html($selection_og);
+$html_og = ob_get_clean();
+
+gws_test_assert(strpos($html_og, '<meta property="og:type" content="website">') !== false, 'OG : og:type émis');
+gws_test_assert(strpos($html_og, '<meta property="og:title" content="Sélection OG">') !== false, 'OG avec titre : og:title = titre de la sélection');
+gws_test_assert(strpos($html_og, '<meta property="og:description" content="Découvrez cette sélection de chevaux.">') !== false, 'OG : description déterministe présente');
+gws_test_assert(strpos($html_og, '<meta property="og:url" content="' . gwseq_selection_url($selection_og) . '">') !== false, 'OG : og:url reflète le lien RÉELLEMENT partagé (même URL que le message WhatsApp/SMS/Copier)');
+gws_test_assert(strpos($html_og, '<meta property="og:image" content="https://example.test/og-photo.jpg">') !== false, 'OG image : photo du premier cheval diffusable qui en a une (20 n’en a pas, 21 fournit l’image)');
+gws_test_assert(strpos($html_og, '<meta property="og:image:width" content="640">') !== false && strpos($html_og, '<meta property="og:image:height" content="480">') !== false, 'OG image : dimensions émises');
+gws_test_assert(strpos($html_og, 'twitter:') === false, 'OG : aucune balise Twitter/X dédiée (même architecture que le partage individuel Cheval, qui n’en émet pas non plus — un seul système OG, jamais parallèle)');
+
+// Sans titre : titre générique cohérent, jamais un titre inventé au hasard.
+$selection_og_sans_titre = gwseq_selection_create(array('cheval_ids' => array(20)));
+ob_start();
+gwseq_selection_render_public_html($selection_og_sans_titre);
+$html_og_sans_titre = ob_get_clean();
+gws_test_assert(strpos($html_og_sans_titre, '<meta property="og:title" content="Sélection de chevaux">') !== false, 'OG sans titre : titre générique cohérent ("Sélection de chevaux")');
+
+// Aucune photo parmi les chevaux diffusables -> aucune balise og:image (jamais une image fabriquée).
+$selection_og_sans_photo = gwseq_selection_create(array('title' => 'Sans photo', 'cheval_ids' => array(20)));
+ob_start();
+gwseq_selection_render_public_html($selection_og_sans_photo);
+$html_og_sans_photo = ob_get_clean();
+gws_test_assert(strpos($html_og_sans_photo, 'og:image') === false, 'OG image : aucune balise og:image émise quand aucun cheval diffusable n’a de photo (§3 : "ne jamais générer artificiellement une image")');
+
+// Cohérence avec les états de diffusion (§4) : le cheval qui fournissait l'image passe "En
+// préparation" -> il ne doit plus fournir l'image OG de la sélection, sans erreur.
+gwseq_horse_diffusion_set_en_preparation(21);
+ob_start();
+gwseq_selection_render_public_html($selection_og);
+$html_og_apres_preparation = ob_get_clean();
+gws_test_assert(strpos($html_og_apres_preparation, 'og:image') === false, 'OG image : le cheval passé "En préparation" ne fournit plus l’image OG de la sélection (aucun autre cheval diffusable n’a de photo ici)');
+gwseq_horse_diffusion_set_visible_site(21);
+
+// Confidentialité/sécurité inchangées : Open Graph n'est qu'un enrichissement, jamais un
+// relâchement des protections déjà en place.
+gws_test_assert(strpos($html_og, '<meta name="robots" content="noindex, nofollow">') !== false, 'OG : noindex toujours présent sur la même page enrichie d’Open Graph');
+gws_test_assert(strpos($html_og, 'og:url" content="' . home_url('/selection/')) !== false, 'OG : og:url pointe vers la route tokenisée /selection/{token}/, jamais un paramètre d’identifiant WordPress (?selection_id=...)');
+gws_test_assert(strpos($html_og, 'selection_id') === false, 'OG : aucun identifiant WordPress de la sélection exposé dans le HTML (seul le token figure dans og:url)');
 
 echo "\n";
 if ($failures > 0) {
