@@ -1216,6 +1216,47 @@ gwseq_set_horse_parent(630, 'father', array('mode' => 'external', 'external' => 
 gws_test_assert(!in_array(630, array_map(function ($p) { return $p->ID; }, gwseq_get_horse_offspring(600)), true), 'Après changement de mode vers externe : plus jamais listé comme produit de 600 (aucun faux positif, malgré l’ID GWS resté stocké inactif)');
 
 // =====================================================================================
+// CORRECTIF PERFORMANCE (post-diagnostic runtime, ~35 s attribués à la requête à 4 JOIN de
+// gwseq_get_horse_offspring()) : deux requêtes séparées (une par rôle) remplacent désormais la
+// requête unique OR-de-AND — cette section vérifie précisément ce que ce correctif change
+// potentiellement de comportement observable (l'ORDRE final et l'absence de doublon), les autres
+// scénarios (père seul, mère seule, faux positif de mode, tableau vide, nettoyage, rendu) restant
+// couverts par les tests déjà existants ci-dessus/ci-dessous, désormais exécutés contre la NOUVELLE
+// implémentation.
+// =====================================================================================
+
+// --- Ordre final identique alors que les deux résultats proviennent maintenant de DEUX requêtes
+// séparées fusionnées en PHP : le produit trouvé via la MÈRE doit apparaître AVANT celui trouvé via
+// le PÈRE dans le résultat final dès lors que son titre est alphabétiquement antérieur — un simple
+// array_merge($by_father, $by_mother) sans tri produirait l'ordre inverse, cette assertion prouve
+// donc que le tri final s'applique réellement, pas seulement que l'ordre de fusion coïncide.
+gws_test_make_post(640, GWSEQ_CPT_CHEVAL, 'Mixte Père Et Mère');
+gws_test_make_post(641, GWSEQ_CPT_CHEVAL, 'Zeta Produit Via Père Mixte');
+gws_test_make_post(642, GWSEQ_CPT_CHEVAL, 'Alpha Produit Via Mère Mixte');
+gwseq_set_horse_parent(641, 'father', array('mode' => 'gws', 'horse_id' => 640));
+gwseq_set_horse_parent(642, 'mother', array('mode' => 'gws', 'horse_id' => 640));
+$mixte_offspring = gwseq_get_horse_offspring(640);
+gws_test_assert(count($mixte_offspring) === 2, 'Ordre final : les deux produits (un via chaque rôle) sont bien tous les deux retrouvés');
+gws_test_assert(
+  count($mixte_offspring) === 2 && $mixte_offspring[0]->ID === 642 && $mixte_offspring[1]->ID === 641,
+  'Ordre final : identique à un tri global par titre (« Alpha… » avant « Zeta… »), malgré la fusion de deux requêtes désormais séparées par rôle'
+);
+
+// --- Aucun doublon : un état de données incohérent (un même cheval enregistré comme PÈRE ET MÈRE
+// d'un même produit) — structurellement empêché par gwseq_set_horse_parent() via
+// gwseq_horse_parent_conflicts_with_other_role() pour toute écriture passant par l'API métier, donc
+// simulé ici en écrivant directement les metas (comme pour d'anciennes données antérieures à cette
+// règle, 0.9.0) — ne doit JAMAIS faire apparaître le même produit deux fois dans le résultat.
+gws_test_make_post(650, GWSEQ_CPT_CHEVAL, 'Cheval À La Fois Père Et Mère (donnée incohérente simulée)');
+gws_test_make_post(660, GWSEQ_CPT_CHEVAL, 'Produit Du Cheval Incohérent');
+update_post_meta(660, '_gwseq_pere_mode', 'gws');
+update_post_meta(660, '_gwseq_pere_id', 650);
+update_post_meta(660, '_gwseq_mere_mode', 'gws');
+update_post_meta(660, '_gwseq_mere_id', 650);
+$dedup_offspring = gwseq_get_horse_offspring(650);
+gws_test_assert(count($dedup_offspring) === 1 && $dedup_offspring[0]->ID === 660, 'Aucun doublon : même si un cheval est incohéremment enregistré comme père ET mère d’un même produit (donnée simulée antérieure à la règle 0.9.0), ce produit n’apparaît qu’UNE SEULE fois dans le résultat');
+
+// =====================================================================================
 // Sécurité de la sauvegarde (§32) : nonce invalide / permissions / autosave / révision /
 // sanitation serveur — chemin réel via $_POST et gwseq_save_cheval_pedigree_meta()
 // =====================================================================================

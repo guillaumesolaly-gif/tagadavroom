@@ -562,30 +562,79 @@ function gwseq_get_horse_parent($cheval_id, $role) {
 /**
  * Production : chevaux référençant $cheval_id comme père OU mère GWS. Calculée à la volée,
  * jamais stockée. Seules les relations entre deux vraies fiches `gwseq_cheval` comptent.
+ *
+ * CORRECTIF PERFORMANCE (post-diagnostic runtime, anomalie ~35-38 s à l'ouverture d'une fiche
+ * Cheval — voir includes/cheval-perf-diagnostic.php et son CHANGELOG, itérations 1 à 4) : la
+ * requête UNIQUE précédente combinait, dans un seul `meta_query`, une relation OR entre deux
+ * groupes AND portant chacun sur DEUX clés meta différentes (`_gwseq_pere_mode`/`_gwseq_pere_id`,
+ * `_gwseq_mere_mode`/`_gwseq_mere_id`). `WP_Meta_Query::find_compatible_table_alias()` (WordPress
+ * core, wp-includes/class-wp-meta-query.php) ne peut JAMAIS fusionner deux clauses reliées par AND
+ * portant sur des clés différentes (seules deux clauses partageant EXACTEMENT la même clé, ou
+ * reliées par OR avec un opérateur positif, peuvent partager une jointure) : cette requête générait
+ * donc MÉCANIQUEMENT 4 `INNER JOIN` indépendants sur `wp_postmeta` — mesuré responsable de
+ * ~35 secondes sur le site réel de recette (CR de diagnostic, itération 4 : 1 seule requête SQL,
+ * 35 144,1 ms, dans ce callback), INDÉPENDAMMENT du nombre de chevaux (un problème de FORME de
+ * requête, jamais d'index manquant : `post_id` est déjà indexé nativement dans tout WordPress
+ * standard, aucun index personnalisé n'est ajouté ici).
+ *
+ * CORRECTIF : deux requêtes SÉPARÉES et simples (chacune un AND sur exactement 2 clés -> 2 JOIN,
+ * jamais combinées en un seul OR SQL à 4 JOIN), fusionnées et triées en PHP. RIEN d'autre ne
+ * change : mêmes deux conditions par rôle (`mode = 'gws' ET id = $cheval_id` — le filtre de mode
+ * reste indispensable, une ancienne valeur `_id` pouvant subsister après un changement de mode vers
+ * "external", voir la conservation non destructive documentée en tête de ce fichier — le retirer
+ * produirait de FAUX positifs sur une relation désactivée), même `post_status`, même `post_type`,
+ * même contrat de sortie (tableau de `WP_Post`, trié par titre ascendant) pour les trois usages
+ * existants (nettoyage à la suppression définitive, détection de présence pour la boîte Production,
+ * rendu de son contenu) — aucun n'est modifié par ce correctif. Un même cheval ne peut
+ * structurellement jamais apparaître dans les deux résultats à la fois pour le MÊME produit
+ * (gwseq_horse_parent_conflicts_with_other_role() interdit qu'il soit à la fois père ET mère d'une
+ * même fiche via l'API métier) ; le dédoublonnage par ID reste néanmoins appliqué, en garde
+ * défensive contre une éventuelle donnée incohérente antérieure à cette règle (0.9.0). AUCUN schéma
+ * modifié, AUCUN index ajouté, AUCUNE donnée existante touchée — un correctif strictement
+ * applicatif, réversible sans la moindre migration.
+ *
+ * Tri final par `strcasecmp()` sur `post_title` (insensible à la casse ASCII) plutôt qu'un ORDER BY
+ * SQL désormais redondant sur deux listes à fusionner — nuance assumée et documentée : ceci ne
+ * reproduit pas nécessairement à l'identique un tri MySQL sensible aux accents (collation Unicode),
+ * qu'aucun environnement disponible ici ne permet de vérifier à l'identique ; sans conséquence
+ * pratique observée sur les noms de chevaux réels de ce site.
  */
 function gwseq_get_horse_offspring($cheval_id) {
   $cheval_id = (int) $cheval_id;
   if (!$cheval_id) return array();
-  return get_posts(array(
+
+  $post_status = array('publish', 'draft', 'pending', 'private');
+
+  $by_father = get_posts(array(
     'post_type' => GWSEQ_CPT_CHEVAL,
-    'post_status' => array('publish', 'draft', 'pending', 'private'),
+    'post_status' => $post_status,
     'numberposts' => -1,
-    'orderby' => 'title',
-    'order' => 'ASC',
     'meta_query' => array(
-      'relation' => 'OR',
-      array(
-        'relation' => 'AND',
-        array('key' => '_gwseq_pere_mode', 'value' => 'gws'),
-        array('key' => '_gwseq_pere_id', 'value' => $cheval_id),
-      ),
-      array(
-        'relation' => 'AND',
-        array('key' => '_gwseq_mere_mode', 'value' => 'gws'),
-        array('key' => '_gwseq_mere_id', 'value' => $cheval_id),
-      ),
+      'relation' => 'AND',
+      array('key' => '_gwseq_pere_mode', 'value' => 'gws'),
+      array('key' => '_gwseq_pere_id', 'value' => $cheval_id),
     ),
   ));
+
+  $by_mother = get_posts(array(
+    'post_type' => GWSEQ_CPT_CHEVAL,
+    'post_status' => $post_status,
+    'numberposts' => -1,
+    'meta_query' => array(
+      'relation' => 'AND',
+      array('key' => '_gwseq_mere_mode', 'value' => 'gws'),
+      array('key' => '_gwseq_mere_id', 'value' => $cheval_id),
+    ),
+  ));
+
+  $offspring_by_id = array();
+  foreach (array_merge($by_father, $by_mother) as $post) {
+    $offspring_by_id[$post->ID] = $post; // dédoublonnage défensif — voir note ci-dessus
+  }
+
+  $offspring = array_values($offspring_by_id);
+  usort($offspring, function ($a, $b) { return strcasecmp($a->post_title, $b->post_title); });
+  return $offspring;
 }
 
 /**

@@ -1,5 +1,19 @@
 # Changelog — GWS Starter
 
+## 1.43.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
+
+- **Correctif performance : requête Production résolue — anomalie ~35 s (GWS Equestrian 0.40.0).**
+  La mesure réelle de l'itération 4 (1.42.0) a confirmé la cause : `gwseq_get_horse_offspring()`
+  utilisait un `meta_query` combinant en un seul OR deux groupes AND sur des clés meta différentes,
+  que `WP_Meta_Query` (WordPress core) ne peut jamais fusionner en moins de 4 `INNER JOIN` sur
+  `wp_postmeta` — un problème de forme de requête, jamais un index manquant. Corrigé en exécutant
+  deux requêtes séparées et simples (une par rôle Père/Mère, 2 JOIN chacune), fusionnées et triées
+  en PHP, avec dédoublonnage défensif. Aucune règle métier modifiée, aucun schéma SQL touché, aucun
+  index personnalisé ajouté — un correctif strictement applicatif, réversible sans migration. Le
+  diagnostic instrumenté reste actif en local/développement le temps de la recette runtime. Voir
+  `wp-content/plugins/gws-core/modules/gws-equestrian/CHANGELOG.md` (0.40.0) pour le détail
+  complet.
+
 ## 1.42.0 (gws-core uniquement — gws-starter reste en 1.5.0, non modifié)
 
 - **Diagnostic instrumenté de performance, itération 4 (GWS Equestrian 0.39.0) — cause principale

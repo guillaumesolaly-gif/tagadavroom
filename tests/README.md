@@ -1607,3 +1607,29 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   exactement les deux assertions dédiées à son absence en dessous du seuil, aucune autre.
   Intégralité de la suite (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après chaque
   restauration : aucune régression.
+- **Correctif performance : requête Production résolue (0.40.0)** — `gws-equestrian-pedigree-
+  logic-test.php` (fichier existant, étendu, pas un nouveau fichier) exécute désormais ses tests
+  déjà en place (produit retrouvé via le père, via la mère, aucun faux positif après un changement
+  de mode malgré un ancien `_id` conservé, tableau vide sans produit, nettoyage à la suppression,
+  rendu de la boîte Production) contre la NOUVELLE implémentation de `gwseq_get_horse_offspring()`
+  (deux requêtes séparées par rôle au lieu d'une requête unique à 4 `JOIN`) — ces tests
+  préexistants sont le principal filet de régression puisque le contrat de sortie de la fonction
+  est resté strictement inchangé. Deux scénarios dédiés ajoutés, ciblant précisément ce qui pouvait
+  réellement changer avec deux requêtes désormais séparées puis fusionnées en PHP : **ordre final**
+  — un produit trouvé via la MÈRE, alphabétiquement antérieur à un produit trouvé via le PÈRE,
+  apparaît bien en premier dans le résultat final (un simple `array_merge($by_father, $by_mother)`
+  sans tri aurait produit l'ordre inverse, cette assertion prouve donc que le tri s'applique
+  réellement, pas un hasard de l'ordre de fusion) ; **absence de doublon** — un cheval enregistré,
+  via manipulation directe des metas (donnée volontairement incohérente simulée, comme une donnée
+  antérieure à la règle 0.9.0 qui l'empêche désormais via l'API), comme étant à la fois père ET
+  mère d'un même produit ne fait apparaître ce produit qu'UNE SEULE fois dans le résultat.
+
+  Correctifs vérifiés par retrait/restauration sur trois bugs délibérément introduits, chacun
+  isolément : (1) supprimer le dédoublonnage (retour d'un simple `array_merge` sans clé) fait
+  échouer exactement l'assertion "Aucun doublon", aucune autre ; (2) supprimer le tri final fait
+  échouer exactement l'assertion "Ordre final : identique à un tri global par titre", aucune
+  autre ; (3) retirer le filtre `mode = 'gws'` d'une des deux requêtes (réintroduisant le risque de
+  faux positif sur un ancien identifiant conservé après un changement de mode) fait échouer
+  exactement l'assertion de non-régression déjà existante dédiée à ce scénario, aucune autre.
+  Intégralité de la suite (25 fichiers PHP + 4 suites JS runtime) ré-exécutée après chaque
+  restauration : aucune régression.

@@ -5,6 +5,54 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.40.0 — Correctif performance : requête Production (gwseq_get_horse_offspring) — anomalie ~35 s résolue
+
+Mesure RÉELLE de l'itération 4 : 1 seule requête SQL, 35 144,1 ms, dans
+`gwseq_add_cheval_pedigree_meta_boxes()`, générée par `gwseq_get_horse_offspring()` (production
+d'un cheval, calculée à la volée). Cause confirmée : le `meta_query` combinait, en un seul OR, deux
+groupes AND portant chacun sur DEUX clés meta différentes (`_gwseq_pere_mode`/`_gwseq_pere_id`,
+`_gwseq_mere_mode`/`_gwseq_mere_id`).
+
+**Analyse effectuée avant tout correctif** (conformément à la demande explicite) en lisant le code
+source réel non modifié de `WP_Meta_Query` (wp-includes/class-wp-meta-query.php) : sa méthode
+`find_compatible_table_alias()` ne peut JAMAIS fusionner deux clauses reliées par AND portant sur
+des clés différentes (seules deux clauses partageant EXACTEMENT la même clé, ou reliées par OR
+avec un opérateur positif, peuvent partager une jointure) — cette forme de requête générait donc
+MÉCANIQUEMENT 4 `INNER JOIN` indépendants sur `wp_postmeta`, un problème de FORME de requête,
+jamais un index manquant (`post_id` est déjà indexé nativement dans tout WordPress standard).
+Reconstruction complète du JOIN/WHERE réellement généré, documentée dans le CR de cette version.
+
+**Correctif appliqué, strictement applicatif** : `gwseq_get_horse_offspring()` exécute désormais
+DEUX requêtes séparées et simples (une par rôle, chacune un AND sur exactement 2 clés -> 2 JOIN,
+jamais combinées en un seul OR SQL à 4 JOIN), fusionnées et triées par titre en PHP
+(`strcasecmp()`), avec un dédoublonnage défensif par identifiant. AUCUN changement de règle
+métier : mêmes deux conditions par rôle (`mode = 'gws' ET id = $cheval_id` — le filtre de mode
+reste indispensable, une ancienne valeur `_id` pouvant subsister après un changement de mode vers
+"external", voir la conservation non destructive documentée dans le fichier ; le retirer
+produirait de faux positifs), même `post_status`, même `post_type`, même contrat de sortie
+(tableau de `WP_Post` trié par titre ascendant) pour les trois usages existants (nettoyage à la
+suppression définitive d'un cheval, détection de présence pour la boîte Production, rendu de son
+contenu) — aucun n'est modifié. AUCUN schéma SQL modifié, AUCUN index personnalisé ajouté, AUCUNE
+donnée existante touchée — GWS reste installable sur un WordPress standard.
+
+Le diagnostic instrumenté de performance (`includes/cheval-perf-diagnostic.php`) reste **activé**
+en local/développement pour cette version, le temps de mesurer réellement l'effet du correctif sur
+le site de recette avant de le retirer.
+
+Tests étendus (`tests/gws-equestrian-pedigree-logic-test.php`) : produit retrouvé via le père,
+produit retrouvé via la mère (déjà couverts, désormais exécutés contre la nouvelle implémentation),
+plus deux nouveaux scénarios dédiés à ce qui pouvait réellement changer avec deux requêtes
+séparées — ordre final identique malgré la fusion de deux résultats désormais distincts (un produit
+trouvé via la mère, alphabétiquement antérieur, apparaît bien AVANT un produit trouvé via le père
+dans le résultat final, preuve que le tri s'applique réellement et non un simple hasard d'ordre de
+fusion), et absence de doublon même face à une donnée volontairement incohérente simulée (un cheval
+enregistré comme père ET mère d'un même produit, situation empêchée par l'API métier depuis 0.9.0
+mais simulée ici comme une éventuelle donnée antérieure). Vérifiés par retrait/restauration sur
+trois bugs délibérément introduits : absence de dédoublonnage, absence de tri final, et
+suppression du filtre de mode (réintroduction du risque de faux positif) — chacun fait échouer
+exactement l'assertion dédiée, aucune autre. Intégralité de la suite (25 fichiers PHP + 4 suites JS
+runtime) ré-exécutée après chaque restauration : aucune régression.
+
 ## 0.39.0 — Diagnostic instrumenté de performance, itération 4 (détail SQL par callback — cause principale localisée)
 
 Mesure RÉELLE de l'itération 3, sur Jamerose : `add_meta_boxes_gwseq_cheval` = 36 065,4 ms, dont
