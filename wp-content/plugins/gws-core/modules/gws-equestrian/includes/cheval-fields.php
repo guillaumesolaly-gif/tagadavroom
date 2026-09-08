@@ -946,5 +946,9 @@ function gwseq_enqueue_cheval_admin_assets($hook) {
   // par la boîte Identité et par chaque génération d'ascendant externe de la boîte Pedigree — voir
   // includes/race-referentiel.php.
   gwseq_enqueue_race_referentiel_assets();
+  // Compteurs de caractères + listes ordonnées Qualités/Faits marquants (Lot 2A) — voir
+  // includes/cheval-editorial.php.
+  wp_enqueue_style('gwseq-cheval-editorial-admin', GWSEQ_MODULE_URL . 'assets/cheval-editorial-admin.css', array(), GWSEQ_MODULE_VERSION);
+  wp_enqueue_script('gwseq-cheval-editorial-admin', GWSEQ_MODULE_URL . 'assets/cheval-editorial-admin.js', array(), GWSEQ_MODULE_VERSION, true);
 }
 add_action('admin_enqueue_scripts', 'gwseq_enqueue_cheval_admin_assets');

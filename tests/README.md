@@ -1734,3 +1734,44 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   réactivent le flag explicitement) restent vertes. Non-régression vérifiée sur les suites Cheval,
   partage privé, partage d'un cheval, Sélections, onglets admin et import IFCE. Intégralité de la
   suite (24 fichiers PHP + 4 suites JS runtime) ré-exécutée : aucune régression.
+- **Lot 2A — structuration des contenus commerciaux Cheval (0.43.0)** —
+  `gws-equestrian-cheval-editorial-logic-test.php` (fichier existant, très étendu : 276
+  assertions). Nouveaux stubs réels `add_query_arg()`/`get_current_screen()`/
+  `add_filter()`+`apply_filters()` (l'ancien `add_filter()` était un no-op) pour exercer le
+  mécanisme réel de notice d'erreur (`redirect_post_location` + `admin_notices`).
+
+  Sanitation pure de `gwseq_sanitize_cheval_text_list()` (Qualités/Faits marquants) : ordre de
+  saisie conservé, entrées vides retirées (jamais comptées), espaces superflus/HTML retirés,
+  bornes inclusives vérifiées aux deux limites (25/80 caractères, 5/3 éléments) — et surtout,
+  qu'une SEULE entrée trop longue ou un nombre d'éléments excessif fait rejeter la LISTE ENTIÈRE
+  (`rejected => true, values => null`), jamais une troncature à la limite ni les entrées valides
+  gardées seules pendant que l'excédent disparaît silencieusement.
+
+  Persistance réelle via `gwseq_set_cheval_editorial()` (désormais un tableau `champ => raison`
+  des rejets, plus un simple booléen `true`) : valeurs valides relues via les nouveaux accesseurs
+  `gwseq_get_cheval_qualites()`/`gwseq_get_cheval_faits_marquants()` ; un élément trop long ou un
+  nombre d'éléments excessif laisse la valeur PRÉCÉDEMMENT enregistrée strictement inchangée
+  (jamais tronquée) ; un rejet sur un champ (Qualités, ou l'une des six limites de longueur) n'a
+  AUCUN effet de bord sur les autres champs de la même soumission — preuve directe que « une
+  erreur sur un champ ne fait pas perdre les autres données du cheval ». Les six limites de
+  longueur (Accroche 180, Présentation 1200, Potentiel 500, Commentaire production 600, Conseils
+  de croisement 600, Commentaire origines 600) vérifiées individuellement à limite+1 (rejeté) et
+  limite exacte (accepté) ; Résultats/Conditions de vente confirmés toujours sans limite. Ancien
+  champ `_gwseq_points_forts` : vérifié à la fois déclarativement (la chaîne n'apparaît plus dans
+  le fichier) et fonctionnellement (une valeur déjà en base y reste bit-à-bit identique après un
+  enregistrement normal — aucune migration, aucune suppression silencieuse).
+
+  Rendu admin : `maxlength` HTML présent avec la valeur exacte pour les six champs à limite fixe ;
+  Qualités/Faits marquants rendus en `name="..._[]"` (jamais un champ texte libre unique) avec
+  boutons Ajouter/Supprimer/↑/↓ et gabarit `<template>` pour l'ajout côté JS ; escaping vérifié
+  pour un champ texte libre ET pour un élément de liste structurée. Mécanisme de notice : l'URL de
+  redirection porte bien `gwseq_editorial_rejected=champ:raison` après un rejet (inchangée si
+  aucun rejet) ; le message affiché nomme précisément le champ et la limite dépassée, précise que
+  la version précédente est conservée, et ne s'affiche jamais hors de l'écran d'édition Cheval.
+
+  Revert-and-verify : retirer les deux gardes de validation (le contrôle de longueur des six
+  champs texte, et le contrôle de Qualités/Faits marquants) fait échouer exactement les 16
+  assertions dédiées à ce mécanisme, aucune autre. Non-régression vérifiée sur Cheval, partage
+  privé, partage d'un cheval, Sélections, onglets admin, import IFCE, pedigree, indices et Labels
+  (en sommeil, inchangés). Intégralité de la suite (24 fichiers PHP + 4 suites JS runtime)
+  ré-exécutée : aucune régression.

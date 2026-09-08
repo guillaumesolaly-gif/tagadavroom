@@ -105,10 +105,34 @@ comportement par défaut lorsqu'il est omis.
 #### Présentation éditoriale (`includes/cheval-editorial.php`)
 
 Huit champs facultatifs, texte libre sanitisé (`sanitize_textarea_field()` — HTML retiré, sauts de
-ligne conservés) : Présentation/Description, Points forts, Potentiel, Résultats/Performances (une
-zone éditoriale, volontairement PAS une base structurée exhaustive de tous les concours), Origines
-— commentaire, Production — commentaire, Conditions de vente/élevage/reproduction, Conseils de
-croisement (disponible pour TOUS les chevaux, jamais conditionné au sexe ou à une catégorie).
+ligne conservés) : Accroche commerciale, Présentation/Description, Potentiel, Résultats/Performances
+(une zone éditoriale, volontairement PAS une base structurée exhaustive de tous les concours),
+Origines — commentaire, Production — commentaire, Conditions de vente/élevage/reproduction, Conseils
+de croisement (disponible pour TOUS les chevaux, jamais conditionné au sexe ou à une catégorie).
+
+**Limites de longueur (Lot 2A)** : six de ces champs portent désormais une limite —
+Accroche commerciale (180 caractères), Présentation (1200), Potentiel (500), Production — commentaire
+(600), Conseils de croisement (600), Origines — commentaire (600) — via
+`gwseq_cheval_editorial_field_max_length()`, seule source de vérité (validation serveur ET rendu :
+`maxlength` HTML + compteur de caractères visible). Résultats et Conditions de vente restent sans
+limite. Un champ qui dépasse sa limite n'est jamais tronqué : il est simplement rejeté (sa valeur
+précédente reste inchangée) pendant que tous les autres champs de la même soumission s'enregistrent
+normalement ; un message explicite s'affiche après redirection. Voir « Qualités / Points forts »
+et « Faits marquants » ci-dessous pour les deux données structurées du même lot.
+
+**Qualités (ex-« Points forts »)** : depuis le Lot 2A, ce n'est plus un champ texte libre mais une
+liste ORDONNÉE d'au plus 5 courtes chaînes (25 caractères max chacune), saisie libre, sans
+taxonomie ni liste prédéfinie (`_gwseq_qualites`, interface Ajouter/Supprimer/Réordonner).
+L'ancien champ `_gwseq_points_forts` n'est plus jamais lu ni écrit — sa donnée, si déjà enregistrée,
+reste intacte en base (aucune migration, aucune suppression), simplement orpheline de toute
+interface. Destinée à devenir des badges réutilisables sur le site/PDF/catalogue (rendu non
+développé dans ce lot).
+
+**Faits marquants** : nouvelle donnée structurée du même lot — liste ORDONNÉE d'au plus 3 courtes
+chaînes (80 caractères max chacune), aucune obligatoire (`_gwseq_faits_marquants`). Argument
+commercial choisi librement par l'utilisateur, jamais généré automatiquement ni déduit d'une autre
+donnée (indices, pedigree, résultats). Distincte de « Résultats/Performances » (narratif libre,
+inchangé) et des indices sportifs structurés (ISO/ICC/IDR).
 
 **Deux ambiguïtés explicitement levées par des noms de meta sans équivoque** :
 - `_gwseq_commentaire_production` (texte libre du professionnel sur la qualité/les résultats de la

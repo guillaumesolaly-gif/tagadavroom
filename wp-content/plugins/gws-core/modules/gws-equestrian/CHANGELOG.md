@@ -5,6 +5,75 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.43.0 — Lot 2A : structuration des contenus commerciaux Cheval
+
+Préparation de la future fiche PDF commerciale et du Catalogue GWS (suite de l'audit précédent) :
+structuration de deux données éditoriales et introduction de limites de longueur sur six champs
+existants, sans développer PDF, QR ni Catalogue.
+
+**1. Points forts → Qualités**, liste ORDONNÉE d'au plus 5 courtes chaînes (25 caractères max
+chacune), saisie libre, sans taxonomie ni liste prédéfinie. Stockage : `_gwseq_qualites` (post meta
+`array`, ordre = ordre de saisie/réordonnancement). Interface BO : liste avec boutons Ajouter /
+Supprimer / ↑ / ↓ (`includes/cheval-editorial.php`, `gwseq_render_cheval_text_list_field()` +
+`assets/cheval-editorial-admin.js`) — pas de glisser-déposer, le réordonnancement se fait par
+déplacement du `<li>` dans le DOM (`name="_gwseq_qualites[]"`, sans index, donc l'ordre de
+soumission = ordre DOM, aucune renumérotation nécessaire côté JS). L'ancien champ texte libre
+`_gwseq_points_forts` est retiré de `gwseq_cheval_editorial_field_map()` : plus jamais lu ni écrit
+par ce fichier. **Aucune migration** de son contenu vers `_gwseq_qualites` (les données de recette
+actuelles ne sont que des données de test) — toute valeur déjà enregistrée sous l'ancienne clé reste
+**intégralement présente en base**, jamais supprimée, simplement orpheline de toute interface
+(récupérable par accès direct à la base ou WP-CLI si nécessaire). Vérifié fonctionnellement (pas
+seulement déclarativement) : une valeur déjà stockée sous `_gwseq_points_forts` reste bit-à-bit
+identique après un enregistrement normal de la fiche.
+
+**2. Faits marquants**, nouvelle donnée structurée : liste ORDONNÉE d'au plus 3 courtes chaînes
+(80 caractères max chacune), aucune obligatoire. Stockage : `_gwseq_faits_marquants` (même
+architecture que Qualités). Argument commercial choisi librement par l'utilisateur — **aucune
+génération automatique, aucune IA, aucune déduction** depuis les indices, le pedigree ou les
+résultats (vérifié : ni les indices ISO/ICC/IDR/BSO/BCC/BDR ni `gwseq_get_horse_offspring()` ne
+sont jamais lus par ce mécanisme). Distincte de « Résultats / Performances », qui reste un champ
+texte libre inchangé dans ce lot (décision produit non encore prise sur sa restructuration).
+
+**3. Limites de longueur** sur six champs éditoriaux existants — Accroche commerciale (180
+caractères), Présentation (1200), Potentiel (500), Commentaire production (600), Conseils de
+croisement (600), Commentaire origines (600), via `gwseq_cheval_editorial_field_max_length()`,
+SEULE source de vérité, réutilisée par la validation serveur ET le rendu (`maxlength` HTML +
+compteur de caractères visible, `assets/cheval-editorial-admin.js`). Résultats, Conditions de
+vente et Ostéo-articulaire restent volontairement sans limite (hors périmètre).
+
+**Architecture de validation retenue (analyse préalable documentée dans le docblock de
+`cheval-editorial.php`)** : WordPress (écran classique, sans REST) n'offre aucun mécanisme natif
+pour bloquer proprement l'enregistrement d'un post tout en affichant une erreur bloquante ; tenter
+de bloquer `save_post` lui-même (ex. via `wp_insert_post_data`) empêcherait aussi le titre/statut
+de s'enregistrer et n'empêcherait pas les autres callbacks `save_post_gwseq_cheval` indépendants
+(identité, indices, pedigree, médias, commercial — déjà des hooks séparés, vérifié avant
+implémentation) de s'exécuter quand même. Solution la moins destructive retenue : chaque champ
+continue d'être persisté indépendamment (déjà le cas avant ce lot) ; un champ qui dépasse sa limite
+(texte trop long, ou trop d'éléments/élément trop long pour Qualités/Faits marquants) **n'est
+simplement pas écrit** — sa valeur précédente reste strictement inchangée, **jamais tronquée** —
+pendant que tous les autres champs de la même soumission s'enregistrent normalement.
+`gwseq_set_cheval_editorial()` retourne désormais un tableau `champ => raison` (`'too_long'` /
+`'too_many'`) des champs rejetés (tableau vide = tout enregistré) au lieu d'un simple booléen.
+Un message d'erreur explicite, nommant précisément le(s) champ(s) et la limite dépassée, s'affiche
+après redirection via le filtre natif WordPress `redirect_post_location` (état relayé par une
+variable statique de fonction, jamais un transient ni une écriture en base superflue).
+
+**Tests** (`tests/gws-equestrian-cheval-editorial-logic-test.php`, étendu, 276 assertions) :
+sanitation pure de la liste ordonnée (ordre conservé, entrées vides retirées, HTML retiré, élément
+trop long → rejet de la liste entière jamais une troncature, trop d'éléments → rejet entier jamais
+un plafonnement silencieux, limites inclusives vérifiées aux deux bornes) ; persistance réelle
+(valeurs valides relues via les accesseurs dédiés, valeurs précédentes conservées après un rejet,
+aucun effet de bord entre Qualités/Faits marquants/autres champs de la même soumission — preuve
+directe qu'une erreur sur un champ ne fait pas perdre les autres données) ; les six limites de
+longueur vérifiées individuellement (rejet à limite+1, acceptation à limite exacte) ; Résultats/
+Conditions de vente toujours sans limite ; ancien champ `_gwseq_points_forts` jamais touché (test
+déclaratif + fonctionnel) ; mécanisme de notice (URL de redirection, message affiché, absence de
+notice hors écran Cheval). Revert-and-verify : retirer les deux gardes de validation fait échouer
+exactement les 16 assertions dédiées, aucune autre. Non-régression vérifiée sur Cheval, partage
+privé, partage d'un cheval, Sélections, onglets admin, import IFCE, pedigree, indices et Labels
+(en sommeil, inchangés). Intégralité de la suite (24 fichiers PHP + 4 suites JS runtime)
+ré-exécutée : aucune régression.
+
 ## 0.42.0 — Mise en sommeil de la fonctionnalité Labels Selle Français
 
 Décision produit : après échange avec l'ANSF, l'autorisation d'utiliser les logos et éléments

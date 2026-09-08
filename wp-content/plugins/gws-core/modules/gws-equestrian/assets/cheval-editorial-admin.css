@@ -1,0 +1,55 @@
+/**
+ * Lot 2A — listes ordonnées de courtes chaînes (Qualités, Faits marquants) et compteurs de
+ * caractères, écran d'édition d'une fiche Cheval. Purement des styles de confort d'utilisation,
+ * aucun impact sur les autres écrans du module.
+ */
+
+.gwseq-text-list__rows {
+  list-style: none;
+  margin: 0.5em 0 0;
+  padding: 0;
+}
+
+.gwseq-text-list__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.gwseq-text-list__input {
+  flex: 1 1 auto;
+}
+
+.gwseq-text-list__move-up,
+.gwseq-text-list__move-down {
+  padding: 0 6px;
+  line-height: 1.6;
+  min-width: 2em;
+}
+
+.gwseq-text-list__counter {
+  font-size: 11px;
+  color: #646970;
+  min-width: 3.5em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.gwseq-text-list__counter--over {
+  color: #d63638;
+  font-weight: 600;
+}
+
+.gwseq-charcount-display {
+  display: block;
+  font-size: 11px;
+  color: #646970;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gwseq-charcount-display--over {
+  color: #d63638;
+  font-weight: 600;
+}
