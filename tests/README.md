@@ -595,6 +595,21 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   fiche existante mise à jour, idempotence vérifiée par un second réimport du même document (toujours
   18 produits, jamais de doublon). Prévisualisation étendue (tableau Production, rattachements,
   évolutions d'indices) rendue réellement sur le vrai document.
+  **Correctifs de recette 0.44.1 (cas réel Goldame d'Aubigny, nouvelle fixture
+  `tests/fixtures/ifce-goldame-d-aubigny.pdf`)** : (A) `gws-equestrian-pedigree-logic-test.php` —
+  `gwseq_pedigree_display_name()` décode désormais une entité HTML encore littérale dans un nom
+  source avant mise en majuscules, vérifié unitairement et bout en bout sur le rendu réel du bloc
+  Pedigree (« Origines de… ») ; (B) `gws-equestrian-ifce-production-test.php` —
+  `gwseq_ifce_normalize_horse_name_for_match()` canonise désormais les entités HTML et 5 variantes
+  d'apostrophe/guillemet simple avant comparaison, vérifié unitairement (chaque variante listée) et
+  par reproduction exacte du cas réel (rapprochement PROBABLE Goldame d'Aubigny/Teldame de la Nutria,
+  auparavant introuvable malgré nom+année identiques) ; (C) `gws-equestrian-ifce-import-test.php` —
+  reconstruction complète et exacte des 14 ascendants de la vraie fiche Goldame (position par
+  position), incluant le cas d'une ligne de pedigree repliée EN PLEIN MILIEU d'un nom d'ascendant
+  (jamais couvert par le correctif de continuation 0.14.5, qui ne reconnaît qu'un repli réduit à du
+  pays/stud-book/année pur) — avec cas négatifs dédiés garantissant qu'un ascendant réel sans année
+  (« Perra Holst », sans "Alias") ou une ligne "Alias" déjà complète ne déclenchent jamais une fusion
+  à tort.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

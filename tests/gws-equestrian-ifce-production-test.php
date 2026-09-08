@@ -416,6 +416,58 @@ gwseq_set_cheval_identity(204, array('_gwseq_sexe' => 'female', '_gwseq_annee_na
 gws_test_assert(gwseq_ifce_find_probable_production_match('Divine de Felines', 2013) === 0, 'Rattachement PROBABLE : en cas d’ambiguïté (deux fiches identiques par nom+année), aucun rapprochement n’est jamais deviné');
 
 // =====================================================================================
+// 9bis. CORRECTIF RECETTE (cas réel Goldame d'Aubigny) : normalisation robuste aux variantes
+// typographiquement équivalentes d'apostrophe — le nom extrait du PDF IFCE utilise toujours une
+// apostrophe droite ASCII ('), tandis qu'une fiche GWS déjà enregistrée peut porter une apostrophe
+// courbe (’/‘), un accent utilisé en guise d'apostrophe, une apostrophe modificatrice, OU encore une
+// entité HTML restée littérale (&rsquo;/&#8217;/&apos;, résidu d'un import/copier-coller antérieur —
+// même cause racine que le correctif 0.24.0 du module Partage). AVANT ce correctif, ces variantes
+// étaient des chaînes différentes après normalisation -> aucun rapprochement PROBABLE proposé, alors
+// même que nom et année correspondaient exactement (symptôme réel signalé en recette).
+// =====================================================================================
+
+gws_test_assert(
+  gwseq_ifce_normalize_horse_name_for_match("Goldame d'Aubigny") === gwseq_ifce_normalize_horse_name_for_match("Goldame d\xE2\x80\x99Aubigny"),
+  'CORRECTIF RECETTE : apostrophe droite (\') et apostrophe courbe (’, U+2019) normalisées de façon strictement identique'
+);
+gws_test_assert(
+  gwseq_ifce_normalize_horse_name_for_match("Goldame d'Aubigny") === gwseq_ifce_normalize_horse_name_for_match("Goldame d\xE2\x80\x98Aubigny"),
+  'CORRECTIF RECETTE : apostrophe courbe ouvrante (‘, U+2018) également canonisée'
+);
+gws_test_assert(
+  gwseq_ifce_normalize_horse_name_for_match("Goldame d'Aubigny") === gwseq_ifce_normalize_horse_name_for_match("Goldame d\xCA\xBCAubigny"),
+  'CORRECTIF RECETTE : apostrophe modificatrice (ʼ, U+02BC) également canonisée'
+);
+gws_test_assert(
+  gwseq_ifce_normalize_horse_name_for_match("Goldame d'Aubigny") === gwseq_ifce_normalize_horse_name_for_match("Goldame d`Aubigny"),
+  'CORRECTIF RECETTE : accent grave (`) utilisé en guise d’apostrophe également canonisé'
+);
+gws_test_assert(
+  gwseq_ifce_normalize_horse_name_for_match("Goldame d'Aubigny") === gwseq_ifce_normalize_horse_name_for_match('Goldame d&rsquo;Aubigny'),
+  'CORRECTIF RECETTE : entité HTML NOMMÉE encore littérale ("&rsquo;") décodée puis canonisée avant comparaison'
+);
+gws_test_assert(
+  gwseq_ifce_normalize_horse_name_for_match("Goldame d'Aubigny") === gwseq_ifce_normalize_horse_name_for_match('Goldame d&#8217;Aubigny'),
+  'CORRECTIF RECETTE : entité HTML NUMÉRIQUE ("&#8217;") décodée puis canonisée avant comparaison'
+);
+gws_test_assert(
+  gwseq_ifce_normalize_horse_name_for_match("Goldame d'Aubigny") === gwseq_ifce_normalize_horse_name_for_match('Goldame d&apos;Aubigny'),
+  'CORRECTIF RECETTE : entité HTML "&apos;" décodée puis canonisée avant comparaison'
+);
+gws_test_assert(
+  gwseq_ifce_normalize_horse_name_for_match('Chevalière') !== gwseq_ifce_normalize_horse_name_for_match("Chevali're"),
+  'Non-permissivité : la canonisation reste une liste FERMÉE de variantes d’apostrophe — un caractère réellement différent (accent aigu é vs apostrophe) ne doit jamais rendre deux noms distincts identiques après normalisation'
+);
+
+// --- Reproduction EXACTE du cas réel Goldame d'Aubigny : rapprochement PROBABLE désormais trouvé ---
+gws_test_make_post(205, GWSEQ_CPT_CHEVAL, "Goldame d\xE2\x80\x99Aubigny"); // titre GWS réel, apostrophe courbe
+gwseq_set_cheval_identity(205, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+gws_test_assert(
+  gwseq_ifce_find_probable_production_match("Goldame d'Aubigny", 2016) === 205, // nom IFCE réel, apostrophe droite
+  'CORRECTIF RECETTE (cas réel) : "Goldame d\'Aubigny" (nom IFCE, apostrophe droite) est désormais bien rapproché de la fiche GWS "Goldame d’Aubigny" (apostrophe courbe) — année identique (2016) — AVANT ce correctif, aucun rapprochement n’était trouvé malgré une correspondance visuelle parfaite'
+);
+
+// =====================================================================================
 // 10. Mapping (gwseq_ifce_map_production) : garde de sexe, rattachement certain/probable, actualisation
 //     ISO/ICC/IDR UNIQUEMENT — jamais un autre champ du produit lié.
 // =====================================================================================

@@ -733,9 +733,21 @@ add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, 'gwseq_add_cheval_pedigree_meta
 /**
  * Fallback textuel tant qu'un nom n'est pas encore renseigné (§7) : jamais "Père de" suivi de
  * rien, jamais "Origines de" suivi de rien.
+ *
+ * CORRECTIF RECETTE (Lot 2B.2, cas réel Goldame d'Aubigny) : un nom source — `get_the_title($post)`
+ * pour le sujet, ou `$node['name']` pour un ascendant saisi/importé — peut contenir une entité HTML
+ * encore sous forme de texte LITTÉRAL (ex. « D&rsquo;AUBIGNY », résidu d'un import/copier-coller
+ * antérieur, jamais corrigé automatiquement par `get_the_title()` — même cause racine déjà identifiée
+ * et corrigée une première fois en 0.24.0 pour le module Partage, voir `gwseq_horse_share_decode_title()`
+ * ci-dessous, `cheval-share.php`). Ce point de rendu du Pedigree utilisait jusqu'ici directement
+ * `gwseq_format_horse_name_display()`, qui ne fait que mettre en majuscules/retirer les accents —
+ * jamais décoder une entité — laissant `&rsquo;` intact et donc mis en majuscules à son tour
+ * (« &RSQUO; »). Réutilise ICI le MÊME point de décodage déjà validé (0.24.0), jamais une seconde
+ * implémentation dupliquée : décodage à l'affichage UNIQUEMENT, la donnée source stockée n'est
+ * jamais modifiée par cette fonction.
  */
 function gwseq_pedigree_display_name($raw_name) {
-  $display = gwseq_format_horse_name_display($raw_name);
+  $display = gwseq_format_horse_name_display(gwseq_horse_share_decode_title($raw_name));
   return $display !== '' ? $display : __('cet ascendant', 'gws-core');
 }
 

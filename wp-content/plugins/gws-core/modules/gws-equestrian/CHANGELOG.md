@@ -5,6 +5,64 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.44.1 — Correctifs de recette 2B.2 (cas réel Goldame d'Aubigny)
+
+Trois défauts distincts révélés par la recette runtime du Lot 2B.2, tous les trois reproduits avec
+le code alors en vigueur (aucun n'était un vestige d'un ancien import) — diagnostiqués sur pièces
+avec la vraie fiche IFCE de Goldame d'Aubigny (`tests/fixtures/ifce-goldame-d-aubigny.pdf`, committée
+à cette occasion) avant tout correctif.
+
+**A. Entité HTML littérale dans les libellés dynamiques du Pedigree** — `gwseq_pedigree_display_name()`
+(`cheval-pedigree.php`) mettait en majuscules un nom source sans jamais décoder une éventuelle entité
+HTML encore littérale (ex. « Goldame d&rsquo;Aubigny », résidu d'un import/copier-coller antérieur,
+jamais corrigé par `get_the_title()`) — produisant « GOLDAME D&RSQUO;AUBIGNY » dans « Origines
+de… »/« Père de… »/« Mère de… ». Même cause racine déjà corrigée une première fois en 0.24.0 pour le
+module Partage (`gwseq_horse_share_decode_title()`), mais jamais réutilisée à ce second point de
+rendu. Corrigé en réutilisant ce même point de décodage — aucune seconde implémentation, aucune
+donnée stockée modifiée (décodage à l'affichage uniquement).
+
+**B. Rapprochement PROBABLE de Production insensible aux variantes d'apostrophe** —
+`gwseq_ifce_normalize_horse_name_for_match()` (`ifce-production-store.php`) ne neutralisait ni les
+entités HTML encore littérales, ni les variantes typographiquement équivalentes d'apostrophe/guillemet
+simple : un nom extrait d'un PDF IFCE (toujours une apostrophe droite `'`) et le même nom déjà
+enregistré comme fiche GWS avec une apostrophe courbe (`'`) ne matchaient jamais, empêchant tout
+rapprochement PROBABLE malgré une correspondance nom+année réelle. Corrigé par deux étapes ajoutées
+AVANT la normalisation existante (accents/casse/espaces, inchangée) : décodage d'entités HTML
+(`html_entity_decode(..., ENT_QUOTES | ENT_HTML5, 'UTF-8')`) puis canonisation d'une liste FERMÉE de
+variantes d'apostrophe (`'` `'` `` ` `` `ʼ` `´`) vers l'apostrophe droite ASCII — jamais un
+assouplissement permissif au-delà de cette liste documentée.
+
+**C. Décalage de pedigree — ligne repliée en plein milieu du nom d'un ascendant** — un cas de line-wrap
+non couvert par le correctif de continuation existant (0.14.5, qui ne reconnaît qu'une ligne réduite
+à du pays/stud-book/année pur) : « BALOUBET DU ROUET Alias GANDINI BALOUBET DU » replié sur « ROUET
+SFA 1989 », cette dernière ligne contenant un mot du NOM lui-même. Non reconnue comme continuation,
+elle devenait un ascendant FANTÔME (« ROUET », année 1989 mal attribuée), décalant toute la
+généalogie d'un rang — la Mère de Goldame affichée à tort comme « Andalouse » au lieu de « Teldame de
+la Nutria », et le véritable 14e ascendant (Phédra Ratelière) silencieusement perdu, tronqué par
+`array_slice(..., 0, 14)`. Corrigé par une RÈGLE CONTEXTUELLE ET CONSERVATRICE, jamais un
+assouplissement général de la regex de continuation (qui romprait un ascendant réel et court comme
+« Galoubet A SFA 1972 ») : deux conditions CONJOINTES requises (`gwseq_ifce_pedigree_entry_looks_incomplete()`/
+`gwseq_ifce_pedigree_line_completes_entry()`, `ifce-import-parser.php`) — l'entrée en cours n'a encore
+abouti à AUCUNE année ET porte le marqueur « Alias » (seul signal réellement observé à ce jour,
+fonction dédiée conçue pour en accueillir d'autres sans jamais dupliquer la vérification côté
+appelant), ET rattacher la ligne suivante PRODUIT RÉELLEMENT une année qui n'existait pas avant
+fusion — jamais une fusion simplement parce que deux lignes se suivent. Aucune coordonnée X/Y
+disponible à ce stade du pipeline (Zone Sujet, page 1, jamais positionnée — voir 2B.1 ter) : règle
+strictement textuelle. Limite résiduelle assumée et documentée : un texte seul ne peut, par
+construction, jamais garantir à 100 % qu'une fusion candidate n'est pas, par coïncidence, deux
+ascendants réellement distincts — risque du même ordre que celui déjà accepté pour le motif de
+continuation "pays/stud-book/année pur" (0.14.5), jamais masqué par une heuristique supplémentaire.
+
+**Tests** : nouvelle fixture réelle `tests/fixtures/ifce-goldame-d-aubigny.pdf`. Rejeu intégral des 14
+ascendants (position par position, contre l'arbre correctement reconstitué) dans
+`gws-equestrian-ifce-import-test.php`, avec cas négatifs dédiés (« Perra Holst », sans année ni
+Alias, ne fusionne jamais ; un « Alias » déjà complet ne fusionne jamais la ligne suivante ; un
+ascendant court et réel après une ligne Alias-incomplète-mais-non-liée reste distinct). Nouveaux
+tests de décodage dans `gws-equestrian-pedigree-logic-test.php` (bout en bout, rendu réel du bloc
+Pedigree) et de canonisation d'apostrophes dans `gws-equestrian-ifce-production-test.php`
+(unitaires sur les 7 variantes listées, plus reproduction exacte du cas réel Goldame/Teldame).
+Suite complète (24 fichiers PHP/Node) revérifiée sans régression.
+
 ## 0.44.0 — Lot 2B.2 : Production directe structurée des juments (import IFCE)
 
 Suite des audits 2B.1/2B.1 bis/2B.1 ter (verdict final **READY FOR 2B.2**) : import structuré de la

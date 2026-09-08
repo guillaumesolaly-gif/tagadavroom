@@ -562,6 +562,53 @@ function gwseq_ifce_looks_like_pedigree_continuation_line($line) {
 }
 
 /**
+ * CORRECTIF RECETTE (Lot 2B.2, cas réel Goldame d'Aubigny) — second motif de repli de ligne,
+ * DISTINCT de gwseq_ifce_looks_like_pedigree_continuation_line() ci-dessus : celle-ci ne couvre que
+ * les cas où la ligne repliée se réduit ENTIÈREMENT à du pays/stud-book/année (jamais un mot du nom
+ * lui-même). Le vrai document de Goldame montre un cas différent : "BALOUBET DU ROUET Alias GANDINI
+ * BALOUBET DU" replié EN PLEIN MILIEU du nom d'usage, sa suite "ROUET SFA 1989" comportant à la fois
+ * la fin du nom ("ROUET") ET le stud-book/année — une forme que la fonction ci-dessus ne peut jamais
+ * reconnaître (elle contient un mot de nom, "ROUET"), et qui, laissée telle quelle, devenait un
+ * ascendant FANTÔME décalant toute la suite de la généalogie d'un rang (voir CR de recette).
+ *
+ * RÈGLE CONTEXTUELLE ET CONSERVATRICE (jamais un assouplissement général de la regex ci-dessus, qui
+ * accepterait n'importe quelle ligne "MOT STUDBOOK ANNEE" comme continuation — cela romprait
+ * silencieusement un ascendant réel et court comme "GALOUBET A SFA 1972", volontairement vérifié par
+ * les tests dédiés) : une fusion n'est décidée que si LES DEUX conditions suivantes sont vraies EN
+ * MÊME TEMPS, jamais une seule isolément —
+ * 1. L'entrée EN COURS (déjà éventuellement fusionnée depuis de précédentes lignes) n'a ENCORE
+ *    abouti à AUCUNE année reconnue une fois analysée seule (gwseq_ifce_pedigree_entry_looks_incomplete()
+ *    ci-dessous) — un ascendant réel et déjà complet (ex. "PERRA HOLST", sans année mais avec un
+ *    stud-book propre et SANS "Alias") n'est jamais un candidat à cette fusion, quelle que soit la
+ *    ligne suivante ;
+ * 2. Rattacher la ligne candidate à cette entrée en cours PRODUIT RÉELLEMENT une année qui n'existait
+ *    pas avant fusion (gwseq_ifce_pedigree_line_completes_entry() ci-dessous) — jamais une fusion
+ *    "à l'aveugle" simplement parce que deux lignes se suivent : si le résultat fusionné n'apporte
+ *    rien de plus qu'une simple concaténation de texte, la fusion n'a pas lieu.
+ * Le marqueur "Alias" (seul signal réellement observé à ce jour pour la condition 1) est un signal
+ * FORT mais non exclusif : gwseq_ifce_pedigree_entry_looks_incomplete() reste une fonction dédiée,
+ * conçue pour accueillir un futur signal supplémentaire si un autre document réel en apportait la
+ * preuve — jamais un second "if (strpos($ligne_precedente, 'Alias')...)" dispersé dans le code
+ * appelant. Aucune coordonnée X/Y n'est disponible à ce stade du pipeline (la Zone Sujet, dont ce
+ * fichier fait partie, ne conserve jamais la position — voir ifce-pdf-text.php et l'audit 2B.1 ter) :
+ * cette règle n'utilise donc que des signaux textuels, jamais une heuristique de positionnement.
+ */
+function gwseq_ifce_pedigree_entry_looks_incomplete($line) {
+  if (gwseq_ifce_parse_pedigree_entry_line($line)['annee_naissance'] !== '') return false;
+  return stripos($line, 'Alias') !== false;
+}
+
+/**
+ * Vérifie que $candidate_line, une fois rattachée à $current_entry_line, aboutit à une année
+ * reconnue que $current_entry_line seule n'avait pas — voir gwseq_ifce_pedigree_entry_looks_incomplete()
+ * ci-dessus pour le contexte complet de cette règle à deux conditions conjointes.
+ */
+function gwseq_ifce_pedigree_line_completes_entry($current_entry_line, $candidate_line) {
+  $merged = trim($current_entry_line . ' ' . $candidate_line);
+  return gwseq_ifce_parse_pedigree_entry_line($merged)['annee_naissance'] !== '';
+}
+
+/**
  * Index de la ligne d'en-tête introduisant la section pedigree ("Généalogie"/"Pedigree"/"Origines")
  * — correctif runtime (indices sportifs du cheval sujet) : cette même frontière délimite aussi la
  * fin de la ZONE DE SYNTHÈSE du cheval sujet lui-même (identité, discipline, indices, naisseur...),
@@ -616,10 +663,22 @@ function gwseq_ifce_parse_pedigree_from_lines($lines) {
   // Une ligne qui se réduit entièrement à un marqueur pays/code de stud-book/année (ex. "1984" seul,
   // ou "(DEU) HOLST 1985" — correctif runtime, voir gwseq_ifce_looks_like_pedigree_continuation_line()
   // ci-dessus) est la continuation visuelle de la ligne précédente (ascendant dont le libellé complet
-  // a débordé sur deux lignes), jamais un ascendant distinct.
+  // a débordé sur deux lignes), jamais un ascendant distinct. Second motif de repli, EN PLEIN MILIEU
+  // du nom cette fois (correctif recette Goldame d'Aubigny, voir gwseq_ifce_pedigree_entry_looks_incomplete()
+  // ci-dessus) : vérifié UNIQUEMENT quand le premier motif ne s'applique pas, et seulement si les deux
+  // conditions conjointes de cette règle contextuelle sont réunies — jamais parce que deux lignes se
+  // suivent simplement.
   $merged_lines = array();
   foreach ($raw_lines as $line) {
-    if (gwseq_ifce_looks_like_pedigree_continuation_line($line) && !empty($merged_lines)) {
+    $has_previous = !empty($merged_lines);
+    $previous_line = $has_previous ? $merged_lines[count($merged_lines) - 1] : '';
+
+    $is_continuation = $has_previous && gwseq_ifce_looks_like_pedigree_continuation_line($line);
+    if (!$is_continuation && $has_previous && gwseq_ifce_pedigree_entry_looks_incomplete($previous_line)) {
+      $is_continuation = gwseq_ifce_pedigree_line_completes_entry($previous_line, $line);
+    }
+
+    if ($is_continuation) {
       $merged_lines[count($merged_lines) - 1] .= ' ' . $line;
     } else {
       $merged_lines[] = $line;

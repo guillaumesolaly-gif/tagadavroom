@@ -535,6 +535,57 @@ gws_test_assert(($cornet['pedigree']['mother']['name'] ?? null) === 'RABANNA VAN
 gws_test_assert(($cornet['pedigree']['mother']['father']['name'] ?? null) === 'HEARTBREAKER' && ($cornet['pedigree']['mother']['father']['father']['name'] ?? null) === 'NIMMERDOR' && ($cornet['pedigree']['mother']['father']['mother']['name'] ?? null) === 'BACAROLE', 'Cornet Obolensky : branche HEARTBREAKER (-> NIMMERDOR x BACAROLE) à sa bonne position');
 gws_test_assert(($cornet['pedigree']['mother']['mother']['name'] ?? null) === 'HOLIVEA VAN COSTERSVELD' && ($cornet['pedigree']['mother']['mother']['father']['name'] ?? null) === 'RANDEL Z' && ($cornet['pedigree']['mother']['mother']['mother']['name'] ?? null) === 'GUDULA O', 'Cornet Obolensky : branche HOLIVEA VAN COSTERSVELD (-> RANDEL Z x GUDULA O, avec sa propre continuation d’année isolée "1984" déjà validée) à sa bonne position, non affectée par le correctif de la branche CORRADO plus haut dans l’arbre');
 
+// =====================================================================================
+// 2 quater. CORRECTIF RECETTE (Lot 2B.2, cas réel Goldame d'Aubigny) : une ligne de pedigree peut
+// se replier EN PLEIN MILIEU du nom d'un ascendant (pas seulement sur du pays/stud-book/année pur,
+// déjà couvert ci-dessus pour Corrado/Cornet) — "BALOUBET DU ROUET Alias GANDINI BALOUBET DU" suivi
+// de "ROUET SFA 1989". Non reconnue avant ce correctif, la suite devenait un ascendant FANTÔME
+// ("ROUET"), décalant toute la généalogie d'un rang et faisant perdre le véritable 14e ascendant
+// (tronqué par array_slice(..., 0, 14)). Règle CONTEXTUELLE À DEUX CONDITIONS CONJOINTES
+// (gwseq_ifce_pedigree_entry_looks_incomplete()/gwseq_ifce_pedigree_line_completes_entry(),
+// ifce-import-parser.php) : jamais un assouplissement général de la regex de continuation existante.
+// =====================================================================================
+
+$goldame = gws_test_ifce_parse_fixture('ifce-goldame-d-aubigny.pdf');
+gws_test_assert(empty($goldame['__fixture_missing']), 'Fixture : le vrai PDF de Goldame d’Aubigny est bien présent dans tests/fixtures/');
+gws_test_assert($goldame['valid'] === true, 'Goldame d’Aubigny : document bien reconnu');
+gws_test_assert(($goldame['identity']['nom'] ?? null) === 'GOLDAME D\'AUBIGNY' && ($goldame['identity']['annee_naissance'] ?? null) === 2016, 'Goldame d’Aubigny : nom et année exacts (préalable au test de pedigree ci-dessous)');
+gws_test_assert(($goldame['pedigree']['count'] ?? null) === 14, 'Correctif recette Goldame : exactement 14 ascendants reconnus — aucun ascendant fantôme ("ROUET") comptabilisé, ET le véritable 14e ascendant (PHEDRA RATELIERE) n’est plus tronqué par le plafond array_slice(..., 0, 14)');
+
+$gp = $goldame['pedigree'];
+gws_test_assert(($gp['father']['name'] ?? null) === 'ARLEM ANDALOU' && ($gp['father']['annee_naissance'] ?? null) === 2010, 'Correctif recette Goldame : Père = ARLEM ANDALOU (2010)');
+gws_test_assert(($gp['father']['father']['name'] ?? null) === 'GANDINI BALOUBET DU ROUET' && ($gp['father']['father']['annee_naissance'] ?? null) === 1989, 'CORRECTIF RECETTE (cœur du bug) : le nom d’usage "GANDINI BALOUBET DU ROUET" est désormais reconstitué EN ENTIER (plus jamais tronqué en "GANDINI BALOUBET"), avec son année 1989 — AVANT ce correctif, le nom était incomplet et l’année perdue, remplacées par un ascendant fantôme "ROUET" à la position suivante');
+gws_test_assert(($gp['father']['father']['father']['name'] ?? null) === 'GALOUBET A' && ($gp['father']['father']['father']['annee_naissance'] ?? null) === 1972, 'Correctif recette Goldame : PPP = GALOUBET A (1972) — jamais l’ascendant fantôme "ROUET" qu’AVANT ce correctif cette position portait à tort');
+gws_test_assert(($gp['father']['father']['mother']['name'] ?? null) === 'MESANGE DU ROUET' && ($gp['father']['father']['mother']['annee_naissance'] ?? null) === 1978, 'Correctif recette Goldame : PPM = MESANGE DU ROUET (1978), à sa bonne position (plus décalée d’un rang)');
+gws_test_assert(($gp['father']['mother']['name'] ?? null) === 'SALSA ANDALOUSE' && ($gp['father']['mother']['annee_naissance'] ?? null) === 2006, 'Correctif recette Goldame : PM = SALSA ANDALOUSE (2006)');
+gws_test_assert(($gp['father']['mother']['father']['name'] ?? null) === 'EPHEBE FOR EVER' && ($gp['father']['mother']['mother']['name'] ?? null) === 'ANDALOUSE', 'Correctif recette Goldame : PMP = EPHEBE FOR EVER, PMM = ANDALOUSE');
+gws_test_assert(($gp['mother']['name'] ?? null) === 'TELDAME DE LA NUTRIA' && ($gp['mother']['annee_naissance'] ?? null) === 2007, 'CORRECTIF RECETTE (symptôme signalé en recette) : Mère = TELDAME DE LA NUTRIA (2007) — AVANT ce correctif, ce rôle était occupé à tort par "ANDALOUSE" (décalage d’un rang causé par l’ascendant fantôme)');
+gws_test_assert(($gp['mother']['father']['name'] ?? null) === 'CARTHAGO Z' && ($gp['mother']['father']['annee_naissance'] ?? null) === 1987, 'Correctif recette Goldame : MP = CARTHAGO Z (1987)');
+gws_test_assert(($gp['mother']['father']['father']['name'] ?? null) === 'CAPITOL I' && ($gp['mother']['father']['mother']['name'] ?? null) === 'PERRA' && ($gp['mother']['father']['mother']['annee_naissance'] ?? null) === '', 'Correctif recette Goldame : MPP = CAPITOL I, MPM = PERRA — SANS année (stud-book seul, "PERRA HOLST"), et ce malgré l’absence d’année reste bien un ascendant à PART ENTIÈRE, jamais fusionnée avec ce qui suit (voir cas négatif ci-dessous)');
+gws_test_assert(($gp['mother']['mother']['name'] ?? null) === 'FELDAM DE BLONDEL' && ($gp['mother']['mother']['annee_naissance'] ?? null) === 1993, 'Correctif recette Goldame : MM = FELDAM DE BLONDEL (1993) — PERRA (sans année) n’a jamais été fusionnée avec cette entrée suivante');
+gws_test_assert(($gp['mother']['mother']['father']['name'] ?? null) === 'QUIDAM DE REVEL', 'Correctif recette Goldame : MMP = QUIDAM DE REVEL');
+gws_test_assert(($gp['mother']['mother']['mother']['name'] ?? null) === 'PHEDRA RATELIERE' && ($gp['mother']['mother']['mother']['annee_naissance'] ?? null) === 1981, 'CORRECTIF RECETTE : MMM = PHEDRA RATELIERE (1981), le véritable 14e ascendant — AVANT ce correctif, entièrement absent de l’arbre (tronqué par le plafond de 14, la place ayant été consommée par l’ascendant fantôme)');
+
+// --- Unités : les deux nouvelles fonctions de détection, isolément ---
+gws_test_assert(gwseq_ifce_pedigree_entry_looks_incomplete('BALOUBET DU ROUET Alias GANDINI BALOUBET DU') === true, 'gwseq_ifce_pedigree_entry_looks_incomplete() : une ligne avec "Alias" et sans année reconnue est bien jugée incomplète');
+gws_test_assert(gwseq_ifce_pedigree_entry_looks_incomplete('PERRA HOLST') === false, 'CAS NÉGATIF : "PERRA HOLST" (sans année, mais SANS "Alias") n’est jamais jugée incomplète — un ascendant réel sans année reconnue reste un ascendant à part entière, jamais un candidat à la fusion');
+gws_test_assert(gwseq_ifce_pedigree_entry_looks_incomplete('SOMEHORSE Alias SOMEALIAS SFA 1990') === false, 'CAS NÉGATIF (§ demande explicite) : une ligne avec "Alias" MAIS déjà complète (année 1990 déjà résolue) n’est jamais jugée incomplète — ne doit jamais fusionner la ligne suivante même si "Alias" est présent');
+gws_test_assert(gwseq_ifce_pedigree_line_completes_entry('BALOUBET DU ROUET Alias GANDINI BALOUBET DU', 'ROUET SFA 1989') === true, 'gwseq_ifce_pedigree_line_completes_entry() : rattacher "ROUET SFA 1989" complète bien l’entrée (une année apparaît là où il n’y en avait aucune)');
+gws_test_assert(gwseq_ifce_pedigree_line_completes_entry('PERRA HOLST', 'FELDAM DE BLONDEL SFA 1993') === true, 'gwseq_ifce_pedigree_line_completes_entry() seule (sans le premier critère) trouverait aussi une année ici — CONFIRME que c’est bien gwseq_ifce_pedigree_entry_looks_incomplete() en amont (rejetant "PERRA HOLST", sans "Alias") qui empêche la fusion, jamais ce second critère utilisé isolément');
+
+// --- CAS NÉGATIF explicite (§ "vraie ligne d’ascendant court reste un nouvel ascendant") : une
+// ligne complète et courte, immédiatement précédée d’une ligne "Alias" déjà achevée, ne fusionne
+// jamais — reproduit sur le texte synthétique exact du scénario demandé ---
+$synthetic_no_false_merge = gwseq_ifce_parse_pedigree_from_lines(array(
+  'Pedigree',
+  'CHEVAL EXEMPLE SF 2015', // Père
+  'SOMEHORSE Alias SOMEALIAS SFA 1990', // PP — "Alias" présent MAIS déjà complet (année 1990)
+  'GALOUBET A SFA 1972', // PPP — doit rester un ascendant À PART ENTIÈRE, jamais fusionné dans PP
+));
+gws_test_assert(($synthetic_no_false_merge['father']['father']['name'] ?? null) === 'SOMEALIAS' && ($synthetic_no_false_merge['father']['father']['annee_naissance'] ?? null) === 1990, 'CAS NÉGATIF : PP reste "SOMEALIAS" (1990), jamais étendu avec la ligne suivante');
+gws_test_assert(($synthetic_no_false_merge['father']['father']['father']['name'] ?? null) === 'GALOUBET A' && ($synthetic_no_false_merge['father']['father']['father']['annee_naissance'] ?? null) === 1972, 'CAS NÉGATIF CONFIRMÉ : "GALOUBET A SFA 1972" reste un ascendant PPP distinct et complet, jamais fusionné dans PP au seul motif que PP contient "Alias"');
+gws_test_assert($synthetic_no_false_merge['count'] === 3, 'CAS NÉGATIF : exactement 3 ascendants reconnus dans ce texte synthétique à 3 lignes — aucune fusion erronée n’en a réduit le nombre à 2');
+
 // --- Iowa Jal : format standard à 5 segments (Race, Sexe, Robe, Taille, "né(e) en AAAA", sans
 // mention finale ", étalon") — non-régression explicite du format déjà couvert par Jamerose. ---
 $iowa = gws_test_ifce_parse_fixture('ifce-iowa-jal.pdf');

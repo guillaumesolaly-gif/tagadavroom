@@ -234,6 +234,9 @@ require $module_dir . 'includes/race-referentiel.php';
 require $module_dir . 'includes/cheval-fields.php';
 require $module_dir . 'includes/pedigree-resolver.php';
 require $module_dir . 'includes/cheval-pedigree.php';
+// gwseq_pedigree_display_name() réutilise désormais gwseq_horse_share_decode_title() (correctif
+// recette Lot 2B.2, cas réel Goldame d'Aubigny) — voir plus bas dans ce fichier.
+require $module_dir . 'includes/cheval-share.php';
 
 $cheval_pedigree_source = file_get_contents($module_dir . 'includes/cheval-pedigree.php');
 $resolver_source = file_get_contents($module_dir . 'includes/pedigree-resolver.php');
@@ -1554,6 +1557,25 @@ gwseq_render_cheval_pedigree_box(gws_test_make_post_object(851));
 $fallback_html = ob_get_clean();
 gws_test_assert(strpos($fallback_html, 'de cet ascendant') !== false, 'Contexte : repli explicite (« cet ascendant ») tant que le nom d’un ascendant n’est pas encore renseigné');
 gws_test_assert(!preg_match('/Origines de\s*<\/strong>/', $fallback_html), 'Contexte : jamais « Origines de » affiché avec un nom vide accolé juste derrière');
+
+// =====================================================================================
+// CORRECTIF RECETTE (Lot 2B.2, cas réel Goldame d'Aubigny) : un titre de cheval — ou le nom d'un
+// ascendant externe saisi/importé — peut contenir une entité HTML encore sous forme de texte
+// LITTÉRAL (ex. "Goldame d&rsquo;Aubigny", résidu d'un import/copier-coller antérieur, jamais
+// décodé par get_the_title()). AVANT ce correctif, gwseq_pedigree_display_name() ne faisait que
+// mettre en majuscules ce texte tel quel ("GOLDAME D&RSQUO;AUBIGNY", exactement le symptôme signalé
+// en recette) — elle réutilise désormais gwseq_horse_share_decode_title() (même point de décodage
+// déjà validé en 0.24.0 pour le module Partage), jamais une seconde logique dupliquée.
+// =====================================================================================
+gws_test_assert(gwseq_pedigree_display_name("Goldame d&rsquo;Aubigny") === 'GOLDAME D’AUBIGNY', 'CORRECTIF RECETTE : gwseq_pedigree_display_name() décode bien une entité HTML nommée encore littérale dans le nom source ("d&rsquo;Aubigny" -> véritable apostrophe courbe ’), AVANT mise en majuscules — jamais "D&RSQUO;AUBIGNY" affiché tel quel');
+gws_test_assert(gwseq_pedigree_display_name('Goldame d&#8217;Aubigny') === 'GOLDAME D’AUBIGNY', 'CORRECTIF RECETTE : décodage également valable pour la forme numérique de l’entité ("&#8217;")');
+
+gws_test_make_post(852, GWSEQ_CPT_CHEVAL, "Goldame d&rsquo;Aubigny");
+ob_start();
+gwseq_render_cheval_pedigree_box(gws_test_make_post_object(852));
+$entity_title_html = ob_get_clean();
+gws_test_assert(strpos($entity_title_html, 'Origines de GOLDAME D’AUBIGNY') !== false, 'CORRECTIF RECETTE (bout en bout) : un cheval dont le post_title contient encore l’entité littérale affiche bien « Origines de GOLDAME D’AUBIGNY » (apostrophe réelle) dans le bloc Pedigree — jamais « GOLDAME D&RSQUO;AUBIGNY »');
+gws_test_assert(stripos($entity_title_html, '&rsquo;') === false, 'CORRECTIF RECETTE : le rendu du bloc Pedigree ne contient plus jamais l’entité littérale, sous aucune casse');
 
 // --- Compteur de génération (§9, correctif référentiel §10 : profondeur standard désormais 3) :
 // présence des trois indications, y compris dès le premier niveau (l'ascendant externe immédiat

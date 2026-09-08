@@ -63,8 +63,49 @@ add_action('init', 'gwseq_register_cheval_production_meta');
  * (gwseq_format_horse_name_display(), cheval-fields.php, reste seule fonction de PRÉSENTATION).
  * ----------------------------------------------------------------------------------------- */
 
+/**
+ * Table de canonisation des apostrophes/guillemets simples typographiquement équivalents (correctif
+ * recette, cas réel Goldame d'Aubigny) — un nom IFCE extrait du PDF (toujours une apostrophe droite
+ * ASCII, `'`) et un nom GWS déjà enregistré (potentiellement une apostrophe courbe `’`/`‘`, un accent
+ * aigu utilisé comme apostrophe `´`, ou une apostrophe modificatrice `ʼ`, selon l'origine de la
+ * saisie/du copier-coller) ne doivent jamais être considérés différents pour ce seul motif. Liste
+ * FERMÉE et documentée — jamais "tout caractère qui ressemble à une apostrophe", qui rendrait la
+ * normalisation trop permissive et risquerait de fusionner des noms réellement différents.
+ */
+function gwseq_ifce_apostrophe_variants_map() {
+  return array(
+    "\xE2\x80\x99" => "'", // ’ U+2019 RIGHT SINGLE QUOTATION MARK
+    "\xE2\x80\x98" => "'", // ‘ U+2018 LEFT SINGLE QUOTATION MARK
+    "\xCA\xBC" => "'",     // ʼ U+02BC MODIFIER LETTER APOSTROPHE
+    "\xC2\xB4" => "'",     // ´ U+00B4 ACUTE ACCENT (parfois utilisé en guise d'apostrophe)
+    '`' => "'",            // ` U+0060 GRAVE ACCENT (idem)
+  );
+}
+
+/**
+ * Normalisation d'un nom de cheval pour comparaison de RATTACHEMENT UNIQUEMENT — jamais utilisée
+ * pour la sanitation/le stockage (`gwseq_format_horse_name_display()`, cheval-fields.php, reste
+ * seule fonction de PRÉSENTATION).
+ *
+ * CORRECTIF RECETTE (Lot 2B.2, cas réel Goldame d'Aubigny) : « GOLDAME D'AUBIGNY » (nom IFCE extrait
+ * du PDF) et « GOLDAME D’AUBIGNY » (titre GWS déjà enregistré, apostrophe courbe) ne matchaient
+ * jamais — visuellement identiques, octet différent après l'ancienne normalisation. Deux étapes
+ * ajoutées, DANS CET ORDRE, avant la normalisation déjà existante (accents/casse/espaces,
+ * inchangée) :
+ * 1. Décodage des entités HTML (nommées ET numériques : `&rsquo;`, `&#8217;`, `&apos;`...) — un
+ *    titre plus ancien peut contenir l'entité sous forme de texte LITTÉRAL, jamais décodée par
+ *    `get_the_title()` (même cause racine que le correctif 0.24.0 du module Partage, voir
+ *    `gwseq_horse_share_decode_title()`, cheval-share.php — non réutilisée ici littéralement afin de
+ *    ne pas faire dépendre ce fichier de stockage de la Production du module Partage, mais MÊME
+ *    appel `html_entity_decode()`, jamais une seconde logique divergente).
+ * 2. Canonisation des variantes d'apostrophe (voir gwseq_ifce_apostrophe_variants_map() ci-dessus)
+ *    vers l'apostrophe droite ASCII — appliquée APRÈS le décodage d'entités (une entité décodée peut
+ *    elle-même produire une des variantes ci-dessus, ex. `&rsquo;` -> `’`).
+ */
 function gwseq_ifce_normalize_horse_name_for_match($name) {
   $name = (string) $name;
+  $name = html_entity_decode($name, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+  $name = strtr($name, gwseq_ifce_apostrophe_variants_map());
   if (function_exists('remove_accents')) $name = remove_accents($name);
   return trim(preg_replace('/\s+/', ' ', strtoupper($name)));
 }
