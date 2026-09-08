@@ -55,7 +55,19 @@ function esc_html_e($text, $domain = 'default') { echo esc_html__($text, $domain
 $GLOBALS['__gwseq_test_registered_meta'] = array();
 function register_post_meta($object_type, $meta_key, $args = array()) { $GLOBALS['__gwseq_test_registered_meta'][$meta_key] = $args; }
 function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {}
-function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
+// Lot "mise en sommeil" : add_filter()/apply_filters() DOIVENT réellement distribuer (contrairement
+// à un simple no-op) pour que ce fichier puisse à la fois vérifier le comportement par défaut
+// (DÉSACTIVÉE, aucun filtre ajouté) ET la réactivation (add_filter('gwseq_feature_labels_enabled',
+// '__return_true')) du même mécanisme réel utilisé par gwseq_feature_labels_enabled() —
+// includes/cheval-labels.php.
+$GLOBALS['__gwseq_test_filters'] = array();
+function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) { $GLOBALS['__gwseq_test_filters'][$hook][] = $callback; }
+function remove_all_filters($hook) { unset($GLOBALS['__gwseq_test_filters'][$hook]); }
+function apply_filters($hook, $value) {
+  foreach ($GLOBALS['__gwseq_test_filters'][$hook] ?? array() as $cb) { $value = call_user_func($cb, $value); }
+  return $value;
+}
+function __return_true() { return true; }
 
 $GLOBALS['__gwseq_test_meta'] = array();
 function update_post_meta($post_id, $key, $value) { $GLOBALS['__gwseq_test_meta'][$post_id][$key] = $value; return true; }
@@ -260,6 +272,16 @@ gws_test_assert(strpos($labels_html_unknown, 'name="_gwseq_label_sport"') === fa
 // 3. Sauvegarde réelle (gwseq_save_cheval_labels_meta(), déclenchée par save_post_gwseq_cheval)
 // =====================================================================================
 
+// Lot "mise en sommeil" (voir includes/cheval-labels.php, gwseq_feature_labels_enabled()) :
+// gwseq_save_cheval_labels_meta() retourne désormais immédiatement si le flag est désactivé — son
+// défaut de production, testé séparément plus bas (§4). Les tests ci-dessous exercent le modèle
+// métier réel (sauvegarde, sanitation, changement de sexe) : ils réactivent donc explicitement le
+// flag via le même mécanisme prévu pour une vraie réactivation future
+// (add_filter('gwseq_feature_labels_enabled', '__return_true')) — ce qui démontre au passage que
+// cette réactivation permet bien au code existant, strictement inchangé, de fonctionner exactement
+// comme avant ce lot (§6 de la demande).
+add_filter('gwseq_feature_labels_enabled', '__return_true');
+
 function gws_test_labels_save($post_id, $post_data) {
   $_POST = $post_data;
   gwseq_save_cheval_labels_meta($post_id);
@@ -388,6 +410,74 @@ $GLOBALS['__gwseq_test_security']['is_revision'] = true;
 gws_test_labels_save(822, array(GWSEQ_CHEVAL_NONCE_FIELD => 'stub-nonce', '_gwseq_sexe' => 'female', '_gwseq_label_sfo' => '1'));
 gws_test_assert(($GLOBALS['__gwseq_test_meta'][822] ?? array()) === array(), '(12bis) Révision : aucune meta Labels écrite');
 gws_test_reset_security();
+
+// =====================================================================================
+// 4. MISE EN SOMMEIL — comportement PAR DÉFAUT (aucun filtre ajouté), lot dédié §1-§6 de la demande.
+// Tout ce qui précède (§1-3) a volontairement réactivé le flag pour exercer le modèle métier réel ;
+// on le désactive maintenant explicitement pour retrouver le défaut de production et vérifier la
+// non-exposition — puis on démontre une dernière fois la réactivation, isolément, sur les DEUX points
+// de câblage (boîte + sauvegarde), en plus de celle déjà démontrée implicitement par tout ce qui
+// précède.
+// =====================================================================================
+
+remove_all_filters('gwseq_feature_labels_enabled');
+gws_test_assert(gwseq_feature_labels_enabled() === false, '(§1) Source de vérité unique : gwseq_feature_labels_enabled() est bien DÉSACTIVÉE par défaut (aucun filtre ajouté)');
+
+// --- (§2) Back-office : la boîte/les champs Labels n'apparaissent plus dans l'édition d'un cheval ---
+$GLOBALS['__gwseq_test_meta_boxes'] = array();
+gwseq_add_cheval_labels_meta_box();
+gws_test_assert($GLOBALS['__gwseq_test_meta_boxes'] === array(), '(§2) Flag désactivé : gwseq_add_cheval_labels_meta_box() n’enregistre plus la boîte "gwseq-cheval-labels" — WordPress ne l’affiche donc jamais, et l’onglet "Labels" (cheval-admin-tabs.php) disparaît de lui-même (aucune boîte à y rattacher)');
+
+// --- (§2/§4/§5) Sauvegarde d'un cheval possédant DÉJÀ des labels (données de recette) : la simple
+// absence des champs Labels dans le formulaire affiché (flag désactivé) ne doit JAMAIS être
+// interprétée comme une demande de suppression — même en soumettant un $_POST COMPLET, réaliste,
+// SANS aucun champ `_gwseq_label_*` (exactement ce qu'envoie le formulaire réel une fois la boîte
+// masquée) ---
+gws_test_make_post(830, GWSEQ_CPT_CHEVAL, 'Jument Avec Labels Historiques');
+$GLOBALS['__gwseq_test_meta'][830] = array(
+  '_gwseq_label_sfo' => '1',
+  '_gwseq_label_sport' => 'elite',
+  '_gwseq_label_elevage' => 'excellente',
+  '_gwseq_label_modele_allures' => 'tres_bonne',
+  '_gwseq_label_sf_genetique_avenir' => '',
+);
+$labels_avant = $GLOBALS['__gwseq_test_meta'][830];
+gws_test_labels_save(830, array(GWSEQ_CHEVAL_NONCE_FIELD => 'stub-nonce', '_gwseq_sexe' => 'female', '_gwseq_robe' => 'gris'));
+gws_test_assert($GLOBALS['__gwseq_test_meta'][830] === $labels_avant, '(§2/§4) Flag désactivé : la sauvegarde d’un cheval déjà pourvu de labels (via un $_POST réaliste sans aucun champ Labels, boîte masquée) laisse ces metas EXACTEMENT inchangées — leur absence du formulaire n’est jamais une suppression');
+
+// --- (§5) Changement de sexe pendant le sommeil : les labels devenus incohérents avec le nouveau
+// sexe ne sont PAS nettoyés (règle de nettoyage inatteignable, voir le docblock de
+// gwseq_save_cheval_labels_meta()) — comportement documenté, pas un oubli ---
+gws_test_labels_save(830, array(GWSEQ_CHEVAL_NONCE_FIELD => 'stub-nonce', '_gwseq_sexe' => 'male'));
+gws_test_assert($GLOBALS['__gwseq_test_meta'][830] === $labels_avant, '(§5) Flag désactivé : un changement de sexe (femelle -> mâle) pendant le sommeil laisse les labels poulinières déjà enregistrés intacts (règle de nettoyage sexe-dépendante inatteignable tant que la boîte Labels est masquée), aucune perte silencieuse');
+
+// --- (§4) Aucune migration destructive : les cinq metas restent enregistrables (register_post_meta)
+// indépendamment de l'état du flag — gwseq_register_cheval_labels_meta() n'est jamais gatée ---
+$GLOBALS['__gwseq_test_registered_meta'] = array();
+gwseq_register_cheval_labels_meta();
+gws_test_assert(
+  array_keys($GLOBALS['__gwseq_test_registered_meta']) === array('_gwseq_label_sfo', '_gwseq_label_sf_genetique_avenir', '_gwseq_label_sport', '_gwseq_label_elevage', '_gwseq_label_modele_allures'),
+  '(§4) Flag désactivé : les cinq metas Labels restent déclarées via register_post_meta() — aucune migration, aucune suppression de structure'
+);
+
+// --- (§6) Réactivation isolée du flag : les DEUX points de câblage (boîte + sauvegarde) permettent
+// de nouveau au code EXISTANT, strictement inchangé, d'exposer la fonctionnalité ---
+add_filter('gwseq_feature_labels_enabled', '__return_true');
+$GLOBALS['__gwseq_test_meta_boxes'] = array();
+gwseq_add_cheval_labels_meta_box();
+gws_test_assert($GLOBALS['__gwseq_test_meta_boxes'] === array('gwseq-cheval-labels'), '(§6) Réactivation du flag : gwseq_add_cheval_labels_meta_box() enregistre de nouveau la boîte "gwseq-cheval-labels"');
+
+gws_test_labels_save(830, array(
+  GWSEQ_CHEVAL_NONCE_FIELD => 'stub-nonce',
+  '_gwseq_sexe' => 'male',
+  '_gwseq_label_sfo' => '1',
+  '_gwseq_label_sf_genetique_avenir' => '1',
+));
+gws_test_assert(
+  gwseq_get_cheval_labels(830) === array('sfo' => '1', 'sf_genetique_avenir' => '1', 'sport' => 'none', 'elevage' => 'none', 'modele_allures' => 'none'),
+  '(§6) Réactivation du flag : gwseq_save_cheval_labels_meta() sauvegarde de nouveau normalement (et réapplique la règle de nettoyage sexe-dépendante au prochain enregistrement volontaire, ici "Sport/Élevage/Modèle & Allures" bien remis à "none" pour ce mâle)'
+);
+remove_all_filters('gwseq_feature_labels_enabled');
 
 echo "\n";
 if ($failures === 0) {

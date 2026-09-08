@@ -1702,3 +1702,35 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   y compris les assertions Open Graph déjà existantes (og:title/description/url/image), reste vert
   sans modification. Intégralité de la suite (24 fichiers PHP + 4 suites JS runtime) ré-exécutée
   après restauration : aucune régression.
+- **Mise en sommeil de la fonctionnalité Labels Selle Français (0.42.0)** —
+  `gws-equestrian-cheval-labels-test.php` (fichier existant, étendu). L'environnement de test gagne
+  un vrai `add_filter()`/`apply_filters()` distribuant réellement (l'ancien `add_filter()` était un
+  no-op) pour exercer le mécanisme réel de `gwseq_feature_labels_enabled()`
+  (`apply_filters('gwseq_feature_labels_enabled', false)`, includes/cheval-labels.php).
+
+  Toutes les sections métier PRÉEXISTANTES (sanitation, rendu de la meta box, sauvegarde,
+  changement de sexe, sécurité) réactivent désormais explicitement le flag
+  (`add_filter('gwseq_feature_labels_enabled', '__return_true')`) avant de s'exécuter — elles
+  continuent donc d'exercer le modèle métier réel EXACTEMENT comme avant ce lot, démontrant au
+  passage que la réactivation restitue le comportement exact d'origine sur un code strictement
+  inchangé. Nouvelle section dédiée au comportement PAR DÉFAUT (flag désactivé, aucun filtre
+  ajouté) : `gwseq_feature_labels_enabled() === false` sans le moindre filtre ; la boîte
+  `gwseq-cheval-labels` n'est plus enregistrée (`add_meta_box()` jamais appelé) ; la sauvegarde
+  d'un cheval possédant déjà des labels, via un `$_POST` réaliste ne contenant aucun champ
+  `_gwseq_label_*` (exactement ce qu'envoie le formulaire réel une fois la boîte masquée), laisse
+  ces metas EXACTEMENT inchangées ; un changement de sexe soumis pendant ce même sommeil ne
+  déclenche PAS la règle de nettoyage sexe-dépendante existante (documenté comme un choix
+  délibéré : cette règle n'est qu'un confort lié à l'interface désormais inaccessible, jamais une
+  contrainte d'intégrité indépendante de l'UI) — aucune perte silencieuse dans les deux cas ; les
+  cinq metas restent déclarées via `register_post_meta()`, jamais gatée par ce flag (aucune
+  migration destructive) ; réactivation isolée du flag démontrée séparément sur les deux points de
+  câblage (`gwseq_add_cheval_labels_meta_box()` réenregistre la boîte, `gwseq_save_cheval_labels_meta()`
+  sauvegarde de nouveau normalement).
+
+  Correctif vérifié par retrait/restauration : retirer les deux gardes (`if
+  (!gwseq_feature_labels_enabled()) return;`, dans `gwseq_add_cheval_labels_meta_box()` et
+  `gwseq_save_cheval_labels_meta()`) fait échouer exactement les trois assertions dédiées à la
+  non-exposition par défaut, aucune autre — toutes les assertions métier préexistantes (qui
+  réactivent le flag explicitement) restent vertes. Non-régression vérifiée sur les suites Cheval,
+  partage privé, partage d'un cheval, Sélections, onglets admin et import IFCE. Intégralité de la
+  suite (24 fichiers PHP + 4 suites JS runtime) ré-exécutée : aucune régression.

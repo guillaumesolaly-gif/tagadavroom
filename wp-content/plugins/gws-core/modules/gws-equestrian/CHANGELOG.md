@@ -5,6 +5,81 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.42.0 — Mise en sommeil de la fonctionnalité Labels Selle Français
+
+Décision produit : après échange avec l'ANSF, l'autorisation d'utiliser les logos et éléments
+graphiques officiels de ses labels sur un site tiers n'a pas été obtenue. La fonctionnalité Labels
+(0.15.0 — SFO, Étalon SF Génétique Avenir, labels poulinières Sport/Élevage/Modèle & Allures) est
+donc mise en sommeil pour la V1 : totalement invisible et inactive côté utilisateur, mais son
+implémentation, son modèle métier et ses données existantes sont intégralement conservés en vue
+d'une réactivation ultérieure. Lot de désactivation réversible, volontairement isolé — aucune autre
+partie du module touchée.
+
+**Source de vérité du feature flag** : `gwseq_feature_labels_enabled()`
+(includes/cheval-labels.php), unique fonction interrogée par les deux seuls points de câblage
+concernés (voir ci-dessous) — jamais de constante ou de test dupliqué ailleurs. Implémentée via
+`apply_filters('gwseq_feature_labels_enabled', false)` : le `false` par défaut est la seule valeur
+qui compte tant qu'aucun code n'ajoute le filtre correspondant (aucun ajouté dans ce lot) ;
+réactivation future = un simple `add_filter('gwseq_feature_labels_enabled', '__return_true')`,
+sans toucher à ce fichier ni au modèle métier. Volontairement pas de réglage BO : ce n'est pas une
+option destinée au client.
+
+**Audit des points d'exposition** (recherche exhaustive de tout usage de
+`gwseq_get_cheval_labels()`/`gwseq_set_cheval_labels()`/`_gwseq_label_*` dans l'ensemble du module,
+avant toute modification) : la fonctionnalité n'était exposée QUE via la boîte d'édition
+« Labels » de la fiche Cheval en back-office (includes/cheval-labels.php) et l'onglet « Labels »
+correspondant dans la navigation admin (includes/cheval-admin-tabs.php). Aucune trace dans la
+fiche cheval publique, `/partage/{token}/` (partage privé), le partage d'un cheval
+(WhatsApp/SMS/Copier), `/selection/{token}/`, les données Open Graph, les colonnes de la liste
+d'administration ou l'import IFCE — ces circuits n'ont jamais lu ni écrit une meta de label.
+
+**Neutralisé** : `gwseq_add_cheval_labels_meta_box()` n'enregistre plus la boîte
+`gwseq-cheval-labels` (`add_meta_box()`) lorsque le flag est désactivé — WordPress ne l'affiche
+donc jamais. Conséquence automatique, sans le moindre changement dans cheval-admin-tabs.php ni son
+JavaScript : ce fichier ignore déjà silencieusement tout onglet dont aucune boîte déclarée n'est
+réellement présente à l'écran (comportement préexistant, documenté dans son propre en-tête) — la
+boîte disparaissant, l'onglet « Labels » disparaît donc de lui-même. `gwseq_save_cheval_labels_meta()`
+retourne immédiatement (avant même la vérification du nonce) lorsque le flag est désactivé, avant
+d'écrire quoi que ce soit.
+
+**Conservation des données lors des sauvegardes** : la boîte Labels n'étant plus rendue, ses champs
+`_gwseq_label_*` sont absents de tout `$_POST` réel tant que le flag est désactivé. Sans le retour
+immédiat de `gwseq_save_cheval_labels_meta()`, cette absence aurait été interprétée par
+`gwseq_sanitize_cheval_labels_input()` comme une saisie volontaire (case décochée / « Aucun ») et
+aurait silencieusement écrasé les labels déjà enregistrés — c'est précisément ce que ce lot
+interdit. Le nonce partagé de la fiche Cheval (émis par les autres boîtes : identité, indices...)
+reste présent dans `$_POST` qu'importe l'état du flag ; il ne suffit donc pas à distinguer une
+boîte masquée d'une saisie volontaire vidée, d'où un garde dédié plutôt qu'une dépendance au seul
+nonce. `gwseq_register_cheval_labels_meta()` (déclaration des cinq metas via `register_post_meta()`)
+n'est volontairement PAS gatée par ce flag : aucune structure, aucune donnée, aucune migration
+destructive.
+
+**Changement de sexe pendant le sommeil** : la règle de nettoyage sexe-dépendante existante (ex.
+passage femelle -> mâle : les trois labels poulinières remis à `none`) n'est déclenchée QUE par
+`gwseq_save_cheval_labels_meta()`, désormais interrompue avant de s'exécuter tant que le flag est
+désactivé. Choix délibéré et documenté, pas un oubli : cette règle n'est qu'un confort lié à
+l'interface Labels (elle n'accompagne qu'une saisie faite via sa boîte, désormais inaccessible),
+jamais une contrainte d'intégrité appliquée indépendamment de l'UI — l'appliquer quand même aurait
+inventé un comportement que rien ne demande. Les labels déjà enregistrés restent donc en base tels
+quels, même devenus incohérents avec un sexe modifié pendant le sommeil ; à la réactivation, le
+rendu de la boîte reflètera de nouveau le sexe alors en vigueur, et le prochain enregistrement
+volontaire de la fiche via cette boîte réappliquera la règle de nettoyage normalement — aucune
+migration nécessaire.
+
+**Tests** (`tests/gws-equestrian-cheval-labels-test.php`) : `add_filter()`/`apply_filters()`
+distribuent désormais réellement (au lieu d'un no-op) pour exercer le mécanisme réel du flag. Les
+tests métier préexistants (sanitation, rendu, sauvegarde, changement de sexe) réactivent
+explicitement le flag avant de s'exécuter — démontrant au passage que la réactivation restitue le
+comportement exact d'avant ce lot, sur un modèle métier strictement inchangé. Nouvelle section
+dédiée au comportement par défaut (flag désactivé, aucun filtre ajouté) : boîte non enregistrée,
+labels déjà enregistrés inchangés après sauvegarde d'un cheval (payload `$_POST` réaliste sans
+aucun champ Labels), y compris lors d'un changement de sexe pendant le sommeil ; les cinq metas
+restent déclarées (`register_post_meta()`) ; réactivation isolée du flag démontrée sur les deux
+points de câblage (boîte + sauvegarde). Revert-and-verify : retirer les deux gardes fait échouer
+exactement les trois assertions dédiées à la non-exposition, aucune autre. Non-régression vérifiée
+sur Cheval, partage privé, partage d'un cheval, Sélections et l'import IFCE. Intégralité de la
+suite (24 fichiers PHP + 4 suites JS runtime) ré-exécutée : aucune régression.
+
 ## 0.41.1 — Correctif de recette Lot 2C : double `<title>` sur `/selection/{token}/`
 
 Recette du Lot 2C validée fonctionnellement ; un défaut constaté pendant la recette : le `<head>`

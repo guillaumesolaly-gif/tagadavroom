@@ -1160,7 +1160,7 @@ les champs des trois sections, langues multiples, "Autre" + Préciser et son net
 réenregistrement, sanitation e-mail/URLs, téléphone/WhatsApp jamais dénaturés, colonnes de liste,
 sécurité de la sauvegarde, absence d'effet de bord sur Cheval/Prestation/Groupe).
 
-## Labels ANSF (0.15.0)
+## Labels ANSF (0.15.0 ; mise en sommeil pour la V1 en 0.42.0, voir en fin de section)
 
 Nouveau lot volontairement minimal complétant le modèle métier Cheval avant le rendu web : un
 onglet **Labels** (`includes/cheval-labels.php`), limité aux labels Selle Français / ANSF identifiés
@@ -1211,9 +1211,31 @@ sexe qui ne peut pas être confirmé).
 faible et sa maintenance créerait des risques inutiles à mesure que l'objet Cheval s'enrichit —
 aucun développement engagé sur ce sujet.
 
-Voir `tests/gws-equestrian-cheval-labels-test.php` pour la couverture dédiée (34 assertions :
-sanitation pure pour les trois sexes, exclusivité des familles, payload invalide, rendu réel,
-sauvegarde/rechargement, changement de sexe dans les deux sens, sécurité de la sauvegarde).
+Voir `tests/gws-equestrian-cheval-labels-test.php` pour la couverture dédiée (sanitation pure pour
+les trois sexes, exclusivité des familles, payload invalide, rendu réel, sauvegarde/rechargement,
+changement de sexe dans les deux sens, sécurité de la sauvegarde, et — depuis la mise en sommeil
+0.42.0 ci-dessous — le comportement par défaut du feature flag et sa réactivation).
+
+**Mise en sommeil pour la V1 (0.42.0)** : la demande d'autorisation ANSF mentionnée plus haut
+("pas encore disponible, demande en cours") a abouti à un refus — l'ANSF n'autorise pas l'usage de
+ses logos et éléments graphiques officiels sur un site tiers. Décision produit : la fonctionnalité
+est désactivée par défaut, totalement invisible et inactive côté utilisateur, mais son
+implémentation, son modèle métier (ci-dessus, strictement inchangé) et toute donnée déjà
+enregistrée restent intégralement conservés en vue d'une réactivation ultérieure si les conditions
+évoluent. Source de vérité unique : `gwseq_feature_labels_enabled()`
+(`apply_filters('gwseq_feature_labels_enabled', false)`) — désactivée par défaut, pas de réglage
+BO (ce n'est pas une option destinée au client), réactivation future par un simple
+`add_filter('gwseq_feature_labels_enabled', '__return_true')`. Tant que le flag est désactivé, la
+boîte d'édition Labels (et l'onglet correspondant, qui disparaît de lui-même faute de boîte à y
+rattacher) n'est plus enregistrée, et la sauvegarde d'une fiche Cheval n'écrit plus jamais les
+metas de labels — leur absence du formulaire masqué n'est jamais interprétée comme une demande de
+suppression, y compris lors d'un changement de sexe pendant le sommeil (la règle de nettoyage
+sexe-dépendante ci-dessus, propre à l'interface désormais inaccessible, ne s'applique alors plus,
+choix délibéré plutôt qu'un comportement inventé). Audit exhaustif préalable : la fonctionnalité
+n'a jamais été exposée nulle part ailleurs (fiche cheval publique, `/partage/{token}/`, partage
+d'un cheval, `/selection/{token}/`, Open Graph, liste d'administration, import IFCE) — rien d'autre
+n'a donc eu besoin d'être neutralisé. Voir `CHANGELOG.md` de ce dossier (0.42.0) pour le détail
+complet.
 
 ## Corrections de clôture du back-office Cheval V1 (0.16.0)
 

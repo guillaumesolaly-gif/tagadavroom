@@ -56,6 +56,29 @@
 if (!defined('ABSPATH')) exit;
 
 /**
+ * MISE EN SOMMEIL (lot dédié, voir CHANGELOG.md/README.md de ce dossier) — SOURCE DE VÉRITÉ UNIQUE
+ * de l'état de la fonctionnalité Labels : DÉSACTIVÉE PAR DÉFAUT en V1 (le `false` ci-dessous), l'ANSF
+ * n'ayant pas autorisé l'usage de ses logos/éléments graphiques officiels sur un site tiers. Décision
+ * produit : la fonctionnalité DORT, elle n'est PAS supprimée — modèle métier (ci-dessous), données
+ * déjà enregistrées et tests métier sont intégralement conservés (voir gwseq_add_cheval_labels_meta_box()
+ * et l'enregistrement conditionnel de gwseq_save_cheval_labels_meta() plus bas, les deux SEULS points
+ * de code qui interrogent cette fonction). Volontairement PAS de réglage BO : ce n'est pas une option
+ * destinée au client. `apply_filters()` (mécanisme WordPress natif, jamais un filtre métier propre à
+ * ce module) est utilisé ici EXCLUSIVEMENT pour permettre au réactivation future de se faire par un
+ * simple `add_filter('gwseq_feature_labels_enabled', '__return_true')` (ex. dans un futur mu-plugin
+ * ou lors d'un prochain lot dédié) SANS modifier ce fichier, et pour que ce même mécanisme reste
+ * testable en process (voir tests/gws-equestrian-cheval-labels-test.php) — le défaut `false` codé ici
+ * reste la SEULE valeur qui compte tant qu'aucun filtre n'est ajouté nulle part ailleurs dans le
+ * code : aucun autre point du code (fiche cheval publique, partage privé/`/partage/{token}/`, partage
+ * d'un cheval, sélection/`/selection/{token}/`, Open Graph, colonnes de la liste d'administration,
+ * import IFCE — audités, aucun n'exposait de label avant ce lot) n'ajoute un tel filtre ni ne définit
+ * de second test d'activation.
+ */
+function gwseq_feature_labels_enabled() {
+  return (bool) apply_filters('gwseq_feature_labels_enabled', false);
+}
+
+/**
  * Les quatre niveaux, communs aux trois familles de labels poulinières (§A) — valeurs techniques
  * stables en minuscules/underscore (cohérent avec les autres enums du module), libellés traduits.
  */
@@ -150,6 +173,13 @@ function gwseq_set_cheval_labels($post_id, $raw, $sexe) {
  * ----------------------------------------------------------------------------------------- */
 
 function gwseq_add_cheval_labels_meta_box() {
+  // Fonctionnalité en sommeil (voir gwseq_feature_labels_enabled() en tête de fichier) : la boîte
+  // n'est simplement jamais enregistrée — WordPress ne l'affiche donc jamais dans l'édition d'un
+  // cheval. Conséquence automatique déjà prévue par le système d'onglets existant
+  // (includes/cheval-admin-tabs.php : « Un onglet qui ne recueille aucune boîte existante n'est pas
+  // affiché. ») : l'onglet « Labels » disparaît lui aussi de lui-même, sans le moindre changement
+  // dans ce fichier de configuration ni dans le JavaScript des onglets.
+  if (!gwseq_feature_labels_enabled()) return;
   add_meta_box('gwseq-cheval-labels', __('Labels', 'gws-core'), 'gwseq_render_cheval_labels_box', GWSEQ_CPT_CHEVAL, 'normal', 'default');
 }
 add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, 'gwseq_add_cheval_labels_meta_box');
@@ -200,6 +230,41 @@ function gwseq_render_cheval_labels_box($post) {
 }
 
 function gwseq_save_cheval_labels_meta($post_id) {
+  // Fonctionnalité en sommeil (voir gwseq_feature_labels_enabled() en tête de fichier) : retour
+  // immédiat, AVANT même la vérification du nonce. Vérifié ICI, à l'exécution réelle du hook — jamais
+  // au chargement du fichier — pour qu'un futur `add_filter('gwseq_feature_labels_enabled',
+  // '__return_true')` ajouté depuis un thème/mu-plugin chargé après gws-core soit systématiquement
+  // pris en compte, quel que soit l'ordre de chargement des plugins. La boîte Labels n'étant plus
+  // jamais rendue (voir gwseq_add_cheval_labels_meta_box() ci-dessus), les champs `_gwseq_label_*`
+  // sont absents de $_POST à chaque sauvegarde réelle tant que le flag est désactivé ; sans cette
+  // garde, gwseq_sanitize_cheval_labels_input() traiterait cette absence comme une saisie volontaire
+  // (case décochée / « Aucun ») et écraserait silencieusement les labels déjà enregistrés —
+  // exactement ce que ce lot interdit (§4/§5 de la demande). Le nonce partagé
+  // (GWSEQ_CHEVAL_NONCE_FIELD) continue d'être émis par les AUTRES boîtes de la fiche (identité,
+  // indices...) et reste donc présent dans $_POST qu'importe l'état de ce flag — il ne permettrait
+  // pas de distinguer « la boîte Labels était masquée » de « l'utilisateur a coché puis décoché tous
+  // les labels », d'où la nécessité de cette garde dédiée plutôt que de se fier au seul nonce.
+  //
+  // CHANGEMENT DE SEXE PENDANT LE SOMMEIL (§5 de la demande) : la règle de nettoyage sexe-dépendante
+  // (voir le docblock de gwseq_sanitize_cheval_labels_input() plus bas) n'est déclenchée QUE par
+  // cette même fonction, désormais interrompue avant de s'exécuter tant que le flag est désactivé —
+  // elle ne s'applique donc plus du tout, y compris lors d'un changement de sexe. Choix délibéré, pas
+  // un oubli : cette règle n'est qu'un confort lié à l'interface Labels (elle n'accompagne qu'une
+  // saisie faite via sa boîte, désormais inaccessible), jamais une contrainte d'intégrité appliquée
+  // indépendamment de l'UI — l'inventer ici reviendrait à ajouter un comportement nouveau que rien ne
+  // demande. Les labels déjà enregistrés restent donc en base tels quels, même s'ils deviennent
+  // incohérents avec un sexe modifié pendant le sommeil ; à la réactivation de la fonctionnalité,
+  // gwseq_render_cheval_labels_box() les affichera de nouveau selon le sexe alors en vigueur, et le
+  // PROCHAIN enregistrement volontaire de la fiche via cette boîte réappliquera la règle de nettoyage
+  // normalement — aucune migration nécessaire.
+  //
+  // Fonction exercée DIRECTEMENT par les tests métier existants (voir
+  // tests/gws-equestrian-cheval-labels-test.php, qui réactive explicitement le flag via ce même
+  // filtre avant de les exécuter) : §4/§6 de la demande imposent de conserver ces tests, ce qui
+  // démontre au passage que la réactivation du flag permet bien au code existant, strictement
+  // inchangé, de fonctionner exactement comme avant ce lot.
+  if (!gwseq_feature_labels_enabled()) return;
+
   if (!isset($_POST[GWSEQ_CHEVAL_NONCE_FIELD]) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST[GWSEQ_CHEVAL_NONCE_FIELD])), GWSEQ_CHEVAL_NONCE_ACTION)) return;
   if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
   if (function_exists('wp_is_post_revision') && wp_is_post_revision($post_id)) return;
