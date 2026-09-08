@@ -25,6 +25,7 @@ php tests/gws-equestrian-cheval-editorial-logic-test.php
 php tests/gws-equestrian-cheval-admin-tabs-test.php
 node tests/gws-equestrian-cheval-admin-tabs-runtime-test.js
 php tests/gws-equestrian-ifce-import-test.php
+php tests/gws-equestrian-ifce-production-test.php
 node tests/gws-equestrian-race-referentiel-autocomplete-runtime-test.js
 php tests/gws-equestrian-cheval-labels-test.php
 php tests/gws-equestrian-membre-logic-test.php
@@ -562,6 +563,38 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   étiquetées (Race / Stud-book, Sexe, Robe, Taille, Année de naissance), vérifiées présentes
   séparément et l'ancien résumé concaténé vérifié absent ; purement l'affichage, `$identity`
   (donnée réellement extraite du vrai PDF) n'est ni modifiée ni recalculée.
+- **Production directe structurée des juments, Lot 2B.2 (`gws-equestrian-ifce-production-test.php`)**
+  — READY FOR 2B.2 des audits 2B.1/2B.1 bis/2B.1 ter, validé sur les VRAIS PDF de
+  `ifce-nacelle-d-elle.pdf` (7 produits directs) et `ifce-teldame-de-la-nutria.pdf` (18 produits
+  directs, Production pages 16→17). Extraction (`ifce-production-pdf-text.php`/
+  `ifce-production-parser.php`) : positions X/Y sur toutes les pages (jamais seulement la page 1,
+  Zone Sujet strictement inchangée), poursuite multi-page sans second titre "Production", profondeur
+  par année-en-tête-de-ligne + tolérance de regroupement X relative au document (jamais un seuil
+  absolu — vérifié explicitement sur deux X légèrement différents à même profondeur chez Teldame,
+  20.2 et 20.6), exclusion des lignes `saillie par...` (4 occurrences chez Teldame, niveau 1 et 2,
+  répétées) et des produits totalement sans nom (2 chez Teldame), identifiant provisoire ("QZ")
+  importé comme un nom à part entière, réconciliation exacte avec le compteur IFCE "18 prod." de
+  Teldame documentée comme observation et non comme cible, ordre du document conservé, aucune clé
+  BSO/BCC/BDR jamais présente sur une entrée de produit. Stockage et fusion non destructive au
+  réimport (`ifce-production-store.php`) : dédup année + nom normalisé, produit absent jamais
+  supprimé, rattachement déjà confirmé toujours préservé, nouveau produit ajouté, snapshot actualisé.
+  Resolver `gwseq_get_horse_direct_production()` : fusion GWS relationnel (`gwseq_get_horse_offspring()`,
+  inchangé) + externe + externe rattaché sans jamais doublonner un même cheval, garde de sexe
+  vérifiée à tous les niveaux (extraction déclenchée par l'upload, stockage, resolver, mapping) —
+  changement de sexe rendant la Production invisible SANS jamais la supprimer, réversible sans
+  perte. Rattachement certain (filiation GWS déjà déclarée, nom normalisé + année, appliqué sans
+  confirmation) et probable (nom + année sans filiation, proposé, jamais automatique, ambiguïté
+  jamais résolue arbitrairement), aucun effet de bord de filiation sur la fiche tierce liée.
+  Actualisation ISO/ICC/IDR d'un produit lié (`gwseq_ifce_map_production()`,
+  `ifce-import-mapper.php`) : "la dernière actualisation validée gagne" (import validé, puis
+  modification manuelle, puis nouvel import validé — chaque étape vérifiée), jamais une valeur
+  inventée pour un indice non détecté, et vérification déclarative explicite qu'aucun autre champ du
+  produit lié (identité, pedigree, indices génétiques...) n'est jamais appelé par cette fonction.
+  Réimport de bout en bout sur le VRAI PDF de Teldame via un cheval EXISTANT (nouvelle capacité,
+  lien "Réimporter depuis un nouveau PDF IFCE" sur la fiche Cheval) : aucune nouvelle fiche créée,
+  fiche existante mise à jour, idempotence vérifiée par un second réimport du même document (toujours
+  18 produits, jamais de doublon). Prévisualisation étendue (tableau Production, rattachements,
+  évolutions d'indices) rendue réellement sur le vrai document.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

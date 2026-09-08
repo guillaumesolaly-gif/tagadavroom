@@ -5,6 +5,84 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.44.0 — Lot 2B.2 : Production directe structurée des juments (import IFCE)
+
+Suite des audits 2B.1/2B.1 bis/2B.1 ter (verdict final **READY FOR 2B.2**) : import structuré de la
+Production directe (fils/filles directs uniquement, jamais les petits-enfants) depuis une fiche IFCE,
+réservé strictement aux juments.
+
+**Périmètre métier (§1-2)** : pour un sujet `femelle` uniquement — aucune Production structurée, ni
+interface, ni extraction pour un mâle/hongre, dont les éventuels produits restent mentionnables
+uniquement dans les champs éditoriaux existants (Présentation, Commentaire production, Faits
+marquants — Lot 2A). Aucun modèle générique de descendance commerciale des étalons construit.
+
+**Fixtures de référence, committées dans `tests/fixtures/`** (les deux documents réels ayant validé
+cette architecture au fil des audits) : `ifce-nacelle-d-elle.pdf` (7 produits directs, page 2) et
+`ifce-teldame-de-la-nutria.pdf` (18 produits directs, Production étalée pages 16→17 sans second
+titre, niveau 2 extensif, lignes `saillie par...`, produit à identifiant provisoire "QZ").
+
+**Zone Production, entièrement séparée de la Zone Sujet** (`includes/ifce-production-pdf-text.php`,
+`includes/ifce-production-parser.php`) : extraction positionnée (X/Y) sur TOUTES les pages du
+document — jamais seulement la page 1 (Zone Sujet, `ifce-pdf-text.php`, strictement inchangée) —
+recherche du titre "Production" à partir de la page 2, poursuite sur les pages suivantes sans exiger
+un second titre. Profondeur déterminée par deux signaux, jamais un seuil X absolu : (1) une vraie
+entrée commence toujours par une année à 4 chiffres, une continuation de ligne repliée jamais ; (2)
+le niveau 1 est le palier X le plus petit du document, avec une tolérance de regroupement
+(`GWSEQ_IFCE_PRODUCTION_X_TOLERANCE`, 1.5 unité PDF — Teldame montre une variation de 20.2 à 20.6 à
+profondeur identique). **Exclusion des lignes `AAAAsaillie par [étalon]`** (annonce de gestation,
+jamais une naissance — révélé par Teldame), à toute profondeur. **Produits sans nom ni identifiant
+provisoire jamais importés** (§9) — un identifiant provisoire (ex. "QZ") reste, lui, importable.
+Aucun BSO/BCC/BDR de produit jamais importé (§11, uniquement ISO/ICC/IDR).
+
+**Modèle de stockage hybride** (`includes/ifce-production-store.php`, `_gwseq_production_externe`,
+JSON par fiche) : `gwseq_get_horse_direct_production($cheval_id)` fusionne, sans jamais doublonner,
+les produits GWS relationnels déjà certains (`gwseq_get_horse_offspring()`, inchangé), les produits
+externes IFCE non rattachés, et les produits externes rattachés à une fiche GWS (dont les nom/indices
+deviennent alors la source runtime, jamais le snapshot IFCE figé). Garde de sexe de bout en bout :
+un changement de sexe vers mâle/hongre rend la Production déjà stockée invisible, **jamais
+supprimée** — réversible sans perte à tout moment.
+
+**Rattachement** : CERTAIN quand une filiation GWS pointe déjà vers le sujet (nom normalisé + année,
+appliqué automatiquement, sans confirmation) ; PROBABLE quand nom normalisé + année correspondent à
+une fiche GWS existante sans filiation déclarée (proposé en prévisualisation, coché explicitement par
+l'utilisateur — jamais automatique, jamais sur le nom seul, jamais d'ambiguïté résolue arbitrairement).
+Confirmer un rattachement n'écrit jamais de filiation en effet de bord sur la fiche tierce liée.
+
+**Actualisation ISO/ICC/IDR d'un produit GWS lié** (`gwseq_ifce_map_production()`,
+`includes/ifce-import-mapper.php`) : principe retenu — "la dernière actualisation validée gagne" —
+chaque import IFCE validé réécrit simplement l'indice sportif du produit lié via
+`gwseq_set_cheval_sport_indice()` (même fonction que la saisie manuelle), sans système de verrou
+"manuel" ni priorité de source permanente ; une modification manuelle ultérieure de la fiche liée
+reste la donnée courante jusqu'au prochain import validé. Aucun autre champ du produit lié (nom,
+sexe, année, robe, race, taille, pedigree, BSO/BCC/BDR, commercial, éditorial, médias, diffusion,
+Global Horse ID) n'est jamais modifié par ce mécanisme.
+
+**Réimport non destructif et idempotent** (§21) : nouvelle capacité — un lien "Réimporter depuis un
+nouveau PDF IFCE" sur la fiche Cheval (`gwseq_render_cheval_ifce_reimport_box()`) permet désormais
+de faire pointer un import IFCE vers une fiche EXISTANTE plutôt que d'en créer systématiquement une
+nouvelle (jusqu'ici la seule voie possible) — identifiant revalidé à chaque étape
+(`gwseq_sanitize_ifce_reimport_cheval_id()`), jamais fait confiance à une valeur simplement
+resoumise. Fusion par année + nom normalisé (`gwseq_ifce_merge_production_entries()`) : aucun
+doublon, un produit absent du nouveau PDF n'est jamais supprimé, un rattachement déjà confirmé est
+toujours préservé, un nouveau produit est ajouté, le snapshot IFCE est actualisé.
+
+**Prévisualisation IFCE étendue** (`ifce-import-admin.php`) : nouvelle section Production (tableau
+année/nom/père/indices, rattachements certains affichés, probables proposés par case à cocher,
+évolutions d'indices "X → Y" affichées avant validation, nombre de lignes ignorées — saillie, sans
+nom, niveau 2+ — à titre informatif). Nouvelle case "Importer la Production", indépendante des trois
+sections existantes (identité/indices/pedigree), inchangées.
+
+**Restitution admin minimale, lecture seule** (§23, pas d'interface de gestion complexe) : boîte
+"Production (jument)" sur la fiche Cheval, visible uniquement si au moins un produit est restitué par
+le resolver.
+
+**Tests** : nouveau fichier `tests/gws-equestrian-ifce-production-test.php` (extraction réelle sur
+Nacelle/Teldame, tolérance X, exclusion saillie/sans-nom, stockage et fusion au réimport, resolver,
+rattachement certain/probable, actualisation d'indice, garde de sexe à tous les niveaux, parcours
+bout en bout upload → prévisualisation → confirmation → réimport idempotent). `ifce-import-mapper.php`/
+`ifce-import-admin.php` étendus sans régression des trois sections existantes (Identité/Indices/
+Pedigree) ni du pipeline Sujet page 1 (`ifce-pdf-text.php`, strictement inchangé).
+
 ## 0.43.0 — Lot 2A : structuration des contenus commerciaux Cheval
 
 Préparation de la future fiche PDF commerciale et du Catalogue GWS (suite de l'audit précédent) :

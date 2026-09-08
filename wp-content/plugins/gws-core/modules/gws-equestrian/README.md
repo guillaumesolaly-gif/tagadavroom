@@ -1491,16 +1491,21 @@ terminant par un chiffre romain (« HORS LA LOI II ») n'est jamais confondu ave
   propres `/Resources` (cas du vrai document testé, le plus courant chez les générateurs de
   rapports) — un PDF où les ressources sont héritées d'un nœud `/Pages` ancêtre ne serait pas
   reconnu correctement.
-- **Zone de synthèse principale uniquement** (§3/§14) : le PDF complet est accepté, mais seule sa
-  PREMIÈRE PAGE est décodée (choix délibéré, voir Architecture ci-dessus) et seule l'information
-  explicitement supportée y est exploitée — jamais une donnée devinée. Volontairement hors périmètre
-  V1 : production détaillée des ascendants, collatéraux, descendants, résultats exhaustifs, toute
-  information sans emplacement dans le modèle GWS actuel.
+- **Zone de synthèse principale uniquement pour le SUJET** (§3/§14) : le PDF complet est accepté,
+  mais seule sa PREMIÈRE PAGE est décodée pour l'identité/les indices/le pedigree DU SUJET (choix
+  délibéré, voir Architecture ci-dessus) — jamais une donnée devinée. Depuis le Lot 2B.2 (voir
+  « Production directe des juments » plus bas), la Production DIRECTE d'une jument (fils/filles
+  directs uniquement) est désormais extraite sur l'ensemble du document via un chemin de code
+  entièrement séparé — restent volontairement hors périmètre : la production des ascendants/
+  collatéraux, celle d'un sujet mâle/hongre, les petits-enfants/descendants plus éloignés, les
+  résultats sportifs exhaustifs, toute information sans emplacement dans le modèle GWS actuel.
 - **SIRE/UELN non présents sur la fiche réelle testée** : leur extraction est implémentée et testée,
   mais la zone exploitée du vrai PDF de Jamerose ne les affiche pas explicitement — non confirmé sur
   un document qui les présenterait.
-- **Aucun rapprochement avec une fiche GWS existante** : une évolution future pourra proposer un
-  appariement (par nom, SIRE...) contre les chevaux déjà enregistrés, non nécessaire pour cette V1.
+- **Rapprochement avec une fiche GWS existante** : implémenté depuis le Lot 2B.2, mais UNIQUEMENT
+  pour les parents directs (§3, déjà existant avant 2B.2) et pour les produits d'une Production de
+  jument (certain/probable, voir plus bas) — aucun appariement automatique pour un ascendant plus
+  lointain du pedigree, qui reste toujours importé en ascendant externe.
 - **Aucune conservation du PDF** (§11) : le fichier temporaire est supprimé immédiatement après
   extraction du texte, que l'analyse réussisse ou échoue — ce n'est qu'une source d'import, jamais
   une nouvelle source de vérité stockée sur la fiche.
@@ -1510,6 +1515,86 @@ terminant par un chiffre romain (« HORS LA LOI II ») n'est jamais confondu ave
   redirections) n'a pas pu être exercé dans cet environnement — à valider en recette runtime.
 
 Voir `tests/README.md` pour le détail complet de la couverture de tests et de ses limites.
+
+### Production directe des juments — import IFCE (Lot 2B.2)
+
+Suite des audits 2B.1/2B.1 bis/2B.1 ter (verdict final **READY FOR 2B.2** — voir les CR d'audit
+correspondants) : import structuré de la Production directe (fils/filles directs uniquement, jamais
+les petits-enfants) depuis une fiche IFCE, réservé strictement aux juments. Voir le CHANGELOG.md
+(0.44.0) pour le détail complet livré ; résumé architectural ci-dessous.
+
+**Périmètre métier strict** : concerne uniquement une fiche dont le sexe est « femelle ». Pour un
+mâle ou un hongre, aucune Production structurée n'est jamais recherchée, extraite, ni restituée —
+ses éventuels produits restent mentionnables uniquement dans les champs éditoriaux existants
+(Présentation, Commentaire production, Faits marquants — Lot 2A).
+
+**Deux zones strictement séparées** : la Zone Sujet (identité/indices/pedigree, `ifce-pdf-text.php`/
+`ifce-import-parser.php`) reste exactement le pipeline existant, page 1 uniquement, jamais modifié.
+La Zone Production (`ifce-production-pdf-text.php`/`ifce-production-parser.php`) est un chemin de
+code entièrement distinct : positions X/Y conservées, TOUTES les pages du document décodées,
+recherche du titre « Production » à partir de la page 2, poursuite sur les pages suivantes sans
+exiger un second titre (confirmé sur un document réel où la Production s'étend des pages 16 à 17).
+
+**Détection de la profondeur** (produit direct vs petit-enfant), jamais un seuil X absolu : une
+vraie entrée commence toujours par une année à 4 chiffres (une ligne de continuation repliée jamais) ;
+le niveau 1 est le palier X le plus petit observé DANS CE DOCUMENT, avec une tolérance de
+regroupement (`GWSEQ_IFCE_PRODUCTION_X_TOLERANCE`) pour absorber les variations de quelques dixièmes
+d'unité PDF à profondeur identique. Les lignes `AAAAsaillie par [étalon]` (annonce de gestation en
+cours du sujet identifié juste au-dessus, jamais une naissance) sont exclues à toute profondeur. Un
+produit totalement dépourvu de nom ET d'identifiant provisoire n'est jamais importé ; un identifiant
+provisoire (ex. un simple code) est, lui, traité comme un nom à part entière. Seuls les indices
+sportifs (ISO/ICC/IDR) d'un produit sont importés — jamais ses indices génétiques (BSO/BCC/BDR),
+qui ne concernent que le sujet lui-même dans sa propre Zone Sujet.
+
+**Stockage et resolver** (`ifce-production-store.php`) : chaque produit externe est stocké en JSON
+sur la fiche de la jument (`_gwseq_production_externe`) — `{annee, nom, pere, iso, icc, idr, source,
+cheval_gws_id}`. `gwseq_get_horse_direct_production($cheval_id)` fusionne, sans jamais doublonner un
+même cheval : (1) les produits GWS relationnels déjà certains (`gwseq_get_horse_offspring()`,
+inchangé), (2) les produits externes IFCE sans rattachement, (3) les produits externes rattachés à
+une fiche GWS qui n'apparaît pas déjà en (1) — la fiche liée devient alors la source runtime de ses
+propres nom/indices, jamais le snapshot IFCE figé affiché en concurrence. Garde de sexe appliquée à
+la lecture (`gwseq_get_cheval_production_externe()`) : un changement de sexe vers mâle/hongre rend
+la Production déjà stockée invisible, **jamais supprimée** — réversible sans perte à tout moment si
+le sexe est de nouveau corrigé vers femelle.
+
+**Rattachement à une fiche GWS existante** : CERTAIN quand cette fiche a déjà, elle-même, une
+relation Père/Mère GWS pointant vers le sujet (nom normalisé + année, appliqué automatiquement,
+aucune confirmation demandée) ; PROBABLE quand nom normalisé + année correspondent à une fiche GWS
+existante sans filiation déclarée (proposé en prévisualisation, coché explicitement par
+l'utilisateur — jamais automatique, jamais sur le nom seul, une ambiguïté entre plusieurs
+candidats n'est jamais résolue arbitrairement). Confirmer un rattachement n'écrit JAMAIS de
+filiation en effet de bord sur la fiche tierce liée — action strictement distincte, non construite
+dans ce lot.
+
+**Actualisation ISO/ICC/IDR d'un produit GWS lié** (`gwseq_ifce_map_production()`) : principe
+retenu — « la dernière actualisation validée gagne » — chaque import IFCE validé réécrit simplement
+l'indice sportif du produit lié via `gwseq_set_cheval_sport_indice()` (même fonction que la saisie
+manuelle, jamais un accès direct aux post meta), sans système de verrou « manuel » ni priorité de
+source permanente : une modification manuelle ultérieure de la fiche liée reste la donnée courante
+jusqu'au prochain import validé qui la modifierait à son tour. Aucun autre champ du produit lié
+(nom, sexe, année, robe, race, taille, pedigree, indices génétiques, données commerciales,
+éditoriales, médias, diffusion, Global Horse ID) n'est jamais modifié par ce mécanisme.
+
+**Réimport non destructif et idempotent** : un lien « Réimporter depuis un nouveau PDF IFCE » sur la
+fiche Cheval (boîte « Import IFCE ») permet de faire pointer un nouvel import vers une fiche
+EXISTANTE plutôt que d'en créer systématiquement une nouvelle (seule voie possible avant ce lot) —
+l'identifiant est revalidé à chaque étape du parcours (jamais fait confiance à une valeur simplement
+resoumise par le client). La fusion des produits se fait par année + nom normalisé : aucun doublon,
+un produit absent du nouveau PDF n'est jamais supprimé, un rattachement déjà confirmé est toujours
+préservé, un nouveau produit est ajouté, le snapshot IFCE est actualisé.
+
+**Interface** : l'écran de prévisualisation IFCE existant est étendu (jamais un second écran) d'une
+section Production (tableau année/nom/père/indices détectés, rattachements certains affichés,
+probables proposés par case à cocher, évolutions d'indices « X → Y » affichées avant validation,
+nombre de lignes ignorées à titre informatif) et d'une case « Importer la Production », indépendante
+des trois sections existantes. Une boîte « Production (jument) », en lecture seule, restitue le
+résultat du resolver sur la fiche Cheval — pas d'interface de gestion manuelle complexe dans ce lot
+(hors périmètre : suivi reproduction, saillies, gestation, historique vétérinaire).
+
+**Fixtures de référence** (`tests/fixtures/`) : `ifce-nacelle-d-elle.pdf` (7 produits directs) et
+`ifce-teldame-de-la-nutria.pdf` (18 produits directs, Production multi-page, niveau 2 extensif,
+lignes `saillie`, identifiant provisoire) — les deux documents réels ayant permis de valider cette
+architecture au fil des audits 2B.1 à 2B.1 ter.
 
 ### Pedigree (Étape 5)
 

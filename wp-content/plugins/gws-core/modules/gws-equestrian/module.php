@@ -26,7 +26,7 @@ const GWSEQ_TAX_CATEGORIE_CHEVAL = 'gwseq_categorie_cheval';
 // Version propre au module (distincte de la version du plugin gws-core qui l'héberge) : suit
 // l'avancement des étapes du plan de développement, voir CHANGELOG.md de ce dossier. Atteindra
 // 1.0.0 au gel de la V1 (fin de l'étape 9).
-define('GWSEQ_MODULE_VERSION', '0.43.0');
+define('GWSEQ_MODULE_VERSION', '0.44.0');
 define('GWSEQ_MODULE_URL', GWS_CORE_URL . 'modules/gws-equestrian/');
 
 /**
@@ -70,6 +70,9 @@ require_once __DIR__ . '/includes/cheval-editorial.php';
 require_once __DIR__ . '/includes/cheval-admin-tabs.php';
 require_once __DIR__ . '/includes/ifce-pdf-text.php';
 require_once __DIR__ . '/includes/ifce-import-parser.php';
+require_once __DIR__ . '/includes/ifce-production-pdf-text.php';
+require_once __DIR__ . '/includes/ifce-production-parser.php';
+require_once __DIR__ . '/includes/ifce-production-store.php';
 require_once __DIR__ . '/includes/ifce-import-mapper.php';
 require_once __DIR__ . '/includes/ifce-import-admin.php';
 require_once __DIR__ . '/includes/membre-fields.php';

@@ -167,6 +167,9 @@ require $module_dir . 'includes/cheval-pedigree.php';
 require $module_dir . 'includes/cheval-indices.php';
 require $module_dir . 'includes/ifce-pdf-text.php';
 require $module_dir . 'includes/ifce-import-parser.php';
+require $module_dir . 'includes/ifce-production-pdf-text.php';
+require $module_dir . 'includes/ifce-production-parser.php';
+require $module_dir . 'includes/ifce-production-store.php';
 require $module_dir . 'includes/ifce-import-mapper.php';
 require $module_dir . 'includes/ifce-import-admin.php';
 
