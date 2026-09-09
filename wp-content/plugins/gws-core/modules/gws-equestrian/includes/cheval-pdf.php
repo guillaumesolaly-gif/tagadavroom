@@ -772,59 +772,6 @@ function gwseq_horse_pdf_draw_star_rating($pdf, $x, $y, $rating, $primary_rgb, $
 }
 
 /* -------------------------------------------------------------------------------------------
- * Production (jument) — compacte, adaptative (§20/§21 de la demande).
- * ----------------------------------------------------------------------------------------- */
-
-function gwseq_horse_pdf_draw_production_block($pdf, $x, $y, $w, $production, $commentaire, $primary_rgb, $max_entries) {
-  if (!$production) return $y;
-
-  $title = sprintf(
-    /* translators: %d: nombre de produits directs détectés */
-    _n('Production (%d produit)', 'Production (%d produits)', count($production), 'gws-core'),
-    count($production)
-  );
-  $y = gwseq_horse_pdf_draw_section_title($pdf, $x, $y, $w, $title, $primary_rgb);
-
-  $commentaire = trim((string) $commentaire);
-  if ($commentaire !== '') {
-    $pdf->SetFont('helvetica', 'I', 8.5);
-    $pdf->SetTextColor(110, 105, 95);
-    $pdf->SetXY($x, $y);
-    $fitted = gwseq_horse_pdf_fit_text_to_height($pdf, $commentaire, $w, $pdf->getStringHeight($w, ' ') * 2);
-    $pdf->MultiCell($w, 4.2, $fitted, 0, 'L', false, 1);
-    $y = $pdf->GetY() + 1.5;
-  }
-
-  $selected = gwseq_horse_pdf_select_production_entries($production, $max_entries);
-  $hidden_count = count($production) - count($selected);
-
-  $pdf->SetFont('helvetica', '', 8.5);
-  $pdf->SetTextColor(70, 65, 58);
-  $pdf->SetDrawColor(230, 226, 218);
-  $pdf->SetLineWidth(0.15);
-  foreach ($selected as $entry) {
-    $pdf->SetXY($x, $y);
-    $pdf->Cell($w, 4.6, gwseq_horse_pdf_production_line($entry), 0, 1, 'L');
-    $pdf->Line($x, $y + 4.7, $x + $w, $y + 4.7);
-    $y += 5.1;
-  }
-
-  if ($hidden_count > 0) {
-    $pdf->SetFont('helvetica', 'I', 8);
-    $pdf->SetTextColor(140, 135, 125);
-    $pdf->SetXY($x, $y + 0.5);
-    $pdf->Cell($w, 4, sprintf(
-      /* translators: %d: nombre de produits non affichés faute de place */
-      _n('+ %d autre produit', '+ %d autres produits', $hidden_count, 'gws-core'),
-      $hidden_count
-    ), 0, 1, 'L');
-    $y = $pdf->GetY();
-  }
-
-  return $y + 2;
-}
-
-/* -------------------------------------------------------------------------------------------
  * Templates métier — 3 compositions des mêmes composants (§1 de la demande).
  * ----------------------------------------------------------------------------------------- */
 
@@ -1398,44 +1345,482 @@ function gwseq_render_horse_pdf_template_etalon($pdf, $data) {
   }
 }
 
-function gwseq_render_horse_pdf_template_pouliniere($pdf, $data) {
-  $structure = $data['structure'];
-  $primary_rgb = gws_core_pdf_hex_to_rgb($structure['primary_color']);
-  $secondary_rgb = gws_core_pdf_hex_to_rgb($structure['secondary_color']);
-  $muted_rgb = array(150, 145, 135);
-  $margin = GWSEQ_PDF_CONTENT_MARGIN;
-  $content_w = $pdf->getPageWidth() - (2 * $margin);
+/**
+ * Composition RÉSERVÉE à Poulinière (même langage graphique et mêmes principes de robustesse que
+ * le master Étalon désormais figé — voir CR du lot : la Production y prend la place métier occupée
+ * par Reproduction + Conditions de monte sur l'Étalon). Fonctions dupliquées à dessein, jamais
+ * partagées avec gwseq_etalon_* : le master Étalon ne doit plus jamais être modifié par ce travail.
+ */
+function gwseq_pouliniere_text($pdf, $x, $y, $w, $text, $size = 10, $style = '', $draw = true, $rgb = array(45, 49, 47), $font = 'helvetica') {
+  $pdf->SetFont($font, $style, $size);
+  $h = $pdf->getStringHeight($w, (string) $text);
+  if ($draw) {
+    $pdf->SetTextColor($rgb[0], $rgb[1], $rgb[2]);
+    $pdf->SetXY($x, $y);
+    $pdf->MultiCell($w, $h, (string) $text, 0, 'L', false, 1);
+  }
+  return $h;
+}
 
-  gwseq_horse_pdf_draw_header($pdf, $structure, __('Fiche poulinière', 'gws-core'));
-  $y = GWSEQ_PDF_HEADER_BANNER_H + 6;
+function gwseq_pouliniere_section($pdf, $x, $y, $w, $title, $rgb, $draw) {
+  $h = gwseq_pouliniere_text($pdf, $x, $y, $w, $title, 10.5, 'B', $draw, array(35, 45, 40), 'times');
+  if ($draw) {
+    $pdf->SetDrawColor($rgb[0], $rgb[1], $rgb[2]);
+    $pdf->SetLineWidth(0.2);
+    $pdf->Line($x, $y + $h + 0.6, $x + $w, $y + $h + 0.6);
+  }
+  return $h + 2;
+}
 
-  $hero = gwseq_horse_pdf_draw_hero($pdf, $margin, $y, $content_w, $data, $primary_rgb, $secondary_rgb, true, false);
-  $iy = $hero['identity_y'];
-  $iy = gwseq_horse_pdf_draw_performance_tiles($pdf, $hero['identity_x'], $iy, $data['sport_indices'], $data['genetic_indices'], $primary_rgb) + 3;
-  $iy = gwseq_horse_pdf_draw_qualites_and_retenir($pdf, $hero['identity_x'], $iy, $hero['identity_w'], $data, $primary_rgb);
-  $y = max($hero['y'], $iy) + 4;
+function gwseq_pouliniere_footer($pdf, $data, $draw = true) {
+  $s = $data['structure'];
+  $rgb = gws_core_pdf_hex_to_rgb($s['primary_color']);
+  $ink = gws_core_pdf_hex_to_rgb($s['primary_color_contrast']);
+  $url = (string) ($data['public_url'] ?? '');
+  $has_qr = filter_var($url, FILTER_VALIDATE_URL) && in_array(strtolower(parse_url($url, PHP_URL_SCHEME) ?? ''), array('http', 'https'), true);
+  $w = $pdf->getPageWidth() - 28 - ($has_qr ? 25 : 0);
+  $coords = implode('  ·  ', array_filter(array($s['phone_display'] ?? '', $s['public_email'] ?? '', $s['website_url'] ?? '')));
+  $name_h = gwseq_pouliniere_text($pdf, 14, 0, $w, $s['name'], 9, 'B', false);
+  $coords_h = $coords === '' ? 0 : gwseq_pouliniere_text($pdf, 14, 0, $w, $coords, 8, '', false);
+  $h = max($has_qr ? 22 : 15, $name_h + $coords_h + 6);
+  if (!$draw) return $h;
+  $y = $pdf->getPageHeight() - $h;
+  $pdf->SetFillColor($rgb[0], $rgb[1], $rgb[2]);
+  $pdf->Rect(0, $y, $pdf->getPageWidth(), $h, 'F');
+  gwseq_pouliniere_text($pdf, 14, $y + 3, $w, $s['name'], 9, 'B', true, $ink);
+  if ($coords !== '') gwseq_pouliniere_text($pdf, 14, $y + 3 + $name_h, $w, $coords, 8, '', true, $ink);
+  if ($has_qr) {
+    $pdf->write2DBarcode($url, 'QRCODE,M', $pdf->getPageWidth() - 33, $y + ($h - 19) / 2, 19, 19,
+      array('border' => false, 'padding' => 2, 'fgcolor' => array(0, 0, 0), 'bgcolor' => array(255, 255, 255)), 'N');
+  }
+  return $h;
+}
 
-  $tree_h = 44;
-  $has_tree = !empty($data['pedigree']['father']) || !empty($data['pedigree']['mother']);
-  if ($has_tree) {
-    $pdf->SetFont('helvetica', 'B', 10);
-    $pdf->SetTextColor($primary_rgb[0], $primary_rgb[1], $primary_rgb[2]);
-    $pdf->SetXY($margin, $y);
-    $pdf->Cell($content_w, 5, mb_strtoupper(__('Pedigree', 'gws-core')), 0, 1, 'L');
-    $y = gwseq_horse_pdf_draw_pedigree_tree($pdf, $margin, $y + 7, $content_w, $tree_h, $data['name'], $data['pedigree'], $primary_rgb, $muted_rgb);
-    $y += 3;
+function gwseq_pouliniere_header($pdf, $data, $continued = false) {
+  $s = $data['structure'];
+  $rgb = gws_core_pdf_hex_to_rgb($s['primary_color']);
+  $ink = gws_core_pdf_hex_to_rgb($s['primary_color_contrast']);
+  $pdf->SetFillColor($rgb[0], $rgb[1], $rgb[2]);
+  $pdf->Rect(0, 0, $pdf->getPageWidth(), 20, 'F');
+  $path = !empty($s['logo_id']) ? get_attached_file($s['logo_id']) : '';
+  $box = $path ? gws_core_pdf_fit_image_box($path, 95, 13) : null;
+  if ($box) $pdf->Image($path, 14, (20 - $box['h']) / 2, $box['w'], $box['h']);
+  else {
+    $h = gwseq_pouliniere_text($pdf, 14, 0, 132, $s['name'], 13, 'B', false, $ink, 'times');
+    if ($h > 17) throw new LengthException('Nom de structure trop long pour le bandeau Poulinière.');
+    gwseq_pouliniere_text($pdf, 14, (20 - $h) / 2, 132, $s['name'], 13, 'B', true, $ink, 'times');
+  }
+  gwseq_pouliniere_text($pdf, $pdf->getPageWidth() - 58, 7, 44, $continued ? 'FICHE POULINIÈRE · SUITE' : 'FICHE POULINIÈRE', 8, '', true, $ink);
+}
+
+function gwseq_pouliniere_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
+  if (!$lines) return 0;
+  $tint = gws_core_pdf_lighten_color(sprintf('#%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2]), 0.94);
+  $pad = 2.6;
+  $tw = $w - (2 * $pad);
+  $label_h = gwseq_pouliniere_text($pdf, 0, 0, $tw, 'À RETENIR', 7, 'B', false);
+  $body = implode("\n", $lines);
+  $body_h = gwseq_pouliniere_text($pdf, 0, 0, $tw, $body, 9.5, 'I', false, array(40, 42, 38), 'times');
+  $box_h = (2 * $pad) + $label_h + 1 + $body_h;
+  if ($draw) {
+    $pdf->SetFillColor($tint[0], $tint[1], $tint[2]);
+    $pdf->Rect($x, $y, $w, $box_h, 'F');
+    gwseq_pouliniere_text($pdf, $x + $pad, $y + $pad, $tw, 'À RETENIR', 7, 'B', true, $rgb);
+    gwseq_pouliniere_text($pdf, $x + $pad, $y + $pad + $label_h + 1, $tw, $body, 9.5, 'I', true, array(40, 42, 38), 'times');
+  }
+  return $box_h;
+}
+
+/**
+ * Colonne identité du hero — même mécanique d'étirement de l'espacement interne que le master
+ * Étalon ($extra_gap/$gaps, jamais une donnée ajoutée pour équilibrer la colonne photo). Deux
+ * différences métier voulues par le client : jamais le naisseur ; une zone commerciale (statut +
+ * prix) uniquement si RÉELLEMENT renseignée, jamais un libellé inventé, qui disparaît sans laisser
+ * de trou si aucune donnée commerciale n'existe.
+ */
+function gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, $draw) {
+  $iy = $y;
+  $gaps = 0;
+  $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 22 : 24, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
+  $gaps++;
+  $id = $data['identity'];
+  $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
+  if (($id['taille_cm'] ?? '') !== '') $parts[] = number_format((float) $id['taille_cm'] / 100, 2, ',', '') . ' m';
+  $parts = array_filter($parts, function ($v) { return (string) $v !== ''; });
+  if ($parts) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 1.5 + $extra_gap; $gaps++; }
+
+  // Zone commerciale (arbitrage client) : jamais le naisseur sur la fiche Poulinière ; statut
+  // commercial affiché seulement si != "not_offered" et son libellé existe ; prix affiché seulement
+  // s'il est renseigné ; aucun des deux -> la zone entière disparaît, $gaps n'est pas incrémenté et
+  // le hero se rééquilibre naturellement sur les autres intervalles.
+  $statut = $data['commercial']['statut_commercial'] ?? 'not_offered';
+  $statut_label = $statut !== 'not_offered' ? (gwseq_cheval_statut_commercial_options()[$statut] ?? '') : '';
+  $price = (string) ($data['price_summary'] ?? '');
+  if ($statut_label !== '' || $price !== '') {
+    if ($draw) {
+      $cx = $ix;
+      if ($statut_label !== '') $cx += gwseq_horse_pdf_draw_chip($pdf, $cx, $iy, mb_strtoupper($statut_label), $rgb, array(255, 255, 255), 8.5, true) + 4;
+      if ($price !== '') {
+        $pdf->SetFont('helvetica', 'B', 14);
+        $pdf->SetTextColor($rgb[0], $rgb[1], $rgb[2]);
+        $pdf->SetXY($cx, $iy - ($statut_label !== '' ? 0.6 : 0));
+        $pdf->Cell($iw - ($cx - $ix), 7, $price, 0, 0, 'L');
+      }
+    }
+    $iy += 8.5 + $extra_gap;
+    $gaps++;
   }
 
-  $footer_top = $pdf->getPageHeight() - GWSEQ_PDF_FOOTER_BANNER_H - 6;
-  $remaining_h = $footer_top - $y;
-  // Résiste à une poulinière très prolifique (§21) : budget de lignes calculé sur l'espace
-  // RÉELLEMENT restant plutôt qu'un nombre fixe — jamais un débordement, "+N autres produits" pour
-  // le reste.
-  $max_entries = max(3, (int) floor($remaining_h / 5.4) - 1);
-  $y = gwseq_horse_pdf_draw_production_block($pdf, $margin, $y, $content_w, $data['production'], $data['editorial']['commentaire_production'] ?? '', $primary_rgb, $max_entries);
+  $indices = array();
+  foreach ((array) ($data['sport_indices'] ?? array()) as $key => $item) {
+    if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . $item['valeur'];
+  }
+  foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
+    if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
+  }
+  if ($indices) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 10.5 : 11, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
+  $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
+  if ($qualites !== '') { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, $qualites, 9, 'I', $draw, array(120, 124, 114)) + 1.5 + $extra_gap; $gaps++; }
 
-  gwseq_horse_pdf_draw_footer($pdf, $structure, $data['public_url']);
-  return true;
+  $faits = array_slice(array_filter((array) ($data['faits_marquants'] ?? array()), 'strlen'), 0, 3);
+  if ($faits) { $iy += gwseq_pouliniere_callout($pdf, $ix, $iy + 2.5 + $extra_gap, $iw, $faits, $rgb, $draw) + 2 + $extra_gap; $gaps++; }
+
+  return array('h' => $iy - $y, 'gaps' => $gaps);
+}
+
+function gwseq_pouliniere_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extra_photo_h = 0) {
+  $paths = array_values(array_unique(array_filter(array_merge(array($data['photo_path'] ?? ''), (array) ($data['gallery_paths'] ?? array())), function ($p) {
+    return is_string($p) && $p !== '' && is_readable($p) && @getimagesize($p);
+  })));
+  $photo = $paths ? array_shift($paths) : '';
+  $photos = array_slice($paths, 0, 3);
+  $pw = $photo ? $w * 0.52 : 0;
+  $ix = $photo ? $x + $pw + 8 : $x;
+  $iw = $w - ($ix - $x);
+
+  $measure = gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, 0, false);
+  $identity_h = $measure['h'];
+
+  // Galerie : mêmes règles que le master Étalon (0/1/2/3 photo(s) secondaire(s)) — voir ses
+  // commentaires pour la justification détaillée, non répétée ici (duplication volontaire, jamais
+  // partagée avec gwseq_etalon_*).
+  $thumb_gap = 3;
+  $thumb_h = 0;
+  $thumb_w = 0;
+  $n = count($photos);
+  if ($n === 1) {
+    $thumb_w = $pw * 0.475;
+    $thumb_h = $thumb_w / ($compact ? 1.7 : 1.333);
+  } elseif ($n > 1) {
+    $thumb_w = ($pw - (($n - 1) * $thumb_gap)) / $n;
+    $thumb_h = $thumb_w / 1.34;
+  }
+  $thumb_strip = $photos ? ($thumb_gap + $thumb_h) : 0;
+  $min_main_photo_h = $photo ? (($compact ? 75 : 86) + $extra_photo_h) : 0;
+  $photo_col_h = $photo ? max($min_main_photo_h + $thumb_strip, $identity_h) : 0;
+  $main_photo_h = $photo_col_h - $thumb_strip;
+  $hero_h = max($identity_h, $photo_col_h);
+
+  $extra_gap = ($extra_photo_h == 0 && $photo && $photo_col_h > $identity_h && $measure['gaps'] > 0)
+    ? ($photo_col_h - $identity_h) / $measure['gaps']
+    : 0;
+
+  if ($draw) {
+    gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, true);
+  }
+  if ($draw && $photo) {
+    gwseq_horse_pdf_draw_photo_box($pdf, $x, $y, $pw, $main_photo_h, $photo, false);
+    if ($photos) {
+      $tx = $x;
+      $ty = $y + $main_photo_h + $thumb_gap;
+      foreach ($photos as $path) {
+        gwseq_horse_pdf_draw_photo_box($pdf, $tx, $ty, $thumb_w, $thumb_h, $path, true);
+        $tx += $thumb_w + $thumb_gap;
+      }
+    }
+  }
+  return $hero_h;
+}
+
+/** Duplication volontaire de gwseq_etalon_tree() — même arbre 3 générations, jamais partagée. */
+function gwseq_pouliniere_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) {
+  $parents = array();
+  foreach (array('father', 'mother') as $side) {
+    $raw = $data['pedigree'][$side] ?? null;
+    $label = gwseq_horse_pdf_pedigree_node_label($raw);
+    if (!$label) continue;
+    $children = array();
+    foreach (array('father', 'mother') as $key) {
+      $child = gwseq_horse_pdf_pedigree_node_label($raw[$key] ?? null);
+      if ($child) $children[] = $child;
+    }
+    $parents[] = array('label' => $label, 'children' => $children);
+  }
+  if (!$parents) return 0;
+  $top = $y;
+  $y += gwseq_pouliniere_section($pdf, $x, $y, $w, 'PEDIGREE', $rgb, $draw);
+  $widths = array($w * 0.13, $w * 0.34, $w * 0.44);
+  $xs = array($x, $x + $w * 0.17, $x + $w * 0.57);
+  $node = function ($label, $col, $cy, $paint) use ($pdf, $widths, $xs, $compact) {
+    if ($col === 1) $size = $compact ? 12.5 : 13.5;
+    elseif ($col === 2) $size = $compact ? 10 : 10.5;
+    else $size = $compact ? 9.5 : 10;
+    $name = mb_strtoupper($label['name']);
+    $pdf->SetFont('times', 'B', $size);
+    if ($pdf->GetStringWidth($name) > $widths[$col]) $size -= 0.5;
+    $nh = gwseq_pouliniere_text($pdf, 0, 0, $widths[$col], $name, $size, 'B', false, array(35, 45, 40), 'times');
+    $bh = empty($label['breed']) ? 0 : gwseq_pouliniere_text($pdf, 0, 0, $widths[$col], $label['breed'], 8.5, '', false);
+    if ($paint) {
+      gwseq_pouliniere_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2, $widths[$col], $name, $size, 'B', true, array(35, 45, 40), 'times');
+      if ($bh) gwseq_pouliniere_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2 + $nh, $widths[$col], $label['breed'], 8.5, '', true, array(90, 95, 90));
+    }
+    return $nh + $bh;
+  };
+  $centers = array();
+  $cursor = $y;
+  foreach ($parents as $parent) {
+    $ph = $node($parent['label'], 1, 0, false);
+    $heights = array();
+    foreach ($parent['children'] as $child) $heights[] = max($compact ? 15 : 18, $node($child, 2, 0, false) + ($compact ? 4 : 4.5));
+    $group_h = max($ph + ($compact ? 6 : 7), array_sum($heights), $compact ? 32 : 41);
+    $cy = $cursor + $group_h / 2;
+    $centers[] = $cy;
+    $node($parent['label'], 1, $cy, $draw);
+    $child_y = $cursor + ($group_h - array_sum($heights)) / 2;
+    foreach ($parent['children'] as $i => $child) {
+      $gy = $child_y + $heights[$i] / 2;
+      if ($draw) {
+        $pdf->SetDrawColor(178, 187, 181);
+        $pdf->SetLineWidth(0.18);
+        $bx = $xs[2] - $w * 0.025;
+        $pdf->Line($xs[1] + $widths[1], $cy, $bx, $cy);
+        $pdf->Line($bx, $cy, $bx, $gy);
+        $pdf->Line($bx, $gy, $xs[2] - 1, $gy);
+      }
+      $node($child, 2, $gy, $draw);
+      $child_y += $heights[$i];
+    }
+    $cursor += $group_h;
+  }
+  $subject = array('name' => $data['name'], 'breed' => '');
+  $sh = $node($subject, 0, 0, false);
+  $cy = ($centers[0] + end($centers)) / 2;
+  if ($draw) {
+    $pdf->SetDrawColor(160, 172, 166);
+    $pdf->SetLineWidth(0.2);
+    $bx = $xs[1] - $w * 0.025;
+    $pdf->Line($xs[0] + $widths[0], $cy, $bx, $cy);
+    foreach ($centers as $py) {
+      $pdf->Line($bx, $cy, $bx, $py);
+      $pdf->Line($bx, $py, $xs[1] - 1, $py);
+    }
+    $node($subject, 0, $cy, true);
+  }
+  return max($cursor, $cy + $sh / 2 + 2) - $top;
+}
+
+/**
+ * Bloc Production — arbitrage client : bloc MAJEUR de la fiche Poulinière (prend la place occupée
+ * par Reproduction + Conditions de monte sur l'Étalon), jamais un tableau ni une colonne fixe
+ * ISO/ICC/IDR — une ligne compacte par produit via la fonction pure déjà testée
+ * gwseq_horse_pdf_production_line() (jamais son BLUP). Ne fait JAMAIS passer la fiche sur plusieurs
+ * pages (contrairement à Présentation/Commentaire production, qui peuvent paginer via $flow comme
+ * sur l'Étalon) : affiche autant de produits que $available_h le permet réellement, priorité aux
+ * produits indexés puis aux meilleurs indices, non-indexés retirés en premier
+ * (gwseq_horse_pdf_select_production_entries(), déjà testée) ; l'affichage final reste dans l'ordre
+ * d'origine. Débordement -> ligne exacte "+ N autres produits", jamais une troncature silencieuse.
+ */
+function gwseq_pouliniere_production($pdf, $x, $y, $w, $entries, $rgb, $available_h, $draw) {
+  $entries = is_array($entries) ? array_values($entries) : array();
+  $total = count($entries);
+  if (!$total) return 0;
+  $body_size = 9;
+  $row_gap = 1.8;
+  $title_h = gwseq_pouliniere_section($pdf, 0, 0, $w, 'PRODUCTION', $rgb, false);
+  $line_h = gwseq_pouliniere_text($pdf, 0, 0, $w, 'Ag', $body_size, '', false);
+  $row_h = $line_h + $row_gap;
+  $overflow_text = function ($n) { return $n === 1 ? '+ 1 autre produit' : ('+ ' . $n . ' autres produits'); };
+
+  $max = $total;
+  while ($max > 0) {
+    $kept = count(gwseq_horse_pdf_select_production_entries($entries, $max));
+    $remainder = $total - $kept;
+    $h = $title_h + ($kept * $row_h) + ($remainder > 0 ? $row_h : 0);
+    if ($h <= $available_h) break;
+    $max--;
+  }
+  if ($max === 0 && ($title_h + $row_h) > $available_h) return 0;
+
+  $selected = gwseq_horse_pdf_select_production_entries($entries, $max);
+  $remainder = $total - count($selected);
+  $block_h = $title_h + (count($selected) * $row_h) + ($remainder > 0 ? $row_h : 0);
+  if (!$draw) return $block_h;
+
+  $iy = $y;
+  $iy += gwseq_pouliniere_section($pdf, $x, $iy, $w, 'PRODUCTION', $rgb, true);
+  foreach ($selected as $entry) {
+    $full = gwseq_horse_pdf_production_line($entry);
+    $name_raw = (string) ($entry['nom'] ?? '');
+    $rest = mb_substr($full, mb_strlen($name_raw));
+    $pdf->SetFont('helvetica', 'B', $body_size);
+    $pdf->SetTextColor(45, 49, 47);
+    $pdf->SetXY($x, $iy);
+    $name_w = $pdf->GetStringWidth($name_raw) + 1;
+    $pdf->Cell($name_w, $line_h, $name_raw, 0, 0, 'L');
+    if ($rest !== '') {
+      $pdf->SetFont('helvetica', '', $body_size);
+      $pdf->SetTextColor(70, 65, 58);
+      $pdf->SetXY($x + $name_w, $iy);
+      $pdf->Cell($w - $name_w, $line_h, $rest, 0, 0, 'L');
+    }
+    $iy += $row_h;
+  }
+  if ($remainder > 0) {
+    gwseq_pouliniere_text($pdf, $x, $iy, $w, $overflow_text($remainder), $body_size, 'I', true, array(128, 124, 116));
+    $iy += $row_h;
+  }
+  return $iy - $y;
+}
+
+function gwseq_render_horse_pdf_template_pouliniere($pdf, $data) {
+  $disable_credit = Closure::bind(function () { $this->tcpdflink = false; }, $pdf, 'TCPDF');
+  $disable_credit();
+  $old_padding = $pdf->getCellPaddings();
+  $old_ratio = $pdf->getCellHeightRatio();
+  $pdf->setCellPaddings(0, 0, 0, 0);
+  $pdf->setCellHeightRatio(1.2);
+  try {
+    $rgb = gws_core_pdf_hex_to_rgb($data['structure']['primary_color']);
+    $ink = gws_core_pdf_hex_to_rgb($data['structure']['primary_color_contrast']);
+    $x = 14;
+    $w = $pdf->getPageWidth() - 28;
+    $limit = $pdf->getPageHeight() - gwseq_pouliniere_footer($pdf, $data, false) - 4;
+    $body_size = 10;
+    $gap = 4;
+    $presentation = trim((string) ($data['editorial']['presentation'] ?? ''));
+    // Arbitrage client : jamais le « Conseil de croisement » (spécifique à l'Étalon) sur la
+    // Poulinière ; à sa place, le « Commentaire production » (champ métier existant dédié), affiché
+    // seulement s'il est renseigné.
+    $commentaire_production = trim((string) ($data['editorial']['commentaire_production'] ?? ''));
+    $production = is_array($data['production'] ?? null) ? array_values($data['production']) : array();
+    $block_h = function ($title, $body, $width, $size) use ($pdf, $rgb) {
+      return gwseq_pouliniere_section($pdf, 0, 0, $width, $title, $rgb, false) + gwseq_pouliniere_text($pdf, 0, 0, $width, $body, $size, '', false);
+    };
+    // Deux budgets, calculés AVANT tout dessin (comme le master Étalon). La Production reste un
+    // bloc autonome placé en dernier, qui ne force jamais une deuxième page — mais un minimum
+    // (titre + quelques lignes) est réservé dans ce budget pour que le mode aéré ne l'écrase pas :
+    // sans cette réserve, Présentation/Commentaire production/Pedigree pourraient occuper tout
+    // l'espace restant et ne laisser presque rien au bloc "majeur" de la fiche (arbitrage client).
+    $production_reserve_h = 0;
+    if ($production) {
+      $reserve_n = min(count($production), 6);
+      $reserve_kept = count(gwseq_horse_pdf_select_production_entries($production, $reserve_n));
+      $prod_line_h = gwseq_pouliniere_text($pdf, 0, 0, $w, 'Ag', 9, '', false) + 1.8;
+      $production_reserve_h = gwseq_pouliniere_section($pdf, 0, 0, $w, 'PRODUCTION', $rgb, false) + ($reserve_kept + 1) * $prod_line_h;
+    }
+    foreach (array(false, true) as $compact) {
+      $body_size = $compact ? 9.5 : 10;
+      $gap = $compact ? 3 : 4;
+      $hero_h = gwseq_pouliniere_hero($pdf, $data, $x, 24, $w, $rgb, $compact, false);
+      $tree_h = gwseq_pouliniere_tree($pdf, $data, $x, 0, $w, $rgb, $compact, false);
+      $ph = $presentation !== '' ? $block_h('PRÉSENTATION', $presentation, $w, $body_size) : 0;
+      $cph = $commentaire_production !== '' ? $block_h('COMMENTAIRE PRODUCTION', $commentaire_production, $w, $body_size) : 0;
+      $total = 24 + $hero_h + $gap;
+      foreach (array($tree_h, $ph, $cph) as $height) if ($height > 0) $total += $height + $gap;
+      if ($production) $total += $production_reserve_h + $gap;
+      if ($total <= $limit) break;
+    }
+    // Cas pauvre : même mécanisme d'agrandissement de la photo dominante que le master Étalon.
+    $extra_photo_h = 0;
+    if (!$compact) {
+      $slack = $limit - $total;
+      if ($slack > 8) {
+        $extra_photo_h = min($slack - 4, 55);
+        $boosted_hero_h = gwseq_pouliniere_hero($pdf, $data, $x, 24, $w, $rgb, $compact, false, $extra_photo_h);
+        if ($boosted_hero_h > $hero_h) {
+          $hero_h = $boosted_hero_h;
+          $gap += 1.5;
+        } else {
+          $extra_photo_h = 0;
+        }
+      }
+    }
+    gwseq_pouliniere_header($pdf, $data);
+    $y = 24;
+    $new_page = function () use ($pdf, $data, &$y) {
+      gwseq_pouliniere_footer($pdf, $data);
+      $pdf->AddPage();
+      gwseq_pouliniere_header($pdf, $data, true);
+      $y = 24;
+    };
+    $room = function ($h) use (&$y, $limit, $new_page) {
+      if ($h > $limit - 24) throw new LengthException('Bloc Poulinière trop haut : vérifiez les noms ou les données de pedigree.');
+      if ($y + $h > $limit) $new_page();
+    };
+    $room($hero_h);
+    $y += gwseq_pouliniere_hero($pdf, $data, $x, $y, $w, $rgb, $compact, true, $extra_photo_h) + $gap;
+    if ($tree_h > 0) {
+      $room($tree_h);
+      $y += gwseq_pouliniere_tree($pdf, $data, $x, $y, $w, $rgb, $compact, true) + $gap;
+    }
+    // Flux de secours : découpe mesurée, conserve chaque caractère, titre « suite » (duplication
+    // volontaire du mécanisme du master Étalon, adaptée à des blocs séquentiels et non appariés).
+    $flow = function ($title, $body, $colored = false, $size = null) use ($pdf, $x, $w, $rgb, $ink, $limit, $new_page, &$y, $gap, $body_size, $block_h) {
+      $size = $size ?? $body_size;
+      $pad = $colored ? 4 : 0;
+      $tw = $w - 2 * $pad;
+      $full_h = $block_h($title, $body, $tw, $size) + 2 * $pad;
+      if ($y + $full_h > $limit && $full_h <= $limit - 24) $new_page();
+      $continued = false;
+      while ($body !== '') {
+        $heading = $title . ($continued ? ' · SUITE' : '');
+        $hh = gwseq_pouliniere_section($pdf, 0, 0, $tw, $heading, $rgb, false);
+        $available = $limit - $y - $hh - 2 * $pad;
+        $line_h = gwseq_pouliniere_text($pdf, 0, 0, $tw, 'Ag', $size, '', false);
+        if ($available < 2 * $line_h) { $new_page(); continue; }
+        $length = mb_strlen($body);
+        $low = 0; $high = $length;
+        while ($low < $high) {
+          $mid = (int) ceil(($low + $high) / 2);
+          $h = gwseq_pouliniere_text($pdf, 0, 0, $tw, mb_substr($body, 0, $mid), $size, '', false);
+          if ($h <= $available) $low = $mid; else $high = $mid - 1;
+        }
+        if ($low < 1) throw new LengthException('Texte Poulinière impossible à composer.');
+        if ($low < $length) {
+          $prefix = mb_substr($body, 0, $low);
+          $paragraph = mb_strrpos($prefix, "\n\n");
+          if ($paragraph !== false && $paragraph > $low * 0.65) {
+            $low = $paragraph + 2;
+          } else {
+            $space = mb_strrpos($prefix, ' ');
+            if ($space !== false && $space > 0) $low = $space + 1;
+          }
+        }
+        $chunk = mb_substr($body, 0, $low);
+        $h = gwseq_pouliniere_text($pdf, 0, 0, $tw, $chunk, $size, '', false);
+        if ($colored) {
+          $pdf->SetFillColor($rgb[0], $rgb[1], $rgb[2]);
+          $pdf->Rect($x, $y, $w, $hh + $h + 2 * $pad, 'F');
+          gwseq_pouliniere_text($pdf, $x + $pad, $y + $pad, $tw, $heading, 11, 'B', true, $ink, 'times');
+        } else gwseq_pouliniere_section($pdf, $x, $y, $w, $heading, $rgb, true);
+        gwseq_pouliniere_text($pdf, $x + $pad, $y + $pad + $hh, $tw, $chunk, $size, '', true, $colored ? $ink : array(45, 49, 47));
+        $y += $hh + $h + 2 * $pad + $gap;
+        $body = mb_substr($body, $low);
+        if ($body !== '') { $new_page(); $continued = true; }
+      }
+    };
+    if ($presentation !== '') $flow('PRÉSENTATION', $presentation);
+    if ($commentaire_production !== '') $flow('COMMENTAIRE PRODUCTION', $commentaire_production);
+    if ($production) {
+      $available_h = $limit - $y;
+      $y += gwseq_pouliniere_production($pdf, $x, $y, $w, $production, $rgb, $available_h, true) + $gap;
+    }
+    gwseq_pouliniere_footer($pdf, $data);
+    return true;
+  } finally {
+    $pdf->setCellPaddings($old_padding['L'], $old_padding['T'], $old_padding['R'], $old_padding['B']);
+    $pdf->setCellHeightRatio($old_ratio);
+  }
 }
 
 function gwseq_render_horse_pdf_template_sport_vente($pdf, $data) {
