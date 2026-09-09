@@ -731,19 +731,32 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   Provenance testée dans `gws-equestrian-cheval-logic-test.php` : marqueur `derived_sire` effacé par
   une saisie manuelle qui change réellement l'UELN, préservé si la valeur resoumise est identique.
 
-- **Fiche cheval PDF — Lot "PDF Cheval & Catalogue", Lot 3A (`gws-equestrian-cheval-pdf-test.php`)**
-  : fonctions pures du moteur PDF partagé de gws-core (`gws_core_pdf_hex_to_rgb()`,
-  `gws_core_pdf_lighten_color()`, `gws_core_pdf_fit_image_box()`), sélection/tri de la Production
-  affichée (meilleur indice conservé en priorité, non-indicés retirés en premier, ordre
-  d'affichage final toujours = ordre d'origine du document), formatage d'une ligne de Production
-  (BLUP des produits jamais lu), assemblage `gwseq_build_horse_pdf_data()` (ID invalide -> null,
-  mauvais type de post -> null, garde de sexe pour la Production, branding par défaut vs
-  personnalisé de "Ma structure" sans duplication). Smoke-test de rendu réel via TCPDF actif
-  UNIQUEMENT si `vendor/` est installé sur l'environnement d'exécution (voir
+- **Fiche cheval PDF — Lot "PDF Cheval & Catalogue", Lot 3A + Lot 3A bis
+  (`gws-equestrian-cheval-pdf-test.php`)** : fonctions pures du moteur PDF partagé de gws-core
+  (`gws_core_pdf_hex_to_rgb()`, `gws_core_pdf_lighten_color()`, `gws_core_pdf_fit_image_box()`),
+  sélection/tri de la Production affichée (meilleur indice conservé en priorité, non-indicés
+  retirés en premier, ordre d'affichage final toujours = ordre d'origine du document), formatage
+  d'une ligne de Production — TOUS les indices renseignés affichés depuis le Lot 3A bis, plus
+  seulement le meilleur (BLUP des produits toujours jamais lu) —, assemblage
+  `gwseq_build_horse_pdf_data()` (ID invalide -> null, mauvais type de post -> null, garde de sexe
+  pour la Production, branding par défaut vs personnalisé de "Ma structure" sans duplication, et
+  depuis le Lot 3A bis : type de fiche résolu — explicite prioritaire sur l'automatique par sexe —,
+  statut ostéo-articulaire, stud-books d'approbation, WFFS, URL publique jamais fabriquée). Lot 3A
+  bis également : correctif Production/père (`gwseq_horse_direct_production_father_label()` —
+  produit GWS relié résolu via le resolver de filiation existant, produit externe résolu depuis son
+  ascendant externe, aucun père -> chaîne vide, jamais dupliqué dans `_gwseq_production_externe`),
+  champs BO de `cheval-pdf-fields.php` (résolution automatique/forcée du type de fiche, sanitation
+  du statut ostéo 1-5, sanitation des stud-books contre le référentiel existant — jamais une
+  seconde liste, jamais un code inventé —, troncature WFFS, allers-retours get/set), géométrie pure
+  de la notation en étoiles vectorielles (`gwseq_horse_pdf_star_points()` — jamais un glyphe "★" de
+  police), et troncature de texte au mot le plus proche avec ellipse
+  (`gwseq_horse_pdf_fit_text_to_height()` — jamais une réduction de police). Smoke-test de rendu
+  réel via TCPDF actif UNIQUEMENT si `vendor/` est installé sur l'environnement d'exécution (voir
   `wp-content/plugins/gws-core/composer.json`) — jamais un échec de la suite sinon, seulement une
-  ligne d'information. La recette VISUELLE réelle (mise en page, lisibilité, branding) a été faite
-  séparément via un harnais de prototype dédié (scratchpad, non livré) produisant 3 fiches PDF
-  réelles comparées avant validation — voir le CR de ce lot.
+  ligne d'information. La recette VISUELLE réelle (mise en page, lisibilité, branding, dégradation
+  gracieuse des 3 templates métier) a été faite séparément via un harnais de prototype dédié
+  (scratchpad, non livré) produisant respectivement 3 puis 4 fiches PDF réelles comparées avant
+  validation — voir le CR de chaque lot.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

@@ -1,10 +1,14 @@
 <?php
 /**
  * Vérifie les fonctions PURES du renderer de fiche cheval PDF (Lot "PDF Cheval & Catalogue",
- * Lot 3A — audit + prototype) : sélection/tri de la Production affichée, formatage d'une ligne de
- * Production, assemblage des données (gwseq_build_horse_pdf_data()), et les utilitaires génériques
- * du moteur PDF partagé de gws-core (includes/pdf-engine.php — conversion de couleurs, ajustement
- * d'image dans une boîte).
+ * Lot 3A — audit + prototype ; Lot 3A bis — refonte visuelle + templates métier) : sélection/tri de
+ * la Production affichée, formatage d'une ligne de Production (Lot 3A bis : tous les indices
+ * renseignés, plus seulement le meilleur), assemblage des données (gwseq_build_horse_pdf_data()),
+ * les nouveaux champs BO du Lot 3A bis (includes/cheval-pdf-fields.php — type de fiche, statut
+ * ostéo-articulaire, stud-books d'approbation, WFFS), le correctif Production/père
+ * (gwseq_horse_direct_production_father_label()), la géométrie de la notation en étoiles
+ * vectorielles, et les utilitaires génériques du moteur PDF partagé de gws-core
+ * (includes/pdf-engine.php — conversion de couleurs, ajustement d'image dans une boîte).
  *
  * Ne teste JAMAIS le rendu visuel réel (TCPDF) : ce fichier n'exige pas que
  * `composer install --no-dev` ait été exécuté sur cet environnement (vendor/ gitignoré, voir
@@ -129,6 +133,7 @@ require $module_dir . 'includes/cheval-indices.php';
 require $module_dir . 'includes/cheval-media.php';
 require $module_dir . 'includes/cheval-editorial.php';
 require $module_dir . 'includes/ifce-production-store.php';
+require $module_dir . 'includes/cheval-pdf-fields.php';
 require $module_dir . 'includes/cheval-pdf.php';
 
 // =====================================================================================
@@ -157,20 +162,22 @@ gws_test_assert(gwseq_horse_pdf_best_sport_value(array()) === null, 'Meilleur in
 gws_test_assert(gwseq_horse_pdf_best_sport_value(array('iso' => array('valeur' => ''))) === null, 'Meilleur indice sportif : valeur vide -> ignorée, null au global si c’est la seule');
 
 // =====================================================================================
-// 4. gwseq_horse_pdf_production_line() — direction de design §8 : "Nom (Père) · Année · ISO Valeur".
+// 4. gwseq_horse_pdf_production_line() — Lot 3A bis §20 : "Nom · Père · Année — ISO X · ICC Y",
+//    TOUS les indices réellement renseignés sont affichés (correctif par rapport au Lot 3A, qui
+//    n'affichait que le meilleur des trois).
 // =====================================================================================
 
 $line_full = gwseq_horse_pdf_production_line(array('nom' => 'Vaillant de Félines', 'pere' => 'Pegase Gerbaux', 'annee' => 2009, 'iso' => array('valeur' => 118), 'icc' => array('valeur' => ''), 'idr' => array('valeur' => '')));
-gws_test_assert($line_full === 'Vaillant de Félines (Pegase Gerbaux) · 2009 · ISO 118', 'Ligne de Production complète : format exact conforme à la direction de design');
+gws_test_assert($line_full === 'Vaillant de Félines · Pegase Gerbaux · 2009 — ISO 118', 'Ligne de Production complète : format exact conforme à la direction de design du Lot 3A bis');
 
 $line_no_pere = gwseq_horse_pdf_production_line(array('nom' => 'Espoir de Félines', 'pere' => '', 'annee' => 2017, 'iso' => array('valeur' => ''), 'icc' => array('valeur' => ''), 'idr' => array('valeur' => '')));
-gws_test_assert($line_no_pere === 'Espoir de Félines · 2017', 'Ligne de Production : père absent -> segment omis proprement, jamais "()"');
+gws_test_assert($line_no_pere === 'Espoir de Félines · 2017', 'Ligne de Production : père absent -> segment omis proprement, jamais un séparateur orphelin');
 
 $line_bare = gwseq_horse_pdf_production_line(array('nom' => 'Sans Donnee', 'pere' => '', 'annee' => '', 'iso' => array('valeur' => ''), 'icc' => array('valeur' => ''), 'idr' => array('valeur' => '')));
 gws_test_assert($line_bare === 'Sans Donnee', 'Ligne de Production : ni père, ni année, ni indice -> juste le nom, jamais un séparateur orphelin');
 
-$line_best_of_three = gwseq_horse_pdf_production_line(array('nom' => 'Multi Indices', 'pere' => '', 'annee' => 2015, 'iso' => array('valeur' => 100), 'icc' => array('valeur' => 130), 'idr' => array('valeur' => 90)));
-gws_test_assert(strpos($line_best_of_three, 'ICC 130') !== false && strpos($line_best_of_three, 'ISO') === false && strpos($line_best_of_three, 'IDR') === false, 'Ligne de Production : SEUL le meilleur indice (ICC 130) est affiché, jamais les trois');
+$line_all_indices = gwseq_horse_pdf_production_line(array('nom' => 'Multi Indices', 'pere' => '', 'annee' => 2015, 'iso' => array('valeur' => 100), 'icc' => array('valeur' => 130), 'idr' => array('valeur' => 90)));
+gws_test_assert($line_all_indices === 'Multi Indices · 2015 — ISO 100 · ICC 130 · IDR 90', 'Ligne de Production (correctif Lot 3A bis) : TOUS les indices renseignés sont affichés, dans cet ordre, plus seulement le meilleur des trois');
 
 gws_test_assert(strpos(json_encode(gwseq_horse_pdf_production_line(array('nom' => 'X', 'pere' => '', 'annee' => '', 'iso' => array('valeur' => ''), 'icc' => array('valeur' => ''), 'idr' => array('valeur' => ''), 'bso' => array('valeur' => 999)))), 'bso') === false, 'Ligne de Production (§3/§8) : le BLUP (bso/bcc/bdr) d’un produit n’est jamais lu ni affiché, même présent dans l’entrée');
 
@@ -228,12 +235,33 @@ gws_test_assert(array_key_exists('iso', $data60['sport_indices']) && !array_key_
 gws_test_assert(is_array($data60['structure']) && array_key_exists('primary_color', $data60['structure']), 'gwseq_build_horse_pdf_data() : branding assemblé via gws_core_structure_identity() (aucune donnée dupliquée)');
 gws_test_assert($data60['photo_path'] === '', 'gwseq_build_horse_pdf_data() : aucune photo principale définie -> chemin vide, jamais une erreur');
 
+// --- Nouveaux champs du Lot 3A bis assemblés par gwseq_build_horse_pdf_data() : type de fiche
+// résolu, stud-books, statut ostéo, WFFS, URL publique — jamais dupliqués, juste consommés ---
+gws_test_assert($data60['pdf_template'] === 'pouliniere', 'gwseq_build_horse_pdf_data() (Lot 3A bis) : aucun type explicite -> résolu automatiquement depuis le sexe (femelle -> "pouliniere")');
+gws_test_assert($data60['statut_osteo'] === 0, 'gwseq_build_horse_pdf_data() (Lot 3A bis) : statut ostéo-articulaire non renseigné -> 0, jamais une note inventée');
+gws_test_assert($data60['studbooks_labels'] === array(), 'gwseq_build_horse_pdf_data() (Lot 3A bis) : aucun stud-book d’approbation sélectionné -> tableau vide');
+gws_test_assert($data60['wffs'] === '', 'gwseq_build_horse_pdf_data() (Lot 3A bis) : WFFS non renseigné -> chaîne vide');
+gws_test_assert($data60['gallery_paths'] === array(), 'gwseq_build_horse_pdf_data() (Lot 3A bis) : aucune photo de galerie -> tableau vide, jamais une erreur');
+gws_test_assert($data60['public_url'] === '', 'gwseq_build_horse_pdf_data() (Lot 3A bis) : gwseq_horse_share_fiche_url() absent de ce harnais de test -> URL publique vide, jamais fabriquée');
+
+gwseq_set_cheval_statut_osteo_articulaire(60, 4);
+gwseq_set_cheval_studbooks_approbation(60, array('SF', 'Z'));
+gwseq_set_cheval_wffs(60, 'N/N');
+gwseq_set_cheval_pdf_template(60, 'etalon'); // type forcé explicitement, à contre-sens du sexe -> doit primer
+$data60_pdf_fields = gwseq_build_horse_pdf_data(60);
+gws_test_assert($data60_pdf_fields['pdf_template'] === 'etalon', 'gwseq_build_horse_pdf_data() (Lot 3A bis) : un type de fiche explicitement forcé prime toujours sur la résolution automatique par sexe');
+gws_test_assert($data60_pdf_fields['statut_osteo'] === 4, 'gwseq_build_horse_pdf_data() (Lot 3A bis) : statut ostéo-articulaire bien répercuté (entier, jamais un caractère "★")');
+gws_test_assert($data60_pdf_fields['studbooks_labels'] === array('SF', 'Z'), 'gwseq_build_horse_pdf_data() (Lot 3A bis) : stud-books d’approbation bien répercutés, ordre de sélection préservé');
+gws_test_assert($data60_pdf_fields['wffs'] === 'N/N', 'gwseq_build_horse_pdf_data() (Lot 3A bis) : WFFS bien répercuté, texte libre');
+gwseq_set_cheval_pdf_template(60, ''); // remis en mode Automatique pour ne pas fausser les assemblages suivants
+
 // --- Garde de sexe (§3/§8 de la demande) : jamais de bloc Production pour un mâle/hongre, même si
 // gwseq_get_horse_direct_production() était un jour appelée par erreur sur un mâle ---
 gws_test_make_post(61, GWSEQ_CPT_CHEVAL, 'Etalon PDF Test');
 gwseq_set_cheval_identity(61, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => '2012'));
 $data61 = gwseq_build_horse_pdf_data(61);
 gws_test_assert($data61['production'] === array(), 'gwseq_build_horse_pdf_data() (§3/§8) : Production structurellement vide pour un mâle, garde de sexe appliquée à l’assemblage lui-même');
+gws_test_assert($data61['pdf_template'] === 'etalon', 'gwseq_build_horse_pdf_data() (Lot 3A bis) : aucun type explicite -> résolu automatiquement depuis le sexe (mâle -> "etalon")');
 
 // --- Branding par défaut vs personnalisé (§2 de la demande) — jamais dupliqué, juste consommé ---
 $GLOBALS['__test_options']['gws_core_settings'] = array(); // aucune personnalisation
@@ -245,8 +273,103 @@ $data_custom_branding = gwseq_build_horse_pdf_data(60);
 gws_test_assert($data_custom_branding['structure']['primary_color'] === '#7a1f2b' && $data_custom_branding['structure']['name'] === 'Haras Test', 'gwseq_build_horse_pdf_data() : couleur/nom personnalisés de "Ma structure" bien répercutés sans duplication');
 
 // =====================================================================================
-// 7. Smoke-test de rendu réel — UNIQUEMENT si la bibliothèque PDF est disponible (voir docblock de
-//    fichier). Jamais un échec de la suite si vendor/ n'a pas été installé sur cet environnement.
+// 7. gwseq_horse_direct_production_father_label() — correctif Lot 3A bis §22 : le père d'un produit
+//    RELATIONNELLEMENT lié en GWS doit être résolu (via le resolver de filiation déjà existant,
+//    jamais dupliqué dans _gwseq_production_externe), plus jamais vide.
+// =====================================================================================
+
+gws_test_assert(gwseq_horse_direct_production_father_label(999999) === '', 'gwseq_horse_direct_production_father_label() : produit inexistant -> chaîne vide, jamais une erreur');
+
+gws_test_make_post(70, GWSEQ_CPT_CHEVAL, 'Lando');
+gwseq_set_cheval_identity(70, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => '2001'));
+gws_test_make_post(71, GWSEQ_CPT_CHEVAL, 'Atwood de Félines');
+gwseq_set_cheval_identity(71, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => '2010'));
+gwseq_set_horse_parent(71, 'father', array('mode' => 'gws', 'horse_id' => 70));
+gws_test_assert(gwseq_horse_direct_production_father_label(71) === 'Lando', 'gwseq_horse_direct_production_father_label() (correctif §22) : père relié en GWS -> résolu via le resolver de filiation existant, plus jamais vide');
+
+gws_test_make_post(72, GWSEQ_CPT_CHEVAL, 'Produit Externe Test');
+gwseq_set_cheval_identity(72, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => '2011'));
+gwseq_set_horse_parent(72, 'father', array('mode' => 'external', 'external' => array('name' => 'Kannan')));
+gws_test_assert(gwseq_horse_direct_production_father_label(72) === 'Kannan', 'gwseq_horse_direct_production_father_label() : père renseigné comme ascendant externe -> son nom est résolu');
+
+gws_test_make_post(73, GWSEQ_CPT_CHEVAL, 'Produit Sans Pere');
+gwseq_set_cheval_identity(73, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => '2012'));
+gws_test_assert(gwseq_horse_direct_production_father_label(73) === '', 'gwseq_horse_direct_production_father_label() : aucun père renseigné -> chaîne vide, jamais une valeur inventée');
+
+// =====================================================================================
+// 8. Champs BO du Lot 3A bis (includes/cheval-pdf-fields.php) — fonctions PURES de résolution et
+//    de sanitation.
+// =====================================================================================
+
+gws_test_assert(gwseq_resolve_cheval_pdf_template('etalon', 'female') === 'etalon', 'gwseq_resolve_cheval_pdf_template() : un type explicitement choisi prime toujours, même à contre-sens du sexe');
+gws_test_assert(gwseq_resolve_cheval_pdf_template('', 'male') === 'etalon', 'gwseq_resolve_cheval_pdf_template() : mode Automatique, mâle -> "etalon"');
+gws_test_assert(gwseq_resolve_cheval_pdf_template('', 'female') === 'pouliniere', 'gwseq_resolve_cheval_pdf_template() : mode Automatique, femelle -> "pouliniere"');
+gws_test_assert(gwseq_resolve_cheval_pdf_template('', 'gelding') === 'sport_vente', 'gwseq_resolve_cheval_pdf_template() : mode Automatique, hongre -> repli sûr "sport_vente"');
+gws_test_assert(gwseq_resolve_cheval_pdf_template('', '') === 'sport_vente', 'gwseq_resolve_cheval_pdf_template() : mode Automatique, sexe non renseigné -> repli sûr "sport_vente", jamais "etalon"/"pouliniere" pour un sexe ambigu');
+gws_test_assert(gwseq_resolve_cheval_pdf_template('valeur-invalide', 'male') === 'etalon', 'gwseq_resolve_cheval_pdf_template() : valeur explicite inconnue -> traitée comme Automatique, jamais une erreur');
+
+gws_test_assert(gwseq_sanitize_cheval_statut_osteo_articulaire('') === 0, 'gwseq_sanitize_cheval_statut_osteo_articulaire() : chaîne vide -> 0 (non renseigné)');
+gws_test_assert(gwseq_sanitize_cheval_statut_osteo_articulaire('3') === 3, 'gwseq_sanitize_cheval_statut_osteo_articulaire() : "3" -> 3 (entier)');
+gws_test_assert(gwseq_sanitize_cheval_statut_osteo_articulaire(5) === 5, 'gwseq_sanitize_cheval_statut_osteo_articulaire() : borne haute (5) acceptée');
+gws_test_assert(gwseq_sanitize_cheval_statut_osteo_articulaire(0) === 0, 'gwseq_sanitize_cheval_statut_osteo_articulaire() : 0 -> 0 (non renseigné)');
+gws_test_assert(gwseq_sanitize_cheval_statut_osteo_articulaire(6) === 0, 'gwseq_sanitize_cheval_statut_osteo_articulaire() : valeur hors borne (6) -> 0, jamais une note invalide stockée');
+gws_test_assert(gwseq_sanitize_cheval_statut_osteo_articulaire(-1) === 0, 'gwseq_sanitize_cheval_statut_osteo_articulaire() : valeur négative -> 0');
+gws_test_assert(gwseq_sanitize_cheval_statut_osteo_articulaire('★★★') === 0, 'gwseq_sanitize_cheval_statut_osteo_articulaire() : un caractère "★" n’est jamais stocké tel quel (toujours un entier ou 0)');
+
+$studbook_options = gwseq_cheval_studbook_approbation_options();
+gws_test_assert(array_key_exists('SF', $studbook_options) && array_key_exists('Z', $studbook_options), 'gwseq_cheval_studbook_approbation_options() : réutilise bien le référentiel existant (SF, Z retrouvés)');
+gws_test_assert(!array_key_exists('OC', $studbook_options), 'gwseq_cheval_studbook_approbation_options() : une "appellation" du référentiel (OC) n’est jamais proposée comme stud-book d’approbation');
+
+gws_test_assert(gwseq_sanitize_cheval_studbooks_approbation(array('SF', 'Z', 'SF', 'CODE-INVENTE')) === array('SF', 'Z'), 'gwseq_sanitize_cheval_studbooks_approbation() : dédupliqué, ordre de sélection préservé, un code inexistant dans le référentiel est rejeté (jamais une chaîne libre inventée)');
+gws_test_assert(gwseq_sanitize_cheval_studbooks_approbation('SF') === array(), 'gwseq_sanitize_cheval_studbooks_approbation() : une valeur qui n’est pas un tableau -> tableau vide, jamais une erreur');
+gws_test_assert(gwseq_sanitize_cheval_studbooks_approbation(array()) === array(), 'gwseq_sanitize_cheval_studbooks_approbation() : tableau vide -> tableau vide');
+
+gws_test_assert(gwseq_sanitize_cheval_wffs('N/N') === 'N/N', 'gwseq_sanitize_cheval_wffs() : texte libre court conservé tel quel, sans nomenclature imposée');
+gws_test_assert(mb_strlen(gwseq_sanitize_cheval_wffs(str_repeat('X', 100))) === GWSEQ_CHEVAL_WFFS_MAX_LENGTH, 'gwseq_sanitize_cheval_wffs() : tronqué à ' . GWSEQ_CHEVAL_WFFS_MAX_LENGTH . ' caractères, jamais stocké au-delà');
+
+gws_test_assert(array_key_exists('', gwseq_cheval_pdf_template_options()) && array_key_exists('etalon', gwseq_cheval_pdf_template_options()), 'gwseq_cheval_pdf_template_options() : propose bien "Automatique" (clé vide) et les trois types explicites');
+
+gws_test_make_post(80, GWSEQ_CPT_CHEVAL, 'Cheval Champs PDF Test');
+gwseq_set_cheval_pdf_template(80, 'pouliniere');
+gws_test_assert(gwseq_get_cheval_pdf_template(80) === 'pouliniere', 'gwseq_get/set_cheval_pdf_template() : aller-retour fidèle pour une valeur valide');
+gwseq_set_cheval_pdf_template(80, 'valeur-invalide');
+gws_test_assert(gwseq_get_cheval_pdf_template(80) === '', 'gwseq_set_cheval_pdf_template() : une valeur invalide est ramenée à "" (Automatique), jamais stockée telle quelle');
+
+gwseq_set_cheval_studbooks_approbation(80, array('Z', 'SF', 'CODE-INVENTE'));
+gws_test_assert(gwseq_get_cheval_studbooks_approbation(80) === array('Z', 'SF'), 'gwseq_get/set_cheval_studbooks_approbation() : aller-retour fidèle, sanitation appliquée à l’écriture');
+
+gwseq_set_cheval_wffs(80, '  Porteur  ');
+gws_test_assert(gwseq_get_cheval_wffs(80) === 'Porteur', 'gwseq_get/set_cheval_wffs() : aller-retour fidèle, espaces superflus retirés');
+
+// =====================================================================================
+// 9. gwseq_horse_pdf_star_points() — géométrie PURE de l'étoile vectorielle (jamais un glyphe de
+//    police "★", voir docblock de includes/cheval-pdf.php).
+// =====================================================================================
+
+$star = gwseq_horse_pdf_star_points(10, 10, 2, 1);
+gws_test_assert(count($star) === 20, 'gwseq_horse_pdf_star_points() : 10 points (5 externes + 5 internes) -> 20 coordonnées (x,y répétés)');
+gws_test_assert(abs($star[0] - 10) < 0.0001 && abs($star[1] - 8) < 0.0001, 'gwseq_horse_pdf_star_points() : la première pointe est bien dirigée vers le haut (x=cx, y=cy-r_outer)');
+
+// =====================================================================================
+// 10. gwseq_horse_pdf_fit_text_to_height() — troncature au mot le plus proche (jamais de réduction
+//     de police, §15) — UNIQUEMENT si TCPDF est disponible (mesure réelle via getStringHeight()).
+// =====================================================================================
+
+if (gws_core_pdf_available()) {
+  $pdf_fit = gws_core_pdf_new_document('P', 'Test');
+  $pdf_fit->AddPage();
+  $pdf_fit->SetFont('helvetica', '', 9);
+  gws_test_assert(gwseq_horse_pdf_fit_text_to_height($pdf_fit, '', 100, 20) === '', 'gwseq_horse_pdf_fit_text_to_height() : texte vide -> chaîne vide');
+  gws_test_assert(gwseq_horse_pdf_fit_text_to_height($pdf_fit, 'Un texte court', 100, 20) === 'Un texte court', 'gwseq_horse_pdf_fit_text_to_height() : un texte qui tient déjà -> renvoyé inchangé, jamais tronqué inutilement');
+  $long_text = str_repeat('Un mot répété plusieurs fois. ', 40);
+  $truncated = gwseq_horse_pdf_fit_text_to_height($pdf_fit, $long_text, 60, 10);
+  gws_test_assert(mb_substr($truncated, -1) === '…' || $truncated === '', 'gwseq_horse_pdf_fit_text_to_height() : un texte trop long pour la hauteur donnée est tronqué avec une ellipse finale (jamais un débordement, jamais une police réduite)');
+  gws_test_assert($pdf_fit->getStringHeight(60, $truncated) <= 10 + 0.01, 'gwseq_horse_pdf_fit_text_to_height() : le texte tronqué tient bien dans la hauteur maximale demandée');
+}
+
+// =====================================================================================
+// 11. Smoke-test de rendu réel — UNIQUEMENT si la bibliothèque PDF est disponible (voir docblock de
+//     fichier). Jamais un échec de la suite si vendor/ n'a pas été installé sur cet environnement.
 // =====================================================================================
 
 if (gws_core_pdf_available()) {

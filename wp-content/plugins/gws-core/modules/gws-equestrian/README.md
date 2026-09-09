@@ -1728,29 +1728,70 @@ automatiquement à partir du SIRE"), provenance `_gwseq_ueln_source = 'derived_s
 celle du SIRE. Vérifié sur le vrai PDF de GOLDAME D'AUBIGNY (Selle Français, SIRE `16398915R` →
 UELN `25000116398915R`).
 
-### Fiche cheval PDF — Lot "PDF Cheval & Catalogue", Lot 3A (0.47.0)
+### Fiche cheval PDF — Lot "PDF Cheval & Catalogue", Lot 3A (0.47.0) puis Lot 3A bis (0.48.0)
 
-**Périmètre strict de ce lot** : audit + moteur PDF partagé minimal (gws-core,
-`includes/pdf-engine.php`, voir son README) + premier renderer de fiche cheval A4 complet. Aucun
-catalogue, aucune bibliothèque de PDF externes, aucun drag & drop — hors périmètre des lots
-suivants (3B à 3E), volontairement non anticipés ici.
+**Périmètre strict de ces lots** : Lot 3A = audit + moteur PDF partagé minimal (gws-core,
+`includes/pdf-engine.php`, voir son README) + premier renderer de fiche cheval A4 complet. Lot 3A
+bis = refonte visuelle de ce même renderer, déclinée en 3 templates métier. Dans les deux cas :
+aucun catalogue, aucune bibliothèque de PDF externes/FPDI, aucun drag & drop, aucun bouton de
+téléchargement final — hors périmètre des lots suivants (3B à 3E), volontairement non anticipés
+ici. **L'architecture posée au Lot 3A n'a pas été réécrite au Lot 3A bis** : TCPDF,
+`includes/pdf-engine.php`, `gwseq_build_horse_pdf_data()`, `gwseq_render_horse_pdf_page()` comme
+renderer partagé unique, `gwseq_generate_horse_pdf()` restent strictement les mêmes — seul le
+CONTENU de `gwseq_render_horse_pdf_page()` se réorganise en 3 templates.
 
 **`includes/cheval-pdf.php`** : `gwseq_build_horse_pdf_data($horse_id)` assemble toutes les
 données (identité, commercial, éditorial, indices sportifs/génétiques, pedigree 3 générations via
 `gwseq_resolve_horse_pedigree()`, Production directe pour une jument via
-`gwseq_get_horse_direct_production()`) **exclusivement via les fonctions métier déjà existantes**
-et `gws_core_structure_identity()` pour tout le branding — aucune duplication. `gwseq_render_horse_pdf_page($pdf, $horse_id, $context)`
-est LE renderer unique (header branding, hero photo/identité, statut+prix, chips d'indices avec
-mise en évidence du meilleur, qualités/faits marquants, mini-pedigree, présentation, Production
-(jument uniquement, triée par meilleur indice, non-indicés retirés en premier si trop nombreux,
-jamais les petits-enfants ni le BLUP des produits), identifiants officiels, footer) — le même
-renderer servira au PDF individuel ET à un futur Catalogue (`$context['mode']`, réservé,
-actuellement sans effet). `gwseq_generate_horse_pdf($horse_id, $context)` orchestre le document
-complet (génération à la demande, jamais enregistré durablement).
+`gwseq_get_horse_direct_production()`, et depuis le Lot 3A bis : type de fiche résolu, statut
+ostéo-articulaire, stud-books d'approbation, WFFS, URL publique) **exclusivement via les fonctions
+métier déjà existantes** et `gws_core_structure_identity()` pour tout le branding — aucune
+duplication. `gwseq_render_horse_pdf_page($pdf, $horse_id, $context)` reste LE point d'entrée
+unique mais devient un dispatcher (Lot 3A bis) : il sélectionne l'un des 3 templates métier selon le
+type de fiche résolu, tous construits sur les mêmes composants de dessin partagés (header
+plein cadre avec logo/nom + couleur principale, jamais de slogan ; footer plein cadre avec
+coordonnées + QR code vers la fiche publique via `gwseq_horse_share_fiche_url()`, jamais de slogan,
+QR absent et footer réorganisé si aucune fiche publique n'est disponible ; galerie photo adaptative,
+1 seule photo -> aucun emplacement secondaire réservé, jamais de recadrage agressif de la photo
+principale ; tuiles de performance adaptatives ; qualités + "À retenir" ; arbre de pedigree réel sur
+3 générations, branches fines, noms qui rétrécissent localement plutôt que de jamais se chevaucher ;
+blocs éditoriaux) :
+- **Étalon** — hero avec naisseur (jamais de prix, jamais de mention fabriquée), pedigree en
+  évidence, Présentation + Conseil de croisement, bloc Reproduction adaptatif (statut
+  ostéo-articulaire en étoiles VECTORIELLES — jamais un caractère "★" de police —, stud-books
+  d'approbation, WFFS — largeur répartie uniquement entre les éléments réellement renseignés),
+  Conditions de monte {année courante + 1}.
+- **Poulinière** — hero avec prix/statut, pedigree "élément majeur", Production très compacte
+  (aucune colonne ISO fixe, format "Nom · Père · Année — ISO X · ICC Y" affichant TOUS les indices
+  réellement renseignés par produit — correctif par rapport au Lot 3A qui n'affichait que le
+  meilleur des trois —, résiste à 15+ produits, priorité aux produits indexés, jamais les
+  petits-enfants ni le BLUP d'un produit), SIRE/UELN/naisseur/propriétaire absents du footer.
+- **Sport / Vente** — hero avec prix/statut en évidence, priorité photo > prix/statut >
+  performances > qualités > "à retenir" > galerie > pedigree > présentation,
+  SIRE/UELN/naisseur/propriétaire absents, footer directement après la présentation.
 
-Chaque section se replie proprement si sa donnée est absente (jamais un bloc vide). Testé sur 3
-profils réels de données (jument complète + Production, cheval très indicé, cheval à données
-quasi vides) — voir le CR du lot pour les captures et le protocole de recette visuelle.
+`gwseq_generate_horse_pdf($horse_id, $context)` orchestre toujours le document complet (génération
+à la demande, jamais enregistré durablement) — inchangé depuis le Lot 3A.
+
+**Nouveaux champs BO** (`includes/cheval-pdf-fields.php`, Lot 3A bis, boîte "Fiche PDF" sur l'écran
+Cheval) : type de fiche (Automatique/Étalon/Poulinière/Sport-Vente, un type forcé prime toujours sur
+la résolution automatique par sexe), statut ostéo-articulaire (note 1-5, distincte du commentaire
+texte `_gwseq_osteo_articulaire` déjà existant), stud-books d'approbation (réutilise le référentiel
+races/stud-books déjà existant — jamais une seconde liste, jamais un code inventé), WFFS (texte
+libre court, sans nomenclature imposée).
+
+**Correctif Production/père** (`includes/ifce-production-store.php`) : le père d'un produit
+RELATIONNELLEMENT lié en GWS, jusque-là toujours vide (`'pere' => ''` codé en dur), est désormais
+résolu via le resolver de filiation déjà existant (`gwseq_horse_direct_production_father_label()`)
+— jamais dupliqué dans `_gwseq_production_externe`.
+
+Chaque section se replie proprement si sa donnée est absente (jamais un bloc vide réservé, jamais
+un chevauchement, jamais une réduction extrême de police pour faire rentrer le contenu). Testé sur
+3 profils réels de données au Lot 3A (jument complète + Production, cheval très indicé, cheval à
+données quasi vides), puis sur 4 profils de stress-test au Lot 3A bis (Étalon à données minimales,
+Étalon à données maximales avec 8 stud-books/5 qualités/pedigree complet, Poulinière à 16 produits,
+Sport/Vente à données minimales) — voir le CR de chaque lot pour les captures et le protocole de
+recette visuelle.
 
 ### Pedigree (Étape 5)
 

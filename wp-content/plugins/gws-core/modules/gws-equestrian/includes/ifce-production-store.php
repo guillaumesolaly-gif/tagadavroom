@@ -442,6 +442,28 @@ function gwseq_ifce_apply_production_maternity_case($case, $linked_id, $jument_i
  * ----------------------------------------------------------------------------------------- */
 
 /**
+ * Nom d'affichage du père d'un produit RELATIONNELLEMENT lié en GWS (correctif Lot "PDF Cheval &
+ * Catalogue", Lot 3A bis, §22) — jamais stocké, toujours recalculé depuis la relation de pedigree
+ * déjà existante du produit lui-même (`gwseq_get_horse_parent()`, cheval-pedigree.php — chargé
+ * bien avant ce fichier, voir module.php) : ni une seconde donnée dans `_gwseq_production_externe`,
+ * ni un second mécanisme de résolution. Couvre les deux modes de relation Père du produit : 'gws'
+ * (fiche Cheval réellement existante — jamais une fiche supprimée définitivement, même garde que le
+ * reste de ce fichier) et 'external' (ascendant texte structuré, importé du PDF IFCE du produit
+ * lui-même). '' si le produit n'a lui-même aucun père renseigné — jamais une valeur inventée.
+ */
+function gwseq_horse_direct_production_father_label($offspring_id) {
+  $relation = gwseq_get_horse_parent($offspring_id, 'father');
+  if ($relation['mode'] === 'gws' && $relation['horse_id']) {
+    $father_id = (int) $relation['horse_id'];
+    return get_post_type($father_id) === GWSEQ_CPT_CHEVAL ? get_the_title($father_id) : '';
+  }
+  if ($relation['mode'] === 'external' && is_array($relation['external'])) {
+    return (string) ($relation['external']['name'] ?? '');
+  }
+  return '';
+}
+
+/**
  * Production directe fusionnée d'une jument — point d'entrée métier unique du Lot 2B.2. Toujours un
  * tableau, jamais autre chose : vide pour un cheval invalide, pour un mâle/hongre (§5), ou pour une
  * femelle sans aucun produit connu. Chaque élément : {source: 'gws'|'ifce'|'ifce_linked',
@@ -466,7 +488,10 @@ function gwseq_get_horse_direct_production($cheval_id) {
       'cheval_gws_id' => (int) $offspring->ID,
       'nom' => get_the_title($offspring),
       'annee' => $offspring_identity['annee_naissance'],
-      'pere' => '',
+      // Correctif Lot 3A bis (§22) : auparavant toujours '' pour un produit relationnellement lié
+      // en GWS, alors que sa propre relation Père (déjà saisie sur SA fiche) est directement
+      // disponible — voir gwseq_horse_direct_production_father_label() ci-dessus.
+      'pere' => gwseq_horse_direct_production_father_label($offspring->ID),
       'iso' => gwseq_get_cheval_sport_indice($offspring->ID, 'iso'),
       'icc' => gwseq_get_cheval_sport_indice($offspring->ID, 'icc'),
       'idr' => gwseq_get_cheval_sport_indice($offspring->ID, 'idr'),

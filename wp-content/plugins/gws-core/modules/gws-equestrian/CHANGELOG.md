@@ -5,6 +5,88 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.48.0 — Lot PDF Cheval & Catalogue, Lot 3A bis : refonte visuelle + 3 templates métier
+
+**Périmètre STRICT de ce lot** (arrêt demandé après ce point, avant recette visuelle) : refonte
+visuelle complète de la fiche cheval PDF issue du Lot 3A, déclinée en 3 templates métier partageant
+tous les mêmes composants. AUCUN catalogue, AUCUNE bibliothèque de PDF externes/FPDI, AUCUN bouton
+de téléchargement final — tout cela reste hors périmètre des lots 3C à 3E. **Architecture du Lot 3A
+inchangée** (§ demande explicite) : TCPDF, `includes/pdf-engine.php` générique dans gws-core,
+`gwseq_build_horse_pdf_data()`, `gwseq_render_horse_pdf_page()` comme renderer partagé unique,
+`gwseq_generate_horse_pdf()`, perspective FPDI pour les futurs catalogues — seul le CONTENU de
+`gwseq_render_horse_pdf_page()` change : il se réorganise désormais en 3 templates métier qui
+composent différemment les mêmes briques de dessin, jamais trois moteurs séparés.
+
+**3 templates métier** (`includes/cheval-pdf.php`), tous construits sur les mêmes composants
+partagés (header, footer+QR, galerie, tuiles de performance, qualités/"À retenir", arbre de
+pedigree, blocs éditoriaux) :
+- `gwseq_render_horse_pdf_template_etalon()` — hero avec naisseur (jamais de prix, jamais de
+  mention "Étalon disponible" fabriquée), tuiles de performance adaptatives, qualités + "À retenir"
+  (renommage d'affichage de `faits_marquants`, aucun nouveau champ), arbre de pedigree 3 générations
+  RÉEL (branches fines, sujet en évidence, grands-parents atténués et plus petits, noms qui
+  rétrécissent localement plutôt que de jamais se chevaucher), Présentation + Conseil de croisement
+  (réutilise `presentation`/`conseils_croisement` existants — jamais dupliqués), bloc Reproduction
+  adaptatif (statut ostéo-articulaire en étoiles vectorielles, stud-books d'approbation, WFFS —
+  largeur répartie UNIQUEMENT entre les éléments réellement renseignés, aucun emplacement réservé),
+  Conditions de monte {année courante + 1} (réutilise `conditions_vente` existant — jamais de donnée
+  inventée), identifiants officiels minimaux en pied de section.
+- `gwseq_render_horse_pdf_template_pouliniere()` — hero avec prix/statut, mêmes composants
+  adaptatifs, pedigree "élément majeur", Production très compacte : **aucune colonne ISO fixe**,
+  format "Nom · Père · Année — ISO X · ICC Y" affichant TOUS les indices réellement renseignés par
+  produit (correctif par rapport au Lot 3A, qui n'affichait que le meilleur des trois) ; résiste à
+  15+ produits (budget de lignes calculé sur l'espace réellement restant, priorité aux produits
+  indexés, non-indexés retirés en premier puis les plus faibles indicés, jamais les petits-enfants
+  ni le BLUP d'un produit, "+N autres produits" si dépassement) ; SIRE/UELN/naisseur/propriétaire
+  entièrement absents du pied de page de ce template.
+- `gwseq_render_horse_pdf_template_sport_vente()` — hero avec prix/statut en évidence, priorité
+  photo > prix/statut > performances > qualités > "à retenir" > galerie > pedigree > présentation ;
+  grand visuel paysage du gabarit initial entièrement retiré ; SIRE/UELN/naisseur/propriétaire
+  absents ; footer directement après la présentation.
+- `gwseq_render_horse_pdf_page()` — devient un simple dispatcher : construit les données puis
+  sélectionne le template selon `pdf_template` (résolu, jamais un repli implicite silencieux).
+
+**Correctif Production/père** (`includes/ifce-production-store.php`,
+`gwseq_horse_direct_production_father_label()`) : le père d'un produit RELATIONNELLEMENT lié en GWS
+n'était jamais renseigné par `gwseq_get_horse_direct_production()` (`'pere' => ''` codé en dur) —
+corrigé en le résolvant via le resolver de filiation déjà existant
+(`gwseq_get_horse_parent($offspring_id, 'father')`), qu'il s'agisse d'un père GWS ou d'un ascendant
+externe — **jamais dupliqué** dans `_gwseq_production_externe`. Les branches IFCE-liée et
+pure-externe, déjà correctes, restent inchangées.
+
+**Nouveaux champs BO** (`includes/cheval-pdf-fields.php`, nouveau fichier) :
+- **Type de fiche PDF** (`_gwseq_pdf_template`) — Automatique/Étalon/Poulinière/Sport-Vente ;
+  automatique résout depuis le sexe (mâle -> Étalon, femelle -> Poulinière, hongre/sexe non
+  renseigné -> Sport-Vente, repli sûr) ; un type explicitement forcé prime toujours, y compris à
+  contre-sens du sexe.
+- **Statut ostéo-articulaire** (`_gwseq_statut_osteo_articulaire`) — entier 1-5 (0 = non renseigné),
+  **jamais un caractère "★" stocké** — affiché en étoiles VECTORIELLES (`gwseq_horse_pdf_star_points()`
+  / `gwseq_horse_pdf_draw_star_rating()`), les polices cœur standard PDF ne garantissant pas ce
+  glyphe. Distinct du champ texte libre `_gwseq_osteo_articulaire` déjà existant (commentaire
+  narratif) — les deux coexistent sans ambiguïté, aucun renommage/migration.
+- **Stud-book(s) d'approbation** (`_gwseq_studbooks_approbation`) — multi-sélection réutilisant le
+  référentiel races/stud-books déjà existant (`gwseq_race_referentiel_entries()`, entrées `race`
+  uniquement — jamais une "appellation" comme OC/ONC/OE) : **jamais une seconde liste de codes**,
+  chaque code validé contre ce référentiel à l'écriture.
+- **WFFS** (`_gwseq_wffs`) — texte libre court (40 caractères max), volontairement sans nomenclature
+  imposée.
+
+**Non-régression** : aucune donnée Cheval existante modifiée au-delà de l'ajout des 4 nouveaux
+champs ci-dessus ; aucun changement à "Ma structure" ; le QR code du footer réutilise exclusivement
+`gwseq_horse_share_fiche_url()` déjà existant (jamais une URL fabriquée — footer qui se réorganise
+sans QR si aucune fiche publique n'est disponible).
+
+**Tests** (`tests/gws-equestrian-cheval-pdf-test.php`, étendu) : format de ligne de Production mis à
+jour (tous les indices, plus seulement le meilleur), nouvelles assertions sur les champs assemblés
+par `gwseq_build_horse_pdf_data()` (type de fiche résolu/forcé, statut ostéo, stud-books, WFFS, URL
+publique), `gwseq_horse_direct_production_father_label()` (père GWS, ascendant externe, aucun père),
+fonctions pures de `cheval-pdf-fields.php` (résolution du type, sanitation du statut ostéo/des
+stud-books/du WFFS, allers-retours get/set), géométrie de `gwseq_horse_pdf_star_points()`, et
+`gwseq_horse_pdf_fit_text_to_height()` (troncature au mot le plus proche avec ellipse, jamais une
+réduction de police — actif uniquement si `vendor/` est installé). Recette VISUELLE réelle faite
+séparément via un harnais de prototype dédié produisant 4 fiches PDF réelles (2 profils Étalon —
+données minimales et données maximales —, 1 Poulinière à 16 produits, 1 Sport/Vente à données
+minimales) — voir le CR du lot, livrées pour validation avant Lot 3B.
+
 ## 0.47.0 — Lot PDF Cheval & Catalogue, Lot 3A : audit + prototype de renderer fiche cheval
 
 **Périmètre STRICT de ce lot** (arrêt demandé après ce point, avant recette visuelle) : audit
