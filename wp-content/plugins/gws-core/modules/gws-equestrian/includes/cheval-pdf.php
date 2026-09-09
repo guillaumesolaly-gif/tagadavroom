@@ -1026,25 +1026,25 @@ function gwseq_etalon_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
  * blanc restant en bas de page reste volontaire (agrandissement de la photo dominante, respiration
  * accrue), jamais une donnée inventée pour combler.
  */
-function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extra_photo_h = 0) {
-  $paths = array_values(array_unique(array_filter(array_merge(array($data['photo_path'] ?? ''), (array) ($data['gallery_paths'] ?? array())), function ($p) {
-    return is_string($p) && $p !== '' && is_readable($p) && @getimagesize($p);
-  })));
-  $photo = $paths ? array_shift($paths) : '';
-  $photos = array_slice($paths, 0, 3);
-  $pw = $photo ? $w * 0.52 : 0;
-  $ix = $photo ? $x + $pw + 8 : $x;
-  $iw = $w - ($ix - $x);
+/**
+ * Colonne identité du hero (nom, sous-ligne, naisseur, indices, qualités, "à retenir") —
+ * extraite pour être rejouée avec un espacement interne étiré de $extra_gap (correctif V4,
+ * point 3 : équilibre visuel avec la colonne photo), jamais par une donnée ajoutée. Retourne la
+ * hauteur consommée et le nombre d'intervalles réellement utilisés (dépend des champs présents).
+ */
+function gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, $draw) {
   $iy = $y;
-  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 22 : 24, 'B', $draw, array(30, 53, 45), 'times') + 2.5;
+  $gaps = 0;
+  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 22 : 24, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
+  $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
   if (($id['taille_cm'] ?? '') !== '') $parts[] = number_format((float) $id['taille_cm'] / 100, 2, ',', '') . ' m';
   $parts = array_filter($parts, function ($v) { return (string) $v !== ''; });
-  if ($parts) $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 1.5;
+  if ($parts) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 1.5 + $extra_gap; $gaps++; }
   // Naisseur discret (passe graphique V4) : plus petit, gris atténué — jamais au même niveau que
   // l'identité elle-même.
-  if (!empty($id['eleveur'])) $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, 'Naisseur : ' . $id['eleveur'], 8.3, '', $draw, array(128, 124, 116)) + 2.5;
+  if (!empty($id['eleveur'])) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, 'Naisseur : ' . $id['eleveur'], 8.3, '', $draw, array(128, 124, 116)) + 2.5 + $extra_gap; $gaps++; }
 
   // Indices et qualités : plus de titres "PERFORMANCES"/"QUALITÉS" ni de filets techniques (passe
   // graphique) — hiérarchie typographique seule : indices en gras dans la couleur de structure,
@@ -1057,36 +1057,45 @@ function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extr
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 10.5 : 11, 'B', $draw, $rgb) + 2.2;
+  if ($indices) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 10.5 : 11, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
-  if ($qualites !== '') $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, $qualites, 9, 'I', $draw, array(120, 124, 114)) + 1.5;
+  if ($qualites !== '') { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, $qualites, 9, 'I', $draw, array(120, 124, 114)) + 1.5 + $extra_gap; $gaps++; }
 
   $faits = array_slice(array_filter((array) ($data['faits_marquants'] ?? array()), 'strlen'), 0, 3);
-  if ($faits) $iy += gwseq_etalon_callout($pdf, $ix, $iy + 2.5, $iw, $faits, $rgb, $draw) + 2;
+  if ($faits) { $iy += gwseq_etalon_callout($pdf, $ix, $iy + 2.5 + $extra_gap, $iw, $faits, $rgb, $draw) + 2 + $extra_gap; $gaps++; }
 
-  $identity_h = $iy - $y;
+  return array('h' => $iy - $y, 'gaps' => $gaps);
+}
 
-  // Galerie (passe graphique V4, point 1) : les miniatures occupent ENSEMBLE toute la largeur de la
-  // grande photo (jamais une bande étroite anecdotique) — ratio ~4:3 dérivé de cette largeur, crop
-  // `cover` centré, jamais de déformation. La grande photo reste dominante : c'est sa hauteur
-  // minimale ($min_main_photo_h ci-dessous), jamais celle des miniatures, qui gouverne la colonne.
-  // Le nombre de miniatures (0 à 3) découle directement du nombre de photos réellement valides —
-  // jamais de vignette factice.
+function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extra_photo_h = 0) {
+  $paths = array_values(array_unique(array_filter(array_merge(array($data['photo_path'] ?? ''), (array) ($data['gallery_paths'] ?? array())), function ($p) {
+    return is_string($p) && $p !== '' && is_readable($p) && @getimagesize($p);
+  })));
+  $photo = $paths ? array_shift($paths) : '';
+  $photos = array_slice($paths, 0, 3);
+  $pw = $photo ? $w * 0.52 : 0;
+  $ix = $photo ? $x + $pw + 8 : $x;
+  $iw = $w - ($ix - $x);
+
+  $measure = gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, 0, false);
+  $identity_h = $measure['h'];
+
+  // Galerie (correctif V4, points 1/2) : à partir de 2 photos secondaires, des miniatures côte à
+  // côte occupent ENSEMBLE toute la largeur de la grande photo (ratio ~4:3 dérivé de cette
+  // largeur). Avec UNE seule photo secondaire, jamais une petite vignette centrée : un cadre unique
+  // pleine largeur à hauteur FIXE raisonnable (pas dérivée du ratio, qui la rendrait démesurée à
+  // cette largeur) — l'image y est rendue en `cover`, ratio d'image conservé, recadrage centré,
+  // jamais de déformation. La grande photo reste dominante dans tous les cas ($min_main_photo_h).
   $thumb_gap = 3;
   $thumb_h = 0;
   $thumb_w = 0;
-  if ($photos) {
-    $n = count($photos);
+  $n = count($photos);
+  if ($n === 1) {
+    $thumb_w = $pw;
+    $thumb_h = $compact ? 24 : 30;
+  } elseif ($n > 1) {
     $thumb_w = ($pw - (($n - 1) * $thumb_gap)) / $n;
     $thumb_h = $thumb_w / 1.34;
-    // Avec une seule miniature, "toute la largeur" donnerait une vignette démesurément haute
-    // (largeur de la photo principale entière) — le ratio 4:3 reste la contrainte réelle : hauteur
-    // plafonnée à une taille "regardable" mais raisonnable, largeur recalculée pour préserver ce
-    // ratio (jamais de déformation, jamais un chevauchement du reste de la page).
-    if ($thumb_h > ($compact ? 26 : 36)) {
-      $thumb_h = $compact ? 26 : 36;
-      $thumb_w = $thumb_h * 1.34;
-    }
   }
   $thumb_strip = $photos ? ($thumb_gap + $thumb_h) : 0;
   $min_main_photo_h = $photo ? (($compact ? 75 : 86) + $extra_photo_h) : 0;
@@ -1094,12 +1103,21 @@ function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extr
   $main_photo_h = $photo_col_h - $thumb_strip;
   $hero_h = max($identity_h, $photo_col_h);
 
+  // Correctif V4 (point 3) : équilibre visuel entre colonne photo et colonne identité dans le cas
+  // riche — jamais appliqué quand $extra_photo_h agrandit déjà la photo pour le cas pauvre (celui-ci
+  // reste inchangé, déjà validé). Aucune donnée ajoutée : seul l'espacement interne déjà présent
+  // s'étire pour occuper la même hauteur que la colonne photo.
+  $extra_gap = ($extra_photo_h == 0 && $photo && $photo_col_h > $identity_h && $measure['gaps'] > 0)
+    ? ($photo_col_h - $identity_h) / $measure['gaps']
+    : 0;
+
+  if ($draw) {
+    gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, true);
+  }
   if ($draw && $photo) {
     gwseq_horse_pdf_draw_photo_box($pdf, $x, $y, $pw, $main_photo_h, $photo, false);
     if ($photos) {
-      $n = count($photos);
-      $row_w = ($n * $thumb_w) + (($n - 1) * $thumb_gap);
-      $tx = $x + max(0, ($pw - $row_w) / 2); // centré si le plafond de hauteur a réduit la largeur totale
+      $tx = $x;
       $ty = $y + $main_photo_h + $thumb_gap;
       foreach ($photos as $path) {
         gwseq_horse_pdf_draw_photo_box($pdf, $tx, $ty, $thumb_w, $thumb_h, $path, true);
