@@ -1080,19 +1080,22 @@ function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extr
   $measure = gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, 0, false);
   $identity_h = $measure['h'];
 
-  // Galerie (correctif V4, points 1/2) : à partir de 2 photos secondaires, des miniatures côte à
-  // côte occupent ENSEMBLE toute la largeur de la grande photo (ratio ~4:3 dérivé de cette
-  // largeur). Avec UNE seule photo secondaire, jamais une petite vignette centrée : un cadre unique
-  // pleine largeur à hauteur FIXE raisonnable (pas dérivée du ratio, qui la rendrait démesurée à
-  // cette largeur) — l'image y est rendue en `cover`, ratio d'image conservé, recadrage centré,
-  // jamais de déformation. La grande photo reste dominante dans tous les cas ($min_main_photo_h).
+  // Galerie (correctif V6, point 1 seul modifié) : à partir de 2 photos secondaires, des
+  // miniatures côte à côte occupent ENSEMBLE toute la largeur de la grande photo (ratio ~4:3 dérivé
+  // de cette largeur). Avec UNE seule photo secondaire : jamais étirée pleine largeur ni centrée —
+  // une vignette de taille raisonnable (~45-50 % de la largeur de la photo principale, ratio ~4:3),
+  // alignée à DROITE ; le blanc laissé à gauche est volontaire (effet éditorial, pas un trou).
+  // L'image est toujours rendue en `cover` (ratio conservé, recadrage centré, jamais de
+  // déformation).
   $thumb_gap = 3;
   $thumb_h = 0;
   $thumb_w = 0;
   $n = count($photos);
   if ($n === 1) {
-    $thumb_w = $pw;
-    $thumb_h = $compact ? 24 : 30;
+    $thumb_w = $pw * 0.475;
+    // Ratio légèrement plus large en mode compact (contenu déjà dense) pour rester dans le budget
+    // d'une page — "ratio 4:3 environ" reste respecté en mode aéré, cas normal de cette vignette.
+    $thumb_h = $thumb_w / ($compact ? 1.7 : 1.333);
   } elseif ($n > 1) {
     $thumb_w = ($pw - (($n - 1) * $thumb_gap)) / $n;
     $thumb_h = $thumb_w / 1.34;
@@ -1117,7 +1120,9 @@ function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extr
   if ($draw && $photo) {
     gwseq_horse_pdf_draw_photo_box($pdf, $x, $y, $pw, $main_photo_h, $photo, false);
     if ($photos) {
-      $tx = $x;
+      // Une seule vignette : alignée à droite (jamais centrée, jamais pleine largeur) — voir
+      // commentaire ci-dessus. Deux ou trois : côte à côte depuis la gauche, comme avant.
+      $tx = (count($photos) === 1) ? ($x + $pw - $thumb_w) : $x;
       $ty = $y + $main_photo_h + $thumb_gap;
       foreach ($photos as $path) {
         gwseq_horse_pdf_draw_photo_box($pdf, $tx, $ty, $thumb_w, $thumb_h, $path, true);
