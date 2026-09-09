@@ -146,6 +146,19 @@ function gwseq_ifce_map_import($post_id, $parsed, $sections, $parent_choices = a
   if (!empty($sections['identity'])) {
     $identity = $parsed['identity'];
 
+    // Enrichissement opportuniste SHF (Lot SHF, §5) : injecté ICI, AVANT la fusion non destructive
+    // SIRE/UELN ci-dessous — qui reste l'UNIQUE garde-fou appliqué, y compris pour cette valeur. Si
+    // la fiche a entre-temps reçu un SIRE par un autre biais (saisie manuelle pendant la fenêtre de
+    // 15 minutes du transient), la fusion ci-dessous le préservera exactement comme pour une valeur
+    // détectée par le PDF lui-même (§6, "ne jamais écraser un SIRE déjà présent"). $parsed['shf_sire']
+    // vient TOUJOURS du transient serveur (jamais d'un champ resoumis par le client, voir
+    // gwseq_process_ifce_import_upload(), ifce-import-admin.php, seul point d'appel réseau — jamais
+    // ici) et n'est renseigné QUE lorsque $identity['sire'] était déjà vide à l'upload — l'injection
+    // ci-dessous ne fait donc jamais que combler une absence, jamais remplacer une détection PDF.
+    if ($identity['sire'] === '' && !empty($parsed['shf_sire'])) {
+      $identity['sire'] = $parsed['shf_sire'];
+    }
+
     // SIRE/UELN : NON DESTRUCTIF (§7, §20-21 de la demande "identité IFCE") — gwseq_set_cheval_identity()
     // reste par ailleurs un remplacement complet volontaire (comportement inchangé pour tous les
     // AUTRES champs identité, y compris pour la saisie manuelle qui utilise la même fonction) ; SIRE
@@ -177,6 +190,24 @@ function gwseq_ifce_map_import($post_id, $parsed, $sections, $parent_choices = a
       '_gwseq_ueln' => $identity['ueln'],
       '_gwseq_sire' => $identity['sire'],
     ));
+
+    // Provenance du SIRE (Lot SHF, §8) : marqueur minimal `_gwseq_sire_source = 'shf'`, posé
+    // UNIQUEMENT quand la valeur réellement écrite ci-dessus (après la fusion non destructive plus
+    // haut, donc potentiellement revenue à $existing_identity['sire'] si la fiche a changé entre
+    // upload et confirmation) est bien celle proposée par SHF — jamais quand SHF n'a rien retourné
+    // ou que la fusion a préservé une autre valeur. Absence de ce marqueur = origine manuelle/PDF
+    // direct (déjà le cas par défaut avant ce lot, jamais retracé plus finement — §8, "pas de
+    // système complexe de traçabilité pour un seul champ"). Effacé dès que le SIRE change pour toute
+    // AUTRE raison que SHF (ex. détection directe par un futur PDF) afin de ne jamais laisser un
+    // marqueur devenu inexact — seule l'autre écriture possible de ce champ, la saisie manuelle
+    // (gwseq_save_cheval_meta(), cheval-fields.php), applique la même règle symétriquement.
+    $shf_sire = $parsed['shf_sire'] ?? '';
+    if ($shf_sire !== '' && $identity['sire'] === $shf_sire) {
+      gwseq_set_cheval_sire_source($post_id, 'shf');
+    } elseif ($identity['sire'] !== $existing_identity['sire']) {
+      gwseq_set_cheval_sire_source($post_id, '');
+    }
+
     // Nom officiel IFCE (correctif runtime, §8) : quand un alias existe, `post_title`/`nom` porte
     // désormais le nom d'usage (voir la création de la fiche dans ifce-import-admin.php et
     // gwseq_ifce_parse_identity_from_lines()) — le nom officiel n'est alors jamais perdu, conservé

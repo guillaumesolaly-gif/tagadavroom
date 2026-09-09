@@ -489,6 +489,29 @@ function gwseq_process_ifce_import_upload($validated_pdf_path, $reimport_cheval_
     }
   }
 
+  // Enrichissement opportuniste du N° SIRE via SHF (Lot SHF, §1-3 de la demande) : ICI, APRÈS le
+  // verrou d'identité du réimport ci-dessus (jamais avant — ne contacte jamais SHF pour un PDF qui
+  // sera de toute façon refusé), et AU MAXIMUM un appel, UNIQUEMENT si l'ID IFCE a été extrait ET
+  // qu'un SIRE ne sera de toute façon pas autrement disponible : ni détecté par CE PDF
+  // ($parsed['identity']['sire']), ni déjà enregistré sur la fiche réimportée le cas échéant (§1,
+  // "si le cheval possède déjà un SIRE non vide : aucun appel SHF"). Le résultat éventuel n'est
+  // qu'une DONNÉE PROPOSÉE, transportée dans le transient exactement comme le reste de $parsed —
+  // jamais écrite avant confirmation explicite de l'utilisateur (voir gwseq_ifce_map_import(),
+  // includes/ifce-import-mapper.php, seul consommateur de $parsed['shf_sire']).
+  // gwseq_ifce_shf_lookup_sire_by_id() (includes/ifce-shf-enrichment.php) ne lève jamais d'exception
+  // et retourne '' au moindre doute (§6/§7) : une indisponibilité SHF ne bloque donc jamais cet
+  // import, quel que soit son résultat.
+  $parsed['shf_sire'] = '';
+  if ($parsed['ifce_id'] !== '' && $parsed['identity']['sire'] === '') {
+    $existing_sire_for_reimport = $reimport_cheval_id ? gwseq_get_cheval_identity($reimport_cheval_id)['sire'] : '';
+    if ($existing_sire_for_reimport === '') {
+      $expected_name = ($parsed['identity']['nom_officiel'] ?? '') !== ''
+        ? $parsed['identity']['nom_officiel']
+        : ($parsed['identity']['nom'] ?? '');
+      $parsed['shf_sire'] = gwseq_ifce_shf_lookup_sire_by_id($parsed['ifce_id'], $expected_name);
+    }
+  }
+
   $token = wp_generate_password(32, false, false);
   gwseq_set_ifce_import_transient($token, $parsed, $reimport_cheval_id);
 
@@ -1084,6 +1107,21 @@ function gwseq_render_ifce_import_preview($token, $parsed, $reimport_cheval_id =
     }
     if ($sire_ueln_notes) : ?>
       <div class="notice notice-warning inline"><p><?php echo esc_html(implode(' ', $sire_ueln_notes)); ?></p></div>
+    <?php endif; ?>
+    <?php
+    // N° SIRE trouvé via SHF (Lot SHF, §5 "aucune écriture avant validation finale de
+    // l'utilisateur") — purement informatif ici, exactement comme le bloc SIRE/UELN ci-dessus :
+    // l'écriture réelle n'a lieu que dans gwseq_ifce_map_import() à la confirmation, jamais ici.
+    // Rendu UNIQUEMENT quand $parsed['shf_sire'] est effectivement renseigné — ce qui, par
+    // construction (gwseq_process_ifce_import_upload()), ne se produit jamais si un SIRE est déjà
+    // autrement disponible : cette ligne n'apparaît donc jamais en même temps qu'un SIRE déjà
+    // détecté par le PDF ou déjà enregistré sur la fiche réimportée.
+    if (!empty($parsed['shf_sire'])) : ?>
+      <p class="description"><?php echo esc_html(sprintf(
+        /* translators: %s: numéro SIRE trouvé automatiquement via SHF */
+        __('N° SIRE : %s — trouvé automatiquement via SHF.', 'gws-core'),
+        $parsed['shf_sire']
+      )); ?></p>
     <?php endif; ?>
     <?php
     // ID IFCE déjà extrait UNE FOIS à l'upload (gwseq_process_ifce_import_upload(), depuis le nom

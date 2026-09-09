@@ -67,7 +67,16 @@ function esc_attr_e($text, $domain = 'default') { echo esc_attr__($text, $domain
 
 $GLOBALS['__gwseq_test_registered_meta'] = array();
 function register_post_meta($object_type, $meta_key, $args = array()) { $GLOBALS['__gwseq_test_registered_meta'][$meta_key] = $args; }
-function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
+// Lot SHF : add_filter()/apply_filters() sont désormais de VRAIS stubs capturants (jamais des
+// no-op) — indispensables au seul point d'extension prévu pour mocker le réseau dans les tests
+// (`gwseq_ifce_shf_fetch_override`, voir includes/ifce-shf-enrichment.php).
+$GLOBALS['__gwseq_test_filters'] = array();
+function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) { $GLOBALS['__gwseq_test_filters'][$hook][] = $callback; }
+function remove_all_filters($hook) { unset($GLOBALS['__gwseq_test_filters'][$hook]); }
+function apply_filters($hook, ...$args) {
+  foreach ($GLOBALS['__gwseq_test_filters'][$hook] ?? array() as $cb) { $args[0] = call_user_func_array($cb, $args); }
+  return $args[0];
+}
 function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {}
 $GLOBALS['__gwseq_test_meta_boxes'] = array();
 function add_meta_box($id, $title, $callback, $post_type = null, $context = 'advanced', $priority = 'default') { $GLOBALS['__gwseq_test_meta_boxes'][] = $id; }
@@ -186,6 +195,7 @@ require $module_dir . 'includes/ifce-import-parser.php';
 require $module_dir . 'includes/ifce-production-pdf-text.php';
 require $module_dir . 'includes/ifce-production-parser.php';
 require $module_dir . 'includes/ifce-production-store.php';
+require $module_dir . 'includes/ifce-shf-enrichment.php';
 require $module_dir . 'includes/ifce-import-mapper.php';
 require $module_dir . 'includes/ifce-import-admin.php';
 
@@ -1179,6 +1189,76 @@ $meta_before_confirm_after_tamper = $GLOBALS['__gwseq_test_meta'][871];
 $confirm_after_tamper = gwseq_process_ifce_import_confirm($tm_legit[1], array('identity' => true, 'pedigree' => true));
 gws_test_assert($confirm_after_tamper['notice'] !== null, 'Résistance preview -> confirmation (§12) : un changement d’identité de la cible entre upload et confirmation bloque bien la confirmation');
 gws_test_assert($GLOBALS['__gwseq_test_meta'][871] === $meta_before_confirm_after_tamper, 'Résistance preview -> confirmation : AUCUNE meta modifiée par une confirmation bloquée a posteriori');
+
+// =====================================================================================
+// Enrichissement opportuniste du N° SIRE via SHF (Lot SHF) — chemin de RÉIMPORT, réseau
+// intégralement mocké via le filtre `gwseq_ifce_shf_fetch_override` (§10 : jamais de dépendance
+// réelle à shf.eu). Réutilise le vrai PDF de Teldame de la Nutria (dont le SIRE, vérifié en amont,
+// n'est pas non plus détecté dans la zone exploitée de ce document — même situation que Jamerose).
+// =====================================================================================
+
+const GWS_TEST_TELDAME_IFCE_FILENAME = 'fs-complet_classique_0oKAI1qsRfuEsAT2BIQgVA_1788999999999.pdf';
+
+// --- SIRE déjà présent sur la fiche réimportée -> AUCUN appel SHF (§1, "si le cheval possède déjà
+// un SIRE non vide : aucun appel SHF"), quelle que soit par ailleurs la validité de l'identité/de
+// l'ID IFCE ---
+gws_test_make_post(880, GWSEQ_CPT_CHEVAL, 'TELDAME DE LA NUTRIA');
+gwseq_set_cheval_identity(880, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007, '_gwseq_sire' => 'SIRE_DEJA_PRESENT'));
+$shf_reimport_call_count_1 = 0;
+add_filter('gwseq_ifce_shf_fetch_override', function ($default, $url) use (&$shf_reimport_call_count_1) {
+  $shf_reimport_call_count_1++;
+  return array('http_code' => 200, 'content_type' => 'text/html', 'body' => '<html><body><h1>TELDAME DE LA NUTRIA</h1><div>N° SIRE : 99999999Z</div></body></html>');
+});
+$teldame_sire_present_tmp = sys_get_temp_dir() . '/gwseq-shf-reimport-sire-present.pdf';
+copy($teldame_pdf_path, $teldame_sire_present_tmp);
+$reimport_sire_present_upload = gwseq_process_ifce_import_upload($teldame_sire_present_tmp, 880, GWS_TEST_TELDAME_IFCE_FILENAME);
+gws_test_assert($shf_reimport_call_count_1 === 0, 'Enrichissement SHF (réimport, §1) : le cheval possède déjà un SIRE non vide -> zéro appel SHF, même avec un ID IFCE valide et une identité concordante');
+preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $reimport_sire_present_upload['redirect'], $tm880);
+$transient_880 = gwseq_get_ifce_import_transient($tm880[1] ?? '');
+gws_test_assert(($transient_880['parsed']['shf_sire'] ?? 'absent') === '', 'Enrichissement SHF (réimport, §1) : $parsed[\'shf_sire\'] reste vide quand aucun appel n’a été tenté (SIRE déjà présent)');
+remove_all_filters('gwseq_ifce_shf_fetch_override');
+
+// --- SIRE vide + identité concordante (legacy, nom+année) + ID IFCE extrait -> SHF interrogé UNE
+// FOIS, résultat écrit SEULEMENT à la confirmation, avec provenance 'shf' ---
+gws_test_make_post(881, GWSEQ_CPT_CHEVAL, 'TELDAME DE LA NUTRIA');
+gwseq_set_cheval_identity(881, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+$shf_reimport_call_count_2 = 0;
+add_filter('gwseq_ifce_shf_fetch_override', function ($default, $url) use (&$shf_reimport_call_count_2) {
+  $shf_reimport_call_count_2++;
+  return array('http_code' => 200, 'content_type' => 'text/html', 'body' => '<html><body><h1>TELDAME DE LA NUTRIA</h1><div>N° SIRE : 50440832H</div></body></html>');
+});
+$teldame_sire_empty_tmp = sys_get_temp_dir() . '/gwseq-shf-reimport-sire-empty.pdf';
+copy($teldame_pdf_path, $teldame_sire_empty_tmp);
+$reimport_sire_empty_upload = gwseq_process_ifce_import_upload($teldame_sire_empty_tmp, 881, GWS_TEST_TELDAME_IFCE_FILENAME);
+gws_test_assert($shf_reimport_call_count_2 === 1, 'Enrichissement SHF (réimport, §1) : SIRE vide + identité concordante + ID IFCE extrait -> exactement un appel SHF');
+preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $reimport_sire_empty_upload['redirect'], $tm881);
+$token_881 = $tm881[1] ?? '';
+$transient_881 = gwseq_get_ifce_import_transient($token_881);
+gws_test_assert(($transient_881['parsed']['shf_sire'] ?? '') === '50440832H', 'Enrichissement SHF (réimport) : le SIRE trouvé par SHF est bien transporté dans le transient');
+$confirm_881 = gwseq_process_ifce_import_confirm($token_881, array('identity' => true));
+gws_test_assert(gwseq_get_cheval_identity(881)['sire'] === '50440832H', 'Enrichissement SHF (réimport) : le SIRE proposé par SHF est bien écrit à la confirmation');
+gws_test_assert(gwseq_get_cheval_sire_source(881) === 'shf', 'Provenance (§8) : marqueur "shf" bien posé après un réimport ayant réellement utilisé la valeur SHF');
+gws_test_assert(gwseq_get_cheval_identity(881)['ueln'] === '', 'UELN (audit, aucune dérivation dans ce lot) : reste vide même après un réimport ayant écrit un SIRE via SHF — aucune déduction hasardeuse de nationalité française');
+remove_all_filters('gwseq_ifce_shf_fetch_override');
+
+// --- SIRE vide MAIS mauvais PDF (identité non concordante) -> le verrou d'identité bloque AVANT
+// tout appel SHF (§1, "ne contacte pas SHF pour un PDF qui sera ensuite refusé") -- zéro appel,
+// zéro écriture ---
+gws_test_make_post(882, GWSEQ_CPT_CHEVAL, 'UN AUTRE CHEVAL ATTENDU');
+gwseq_set_cheval_identity(882, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 1999)); // ne concorde jamais avec le vrai PDF de Teldame (2007)
+$meta_882_before = $GLOBALS['__gwseq_test_meta'][882];
+$shf_reimport_call_count_3 = 0;
+add_filter('gwseq_ifce_shf_fetch_override', function ($default, $url) use (&$shf_reimport_call_count_3) {
+  $shf_reimport_call_count_3++;
+  return array('http_code' => 200, 'content_type' => 'text/html', 'body' => '');
+});
+$teldame_wrong_identity_tmp = sys_get_temp_dir() . '/gwseq-shf-reimport-wrong-identity.pdf';
+copy($teldame_pdf_path, $teldame_wrong_identity_tmp);
+$reimport_wrong_identity_upload = gwseq_process_ifce_import_upload($teldame_wrong_identity_tmp, 882, GWS_TEST_TELDAME_IFCE_FILENAME);
+gws_test_assert($shf_reimport_call_count_3 === 0, 'Enrichissement SHF (réimport, §1/§12) : un PDF dont l’identité ne concorde pas est bloqué AVANT tout appel SHF -- zéro appel');
+gws_test_assert($reimport_wrong_identity_upload['notice'] !== null && strpos($reimport_wrong_identity_upload['redirect'], 'gwseq_token') === false, 'Enrichissement SHF (réimport) : import bloqué par le verrou d’identité, aucun jeton de prévisualisation créé');
+gws_test_assert($GLOBALS['__gwseq_test_meta'][882] === $meta_882_before, 'Enrichissement SHF (réimport) : aucune meta modifiée sur la fiche cible quand le PDF est refusé avant tout appel SHF');
+remove_all_filters('gwseq_ifce_shf_fetch_override');
 
 // --- Import INITIAL (§13) : le verrou ne s'applique JAMAIS ($reimport_cheval_id = 0), workflow
 // inchangé -- déjà couvert par l'ensemble des tests d'import initial de ce fichier et de

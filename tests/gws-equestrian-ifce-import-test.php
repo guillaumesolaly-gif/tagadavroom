@@ -81,7 +81,16 @@ function esc_attr_e($text, $domain = 'default') { echo esc_attr__($text, $domain
 
 $GLOBALS['__gwseq_test_registered_meta'] = array();
 function register_post_meta($object_type, $meta_key, $args = array()) { $GLOBALS['__gwseq_test_registered_meta'][$meta_key] = $args; }
-function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
+// Lot SHF : add_filter()/apply_filters() sont désormais de VRAIS stubs capturants (jamais des
+// no-op) — indispensables au seul point d'extension prévu pour mocker le réseau dans les tests
+// (`gwseq_ifce_shf_fetch_override`, voir includes/ifce-shf-enrichment.php).
+$GLOBALS['__gwseq_test_filters'] = array();
+function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) { $GLOBALS['__gwseq_test_filters'][$hook][] = $callback; }
+function remove_all_filters($hook) { unset($GLOBALS['__gwseq_test_filters'][$hook]); }
+function apply_filters($hook, ...$args) {
+  foreach ($GLOBALS['__gwseq_test_filters'][$hook] ?? array() as $cb) { $args[0] = call_user_func_array($cb, $args); }
+  return $args[0];
+}
 function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {}
 function add_submenu_page($parent, $title, $menu_title, $capability, $slug, $callback) {
   $GLOBALS['__gwseq_test_submenu_pages'][] = compact('parent', 'title', 'menu_title', 'capability', 'slug');
@@ -174,6 +183,7 @@ require $module_dir . 'includes/ifce-import-parser.php';
 require $module_dir . 'includes/ifce-production-pdf-text.php';
 require $module_dir . 'includes/ifce-production-parser.php';
 require $module_dir . 'includes/ifce-production-store.php';
+require $module_dir . 'includes/ifce-shf-enrichment.php';
 require $module_dir . 'includes/ifce-import-mapper.php';
 require $module_dir . 'includes/ifce-import-admin.php';
 
@@ -981,6 +991,122 @@ gws_test_assert($created_transient !== false && $created_transient['parsed']['id
 
 $posts_before_upload = count($GLOBALS['__gwseq_test_posts']);
 gws_test_assert(count($GLOBALS['__gwseq_test_posts']) === $posts_before_upload, 'Aucune écriture métier avant confirmation : le traitement de l’upload seul n’a créé strictement aucune fiche Cheval');
+
+// =====================================================================================
+// Enrichissement opportuniste du N° SIRE via SHF (Lot SHF) — chemin de CRÉATION, réseau
+// intégralement mocké via le filtre `gwseq_ifce_shf_fetch_override` (§10 de la demande : "mocke
+// le réseau dans la suite automatisée, ne dépend jamais réellement de shf.eu"). Réutilise le vrai
+// PDF de Jamerose (dont le SIRE, vérifié plus haut, n'est PAS détecté dans la zone exploitée de ce
+// document) avec un nom de fichier construit pour porter le vrai ID IFCE de Jamerose (§2 : c'est
+// bien ce nom de fichier, jamais le contenu du PDF, qui fournit l'ID IFCE — voir
+// gwseq_ifce_extract_id_from_pdf_filename()).
+// =====================================================================================
+
+const GWS_TEST_JAMEROSE_IFCE_FILENAME = 'fs-complet_classique_lvb0qZm0QvG_PVjtz1ZBlQ_1788355627601.pdf';
+
+function gws_test_shf_success_filter($default, $url) {
+  return array(
+    'http_code' => 200,
+    'content_type' => 'text/html; charset=utf-8',
+    'body' => '<html><body><h1>JAMEROSE DE FELINES</h1><table><tr><td>N&deg; SIRE</td><td>19369410S</td></tr></table></body></html>',
+  );
+}
+
+// --- Succès : ID IFCE extrait du nom de fichier + SIRE absent du PDF -> SHF interrogé UNE FOIS,
+// résultat proposé dans le transient et visible en preview, écrit SEULEMENT à la confirmation ---
+copy($jamerose_pdf_path, sys_get_temp_dir() . '/gwseq-shf-success-test.pdf');
+$shf_success_tmp = sys_get_temp_dir() . '/gwseq-shf-success-test.pdf';
+$shf_call_count = 0;
+add_filter('gwseq_ifce_shf_fetch_override', function ($default, $url) use (&$shf_call_count) {
+  $shf_call_count++;
+  return gws_test_shf_success_filter($default, $url);
+});
+$shf_success_upload = gwseq_process_ifce_import_upload($shf_success_tmp, 0, GWS_TEST_JAMEROSE_IFCE_FILENAME);
+gws_test_assert($shf_call_count === 1, 'Enrichissement SHF (création, §1) : au maximum un appel réseau, déclenché exactement une fois (ID IFCE extrait + SIRE absent du PDF)');
+preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $shf_success_upload['redirect'], $shf_token_match);
+$shf_success_token = $shf_token_match[1] ?? '';
+$shf_success_transient = gwseq_get_ifce_import_transient($shf_success_token);
+gws_test_assert(($shf_success_transient['parsed']['shf_sire'] ?? null) === '19369410S', 'Enrichissement SHF (création) : le SIRE trouvé par SHF est bien transporté dans le transient de prévisualisation ($parsed[\'shf_sire\'])');
+
+ob_start();
+gwseq_render_ifce_import_preview($shf_success_token, $shf_success_transient['parsed'], 0);
+$shf_preview_html = ob_get_clean();
+gws_test_assert(strpos($shf_preview_html, '19369410S') !== false && stripos($shf_preview_html, 'SHF') !== false, 'Enrichissement SHF (§5, "aucune écriture avant validation") : le SIRE trouvé est bien affiché sur l’écran de prévisualisation, purement informatif à ce stade');
+
+$posts_before_shf_confirm = count($GLOBALS['__gwseq_test_posts']);
+$shf_confirm_result = gwseq_process_ifce_import_confirm($shf_success_token, array('identity' => true));
+gws_test_assert(count($GLOBALS['__gwseq_test_posts']) === $posts_before_shf_confirm + 1, 'Enrichissement SHF (création) : la fiche est bien créée à la confirmation');
+preg_match('/post=(\d+)/', $shf_confirm_result['redirect'], $shf_post_match);
+$shf_created_post_id = (int) ($shf_post_match[1] ?? 0);
+gws_test_assert(gwseq_get_cheval_identity($shf_created_post_id)['sire'] === '19369410S', 'Enrichissement SHF (création) : le SIRE proposé par SHF est bien écrit, SEULEMENT à la confirmation explicite (jamais avant)');
+gws_test_assert(($GLOBALS['__gwseq_test_meta'][$shf_created_post_id]['_gwseq_sire_source'] ?? '') === 'shf', 'Provenance (§8) : le marqueur "_gwseq_sire_source = shf" est bien posé quand le SIRE écrit provient réellement de SHF');
+// Complément UELN (audit documenté au CR : aucun signal fiable dans les données GWS/IFCE actuelles
+// ne permet de distinguer avec certitude un cheval français-SIRE d'un cheval étranger porteur d'un
+// SIRE français — voir gwseq_ifce_country_codes()/gwseq_ifce_strip_country_markers(), qui ne
+// s'appliquent jamais au sujet lui-même, uniquement aux noms d'ascendants dans le pedigree) : ZÉRO
+// dérivation automatique dans ce lot, même quand un SIRE est trouvé via SHF -> l'UELN reste vide.
+gws_test_assert(gwseq_get_cheval_identity($shf_created_post_id)['ueln'] === '', 'UELN (audit, aucune dérivation dans ce lot) : reste vide même après qu’un SIRE ait été trouvé via SHF et écrit — aucun signal fiable de nationalité française disponible, décision documentée au CR, jamais une déduction hasardeuse');
+remove_all_filters('gwseq_ifce_shf_fetch_override');
+
+// --- Preview abandonnée (§5, "si l'utilisateur abandonne la preview : aucune écriture du SIRE") :
+// upload avec SHF mocké en succès, MAIS confirmation jamais appelée -> aucune fiche créée, aucune
+// meta écrite nulle part ---
+copy($jamerose_pdf_path, sys_get_temp_dir() . '/gwseq-shf-abandoned-test.pdf');
+$shf_abandoned_tmp = sys_get_temp_dir() . '/gwseq-shf-abandoned-test.pdf';
+add_filter('gwseq_ifce_shf_fetch_override', 'gws_test_shf_success_filter');
+$posts_before_shf_abandon = count($GLOBALS['__gwseq_test_posts']);
+$shf_abandoned_upload = gwseq_process_ifce_import_upload($shf_abandoned_tmp, 0, GWS_TEST_JAMEROSE_IFCE_FILENAME);
+gws_test_assert(count($GLOBALS['__gwseq_test_posts']) === $posts_before_shf_abandon, 'Enrichissement SHF (§5, preview abandonnée) : l’upload seul (même avec un SIRE trouvé par SHF) ne crée toujours aucune fiche Cheval');
+remove_all_filters('gwseq_ifce_shf_fetch_override');
+
+// --- Non-destruction (§6) : SHF retourne 404 (ID inconnu) -> l'import IFCE continue normalement,
+// SIRE simplement absent, aucune erreur ---
+copy($jamerose_pdf_path, sys_get_temp_dir() . '/gwseq-shf-404-test.pdf');
+$shf_404_tmp = sys_get_temp_dir() . '/gwseq-shf-404-test.pdf';
+add_filter('gwseq_ifce_shf_fetch_override', function ($default, $url) {
+  return array('http_code' => 404, 'content_type' => 'text/html', 'body' => '<html>Not Found</html>');
+});
+$shf_404_upload = gwseq_process_ifce_import_upload($shf_404_tmp, 0, GWS_TEST_JAMEROSE_IFCE_FILENAME);
+gws_test_assert($shf_404_upload['notice'] === null, 'Non-destruction (§6) : un 404 SHF (ID inconnu) ne bloque jamais l’import IFCE — aucun message d’erreur');
+preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $shf_404_upload['redirect'], $shf_404_token_match);
+$shf_404_transient = gwseq_get_ifce_import_transient($shf_404_token_match[1] ?? '');
+gws_test_assert(($shf_404_transient['parsed']['shf_sire'] ?? 'absent') === '', 'Non-destruction (§6) : après un 404 SHF, $parsed[\'shf_sire\'] reste une chaîne vide — jamais une erreur remontée jusqu’au transient');
+remove_all_filters('gwseq_ifce_shf_fetch_override');
+
+// --- Non-destruction (§6) : SHF lève une exception (timeout/erreur réseau) -> même comportement,
+// l'import continue normalement ---
+copy($jamerose_pdf_path, sys_get_temp_dir() . '/gwseq-shf-timeout-test.pdf');
+$shf_timeout_tmp = sys_get_temp_dir() . '/gwseq-shf-timeout-test.pdf';
+add_filter('gwseq_ifce_shf_fetch_override', function ($default, $url) {
+  throw new RuntimeException('timeout simulé');
+});
+$shf_timeout_upload = gwseq_process_ifce_import_upload($shf_timeout_tmp, 0, GWS_TEST_JAMEROSE_IFCE_FILENAME);
+gws_test_assert($shf_timeout_upload['notice'] === null, 'Non-destruction (§6) : un timeout/erreur réseau SHF ne bloque jamais l’import IFCE — aucun message d’erreur, aucune exception remontée');
+remove_all_filters('gwseq_ifce_shf_fetch_override');
+
+// --- Page générique (§7) : SHF répond 200 mais ni le nom ni le libellé "N° SIRE" ne sont trouvés
+// -> jamais considéré suffisant, SIRE simplement absent ---
+copy($jamerose_pdf_path, sys_get_temp_dir() . '/gwseq-shf-generic-test.pdf');
+$shf_generic_tmp = sys_get_temp_dir() . '/gwseq-shf-generic-test.pdf';
+add_filter('gwseq_ifce_shf_fetch_override', function ($default, $url) {
+  return array('http_code' => 200, 'content_type' => 'text/html', 'body' => '<html><body><h1>Bienvenue sur le site de la SHF</h1></body></html>');
+});
+$shf_generic_upload = gwseq_process_ifce_import_upload($shf_generic_tmp, 0, GWS_TEST_JAMEROSE_IFCE_FILENAME);
+preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $shf_generic_upload['redirect'], $shf_generic_token_match);
+$shf_generic_transient = gwseq_get_ifce_import_transient($shf_generic_token_match[1] ?? '');
+gws_test_assert(($shf_generic_transient['parsed']['shf_sire'] ?? 'absent') === '', '§7 : une réponse SHF 200 générique (ni nom, ni libellé SIRE) n’est jamais considérée suffisante — SIRE non proposé');
+remove_all_filters('gwseq_ifce_shf_fetch_override');
+
+// --- Vérification déclarative de câblage (§1/§12, "points d'extension les plus étroits") : l'appel
+// SHF n'a lieu qu'APRÈS le verrou d'identité du réimport (jamais avant — ne jamais contacter SHF
+// pour un PDF qui sera ensuite refusé), et reste bien gardé par les deux conditions d'éligibilité
+// (ID IFCE extrait, SIRE non déjà disponible) — évalué sur le VRAI code source, pas une
+// reconstruction ---
+$identity_check_pos = strpos($upload_processor_body, 'gwseq_ifce_validate_reimport_identity');
+$shf_lookup_pos = strpos($upload_processor_body, 'gwseq_ifce_shf_lookup_sire_by_id');
+gws_test_assert($identity_check_pos !== false && $shf_lookup_pos !== false && $shf_lookup_pos > $identity_check_pos, 'Câblage SHF (§1/§12) : gwseq_ifce_shf_lookup_sire_by_id() est bien appelé APRÈS gwseq_ifce_validate_reimport_identity() dans le traitement de l’upload, jamais avant');
+gws_test_assert(strpos($upload_processor_body, "\$parsed['ifce_id'] !== ''") !== false, 'Câblage SHF (§1) : la garde "ID IFCE extrait" est bien présente avant l’appel SHF');
+gws_test_assert(strpos($upload_processor_body, "\$parsed['identity']['sire'] === ''") !== false, 'Câblage SHF (§1) : la garde "SIRE non déjà détecté par ce PDF" est bien présente avant l’appel SHF');
 
 // --- Chemin réel : un PDF non reconnu ne crée aucun transient exploitable, notice renseignée,
 // redirection vers l'écran d'upload nu (jamais vers une prévisualisation) ---

@@ -1694,6 +1694,27 @@ Cohérence confirmée avec `gwseq_ifce_production_maternity_case()` (Production 
 (normalisation, resolver nom+année, `gwseq_set_horse_parent()` comme seul point d'écriture) et ne se
 contredisent jamais, quel que soit l'ordre d'import mère/fille.
 
+**Enrichissement opportuniste du N° SIRE via SHF (0.46.0)** — un POC autonome (`poc-shf-panel.php`,
+jamais versionné) a validé en conditions réelles que
+`https://www.shf.eu/fr/cheval/test,I{ID_IFCE}.html`, construite UNIQUEMENT à partir de l'ID IFCE
+déjà extrait (jamais un slug fabriqué depuis une donnée GWS), résout publiquement la fiche SHF du
+cheval (8/8 fiches trouvées, 8/8 N° SIRE extraits, témoin négatif reconnu "ID inconnu"). Nouveau
+`includes/ifce-shf-enrichment.php` : point d'entrée unique `gwseq_ifce_shf_lookup_sire_by_id()`, ne
+lève jamais d'exception, retourne `''` au moindre doute — SHF reste une source secondaire et
+facultative, jamais une condition de succès de l'import IFCE. Appelé au maximum une fois, UNIQUEMENT
+pendant l'upload d'un PDF IFCE, et seulement si l'ID IFCE est extrait ET qu'aucun SIRE ne serait
+sinon disponible (un cheval qui a déjà un SIRE ne déclenche plus jamais d'appel) ; pour un réimport,
+toujours APRÈS `gwseq_ifce_validate_reimport_identity()`, jamais avant. Le résultat éventuel est
+transporté dans le transient, affiché en preview ("trouvé automatiquement via SHF"), et n'est écrit
+qu'à la confirmation explicite — la fusion non destructive SIRE/UELN déjà existante
+(`gwseq_ifce_map_import()`) reste l'unique garde-fou, y compris pour cette valeur. Provenance
+minimale : `gwseq_get_cheval_sire_source()`/`gwseq_set_cheval_sire_source()`
+(`_gwseq_sire_source = 'shf'`), posée uniquement quand le SIRE écrit vient réellement de SHF, effacée
+dès qu'il change pour toute autre raison. **UELN : audit mené, aucune dérivation implémentée** — pas
+de champ fiable dans les données GWS/IFCE actuelles pour distinguer avec certitude un cheval
+français-SIRE d'un cheval étranger porteur d'un SIRE français (voir le CR du lot pour le détail) ;
+l'UELN reste dans son état actuel, jamais fabriqué.
+
 ### Pedigree (Étape 5)
 
 **Deux types de parent, chacun indépendamment pour le Père et pour la Mère** : soit une fiche

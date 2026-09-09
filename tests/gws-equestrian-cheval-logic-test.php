@@ -130,6 +130,7 @@ function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {}
 $GLOBALS['__gwseq_test_meta'] = array();
 function update_post_meta($post_id, $key, $value) { $GLOBALS['__gwseq_test_meta'][$post_id][$key] = $value; return true; }
 function get_post_meta($post_id, $key, $single = false) { return $GLOBALS['__gwseq_test_meta'][$post_id][$key] ?? ''; }
+function delete_post_meta($post_id, $key) { unset($GLOBALS['__gwseq_test_meta'][$post_id][$key]); return true; }
 function metadata_exists($type, $post_id, $key) {
   return array_key_exists($post_id, $GLOBALS['__gwseq_test_meta']) && array_key_exists($key, $GLOBALS['__gwseq_test_meta'][$post_id]);
 }
@@ -997,6 +998,26 @@ gws_test_assert(
     && $GLOBALS['__gwseq_test_meta'][1004]['_gwseq_prix_fixe'] === 18000.0,
   'Cas valide : nonce/capability/autosave/révision tous corrects -> les meta d’identité et de commercialisation sont bien enregistrées'
 );
+
+// --- Provenance du SIRE (Lot SHF, §8) : une saisie manuelle qui change RÉELLEMENT le SIRE efface
+// le marqueur "_gwseq_sire_source = shf" posé par un import IFCE précédent — sinon ce marqueur
+// deviendrait inexact (le SIRE affiché ne provient alors plus de SHF, mais d'une saisie manuelle) ---
+gws_test_reset_security();
+$GLOBALS['__gwseq_test_meta'][1006] = array('_gwseq_sire' => '19369410S', '_gwseq_sire_source' => 'shf');
+$_POST = gws_test_cheval_post_payload();
+$_POST['_gwseq_sire'] = '05123456A'; // valeur manuelle DIFFÉRENTE de celle posée par SHF
+gwseq_save_cheval_meta(1006);
+gws_test_assert($GLOBALS['__gwseq_test_meta'][1006]['_gwseq_sire'] === '05123456A', 'Provenance SIRE : la nouvelle valeur manuelle est bien enregistrée');
+gws_test_assert(gwseq_get_cheval_sire_source(1006) === '', 'Provenance SIRE (§8) : le marqueur "shf" est bien effacé dès que le SIRE change réellement via une saisie manuelle');
+
+// --- Resoumission SANS changement du SIRE (même écran réédité pour un autre champ) : le marqueur
+// "shf" reste un fait exact -> PRÉSERVÉ ---
+gws_test_reset_security();
+$GLOBALS['__gwseq_test_meta'][1007] = array('_gwseq_sire' => '19369410S', '_gwseq_sire_source' => 'shf');
+$_POST = gws_test_cheval_post_payload();
+$_POST['_gwseq_sire'] = '19369410S'; // valeur RESOUMISE IDENTIQUE
+gwseq_save_cheval_meta(1007);
+gws_test_assert(gwseq_get_cheval_sire_source(1007) === 'shf', 'Provenance SIRE (§8) : le marqueur "shf" est bien préservé quand le SIRE resoumis reste identique (rien n’a réellement changé)');
 
 // --- Autosave : testé en dernier, DOING_AUTOSAVE ne peut être défini qu'une fois par processus
 // PHP (resterait sinon "vrai" pour tous les cas suivants) ---

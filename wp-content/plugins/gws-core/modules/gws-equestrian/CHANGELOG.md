@@ -5,6 +5,84 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.46.0 — Lot SHF : enrichissement opportuniste du N° SIRE via SHF, audit UELN
+
+**Contexte.** Un POC autonome (`poc-shf-panel.php`, jamais versionné avec GWS) a validé en
+conditions réelles que `https://www.shf.eu/fr/cheval/test,I{ID_IFCE}.html` — construite
+UNIQUEMENT à partir de l'ID IFCE déjà extrait par le pipeline d'import existant, jamais un slug
+fabriqué depuis une donnée GWS — résout publiquement, sans cookie ni authentification, la fiche
+SHF du cheval : 8/8 chevaux réels trouvés, 8/8 N° SIRE extraits, témoin négatif (ID fictif) reconnu
+correctement comme "ID inconnu" (HTTP 404). Ce lot intègre cette source secondaire et facultative
+au seul workflow d'import PDF IFCE déjà existant — jamais une nouvelle fonctionnalité générale de
+connexion à SHF.
+
+**1. Nouveau fichier `includes/ifce-shf-enrichment.php`.** Point d'entrée unique
+`gwseq_ifce_shf_lookup_sire_by_id($ifce_id, $expected_name)` : ne lève jamais d'exception, retourne
+'' au moindre doute (ID syntaxiquement invalide, hôte/schéma refusé, timeout, HTTP différent de
+200, contenu non HTML, page non reconnue comme une fiche cheval, libellé "N° SIRE" absent, valeur
+ne respectant pas la forme stricte 8 chiffres + 1 lettre). Reprend l'architecture réseau déjà
+validée par le POC : hôte `www.shf.eu`/HTTPS uniquement, redirections suivies manuellement
+(jamais `CURLOPT_FOLLOWLOCATION`) avec revalidation de l'hôte à chaque saut, jarre de cookies
+temporaire créée puis supprimée à chaque appel (aucune session conservée entre deux imports),
+taille de réponse plafonnée, timeout court, User-Agent explicite non-navigateur. Extraction
+strictement ancrée sur le libellé "N° SIRE" (jamais un motif recherché n'importe où sur la page) —
+un bug d'origine POC (`strip_tags()` recollant deux nœuds de texte adjacents sans espace, cassant la
+frontière de mot juste après une valeur valide et laissant gagner un nombre sans rapport plus loin
+dans la page) a été identifié et corrigé dès l'intégration. Seule la logique réseau bas niveau
+(curl réel) échappe aux tests automatisés (comme la validation MIME réelle d'un PDF téléversé) — la
+suite automatisée mocke intégralement le réseau via le filtre `gwseq_ifce_shf_fetch_override`,
+jamais enregistré en production.
+
+**2. Câblage dans le workflow d'import existant, aux points d'extension les plus étroits.** Un
+appel SHF au maximum, UNIQUEMENT pendant le traitement de l'upload d'un PDF IFCE
+(`gwseq_process_ifce_import_upload()`), et seulement si l'ID IFCE a été extrait ET qu'un SIRE ne
+serait de toute façon pas disponible (ni détecté par ce PDF, ni déjà enregistré sur la fiche
+réimportée le cas échéant — un cheval qui possède déjà un SIRE non vide ne déclenche plus jamais
+aucun appel). Pour un réimport, l'appel a lieu APRÈS `gwseq_ifce_validate_reimport_identity()` —
+jamais avant, jamais pour un PDF qui sera de toute façon refusé. Le résultat éventuel
+(`$parsed['shf_sire']`) est transporté dans le même transient serveur que le reste de l'analyse,
+affiché purement à titre informatif sur l'écran de prévisualisation ("N° SIRE : ... — trouvé
+automatiquement via SHF"), et n'est injecté dans la fusion non destructive SIRE/UELN déjà existante
+(`gwseq_ifce_map_import()`) qu'à la confirmation explicite de l'utilisateur — une preview abandonnée
+n'écrit donc jamais rien. La fusion déjà existante reste l'unique garde-fou de non-destruction,
+y compris pour cette valeur : si la fiche a entre-temps reçu un SIRE par un autre biais, il est
+préservé exactement comme pour une valeur détectée par le PDF lui-même.
+
+**3. Provenance minimale du SIRE (`_gwseq_sire_source`).** Nouvelle paire de fonctions métier
+`gwseq_get_cheval_sire_source()`/`gwseq_set_cheval_sire_source()` (`cheval-fields.php`) — marqueur
+posé UNIQUEMENT quand le SIRE réellement écrit provient de SHF, effacé dès que le SIRE change pour
+toute autre raison (saisie manuelle changeant réellement la valeur, détection PDF directe). Affiché
+au même emplacement dev-only que le reste des données techniques IFCE, jamais un champ éditable.
+Décision documentée : pas de système de traçabilité générique, un seul marqueur textuel minimal,
+suffisant pour ce seul besoin.
+
+**4. Audit UELN — aucune dérivation automatique dans ce lot.** Étudié : constituer l'UELN d'un
+cheval français-SIRE via `250001` + N° SIRE dès qu'un SIRE est obtenu. Audit du modèle de données
+GWS/IFCE existant (`ifce-import-parser.php`, `cheval-fields.php`) : aucun champ ne permet
+aujourd'hui d'établir AVEC CERTITUDE qu'un cheval a été identifié à la naissance en France plutôt
+que d'y avoir simplement reçu un SIRE administratif après import — le seul mécanisme de code pays
+du parseur (`gwseq_ifce_country_codes()`/`gwseq_ifce_strip_country_markers()`) ne s'applique
+JAMAIS au sujet importé lui-même, uniquement aux noms d'ASCENDANTS dans les branches de pedigree
+(ex. "HEARTBREAKER (NLD)"). Le cas particulier Pur-Sang (`2500FR`) requiert la même certitude,
+également absente. Conformément à la consigne explicite de ne jamais fabriquer un identifiant
+officiel potentiellement faux, AUCUNE dérivation d'UELN n'est implémentée dans ce lot — l'UELN
+reste exactement dans son état actuel (détection directe depuis le PDF IFCE quand présente, non
+destructive, inchangée), y compris quand un SIRE est nouvellement obtenu via SHF. Voir le CR de ce
+lot pour le détail complet de l'audit ; un futur lot pourra reconsidérer la question si une source
+fiable de nationalité française devient disponible (ex. un champ explicite dans une future version
+de la fiche IFCE/SHF).
+
+**5. Tests.** Nouveau fichier `tests/gws-equestrian-ifce-shf-test.php` (garde-fous réseau,
+extraction ciblée avec cas de régression du bug `strip_tags()`, classification pure, point d'entrée
+métier intégralement mocké — succès, témoin négatif 404, timeout, page générique). Complétés dans
+`tests/gws-equestrian-ifce-import-test.php` (chemin de création : succès, preview abandonnée,
+404/timeout non destructifs, page générique, câblage déclaratif ordre identité→SHF) et
+`tests/gws-equestrian-ifce-production-test.php` (chemin de réimport : zéro appel si SIRE déjà
+présent, un appel si éligible, zéro appel si le PDF est refusé par le verrou d'identité) — réseau
+entièrement mocké via `gwseq_ifce_shf_fetch_override`, jamais de dépendance réelle à `shf.eu`.
+Complétés dans `tests/gws-equestrian-cheval-logic-test.php` (provenance effacée/préservée selon
+qu'une saisie manuelle change réellement le SIRE). Suite complète (PHP + JS) intégralement verte.
+
 ## 0.45.1 — Correctif de recette réelle : radio présélectionné, lien fantôme Production, verrou de réimport
 
 Trois correctifs à la suite d'une recette réelle sur GRANDAME D'AUBIGNY, sans nouveau périmètre

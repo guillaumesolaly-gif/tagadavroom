@@ -627,6 +627,14 @@ function gwseq_render_cheval_global_id_dev_box($post) {
     <?php endif; ?>
   <?php endif; ?>
   <?php
+  // Provenance du SIRE (Lot SHF, §8) : marqueur minimal posé par gwseq_ifce_map_import()
+  // (includes/ifce-import-mapper.php) — même emplacement dev-only, jamais un champ éditable, rendu
+  // UNIQUEMENT quand ce marqueur existe réellement (jamais affiché pour une saisie manuelle ou une
+  // détection directe par le PDF, qui ne le posent jamais).
+  if (gwseq_get_cheval_sire_source($post->ID) === 'shf') : ?>
+    <p class="description"><?php esc_html_e('N° SIRE obtenu automatiquement via SHF.', 'gws-core'); ?></p>
+  <?php endif; ?>
+  <?php
 }
 
 /**
@@ -670,6 +678,31 @@ function gwseq_set_cheval_ifce_nom_officiel($post_id, $nom_officiel) {
   $nom_officiel = gws_core_field_sanitize('text', $nom_officiel);
   if (!$post_id || $nom_officiel === '') return false;
   update_post_meta($post_id, '_gwseq_ifce_nom_officiel', $nom_officiel);
+  return true;
+}
+
+/**
+ * Provenance du N° SIRE (Lot SHF, §8 : "distinguer un SIRE saisi/manuel d'un SIRE obtenu via SHF")
+ * — fonctions métier pures, même architecture que le reste de ce fichier, réutilisées à la fois par
+ * gwseq_ifce_map_import() (includes/ifce-import-mapper.php, seul lot où la valeur 'shf' est jamais
+ * posée) et par gwseq_save_cheval_meta() ci-dessous (§8 : une saisie manuelle qui change le SIRE
+ * efface ce marqueur, qui deviendrait sinon inexact). Marqueur minimal — la seule valeur
+ * actuellement posée est 'shf' ; une chaîne vide signifie simplement "absent" (efface la meta),
+ * jamais un système de traçabilité générique.
+ */
+function gwseq_get_cheval_sire_source($post_id) {
+  return (string) get_post_meta((int) $post_id, '_gwseq_sire_source', true);
+}
+
+function gwseq_set_cheval_sire_source($post_id, $source) {
+  $post_id = (int) $post_id;
+  if (!$post_id) return false;
+  $source = sanitize_key($source);
+  if ($source === '') {
+    delete_post_meta($post_id, '_gwseq_sire_source');
+    return true;
+  }
+  update_post_meta($post_id, '_gwseq_sire_source', $source);
   return true;
 }
 
@@ -752,7 +785,15 @@ function gwseq_save_cheval_meta($post_id) {
   if (function_exists('wp_is_post_revision') && wp_is_post_revision($post_id)) return;
   if (!current_user_can('edit_post', $post_id)) return;
 
+  // Provenance du SIRE (Lot SHF, §8) : une saisie manuelle qui change effectivement le SIRE rend le
+  // marqueur `_gwseq_sire_source = 'shf'` (posé par gwseq_ifce_map_import(), includes/ifce-import-mapper.php)
+  // potentiellement inexact — effacé ici dès que la valeur change réellement, jamais si l'écran est
+  // simplement resoumis sans modification de ce champ précis (comparaison AVANT/APRÈS l'écriture).
+  $sire_before_manual_save = get_post_meta($post_id, '_gwseq_sire', true);
   gwseq_set_cheval_identity($post_id, $_POST);
+  if (get_post_meta($post_id, '_gwseq_sire', true) !== $sire_before_manual_save) {
+    gwseq_set_cheval_sire_source($post_id, '');
+  }
   gwseq_race_referentiel_record_recent_code(get_current_user_id(), sanitize_key(wp_unslash($_POST['_gwseq_race'] ?? '')));
 
   $commercial = gwseq_sanitize_cheval_commercial_input($_POST);

@@ -26,6 +26,7 @@ php tests/gws-equestrian-cheval-admin-tabs-test.php
 node tests/gws-equestrian-cheval-admin-tabs-runtime-test.js
 php tests/gws-equestrian-ifce-import-test.php
 php tests/gws-equestrian-ifce-production-test.php
+php tests/gws-equestrian-ifce-shf-test.php
 node tests/gws-equestrian-race-referentiel-autocomplete-runtime-test.js
 php tests/gws-equestrian-cheval-labels-test.php
 php tests/gws-equestrian-membre-logic-test.php
@@ -681,6 +682,38 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   bloqué avant même la création du transient de prévisualisation avec strictement aucune meta
   modifiée, résistance d'une confirmation à un changement d'identité de la cible survenu entre
   upload et confirmation (aucune écriture), import initial jamais soumis au verrou.
+- **Lot SHF — enrichissement opportuniste du N° SIRE (0.46.0, nouveau
+  `gws-equestrian-ifce-shf-test.php` + compléments dans `gws-equestrian-ifce-import-test.php`,
+  `gws-equestrian-ifce-production-test.php` et `gws-equestrian-cheval-logic-test.php`)** : réseau
+  intégralement mocké via le filtre `gwseq_ifce_shf_fetch_override` (aucune dépendance réelle à
+  `shf.eu` dans la suite automatisée — la validation réelle a eu lieu séparément via le POC
+  `poc-shf-panel.php`, exécuté par l'utilisateur en Local, 8/8 fiches trouvées et SIRE extraits).
+  Fonctions pures : garde-fous hôte/schéma (`www.shf.eu`/HTTPS uniquement, y compris sur une
+  redirection), extraction ciblée du libellé "N° SIRE" (avec un cas de régression reproduisant
+  exactement un bug identifié pendant le développement du POC : `strip_tags()` recollant deux nœuds
+  de texte adjacents sans espace, laissant un décoy gagner après la vraie valeur), classification
+  HTTP/Content-Type/reconnaissance de fiche (jamais un simple 200 considéré suffisant), forme
+  stricte 8 chiffres + 1 lettre propre à cet extracteur (jamais un resserrement de la validation
+  générale, bien plus permissive, du champ `_gwseq_sire`). Point d'entrée métier
+  `gwseq_ifce_shf_lookup_sire_by_id()` : ID syntaxiquement invalide -> `''` sans requête réseau ;
+  succès mocké -> SIRE retourné (témoin Jamerose `19369410S`) ; témoin négatif (ID fictif, 404
+  simulé) -> `''` ; timeout/erreur réseau simulée -> `''`, jamais d'exception remontée ; page
+  générique 200 -> `''`. Câblage dans le workflow d'import (réseau mocké, vrais PDF Jamerose/Teldame,
+  dont le SIRE n'est PAS détecté dans la zone exploitée de ces documents, vérifié explicitement) :
+  création — au maximum un appel, résultat transporté dans le transient et affiché en preview,
+  écrit SEULEMENT à la confirmation, provenance `_gwseq_sire_source = 'shf'` posée uniquement dans ce
+  cas, preview abandonnée -> aucune écriture, 404/timeout/page générique -> import IFCE inchangé,
+  SIRE simplement absent ; réimport — zéro appel si un SIRE est déjà présent (même avec un ID IFCE
+  valide), un appel si éligible (SIRE vide + identité concordante), zéro appel si le PDF est
+  d'abord refusé par `gwseq_ifce_validate_reimport_identity()` (vérifié à la fois par un compteur
+  d'appels et par une vérification déclarative de l'ordre réel du code source) ; vérification
+  déclarative de câblage confirmant que l'appel SHF a lieu textuellement APRÈS le verrou d'identité,
+  jamais avant. Provenance : `gws-equestrian-cheval-logic-test.php` vérifie que le marqueur "shf"
+  est effacé par une saisie manuelle qui change RÉELLEMENT le SIRE, et préservé si la valeur
+  resoumise est identique. **UELN : audit documenté, zéro dérivation automatique implémentée** —
+  vérifié explicitement que l'UELN reste vide même après qu'un SIRE ait été obtenu via SHF (création
+  et réimport), aucune déduction hasardeuse de nationalité française à partir des données GWS/IFCE
+  actuelles (voir le CR du lot pour le détail complet de l'audit).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
