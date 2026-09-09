@@ -5,6 +5,67 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.45.0 — Lot IFCE : clôture du POC, identité IFCE, correction du rapprochement pedigree
+
+**POC technique InfoChevaux — NO-GO confirmé, piste abandonnée pour la V1.** Exécuté depuis un
+environnement Local (session HTTP fraîche, PHP/cURL) : dès le premier accès à
+`https://infochevaux.ifce.fr/fr/info-chevaux`, réponse HTTP 200 mais interstitiel Imperva
+(`/_Incapsula_Resource`), jamais la vraie page — même comportement pour la recherche (nom et SIRE),
+`infos-generales`, `fiche-synthese` et `/pdf` (une page HTML de ~954 octets à la place du PDF).
+Aucun contournement tenté (pas d'émulation navigateur, pas de cookies copiés, pas de résolution de
+challenge JS, pas de proxy). **Le workflow V1 reste donc : import manuel du PDF de fiche de synthèse
+→ parser existant → preview → validation → import/réimport non destructif — aucun moteur de
+recherche IFCE, aucun appel serveur vers InfoChevaux, aucune génération automatique de fiche, aucun
+bouton « Mettre à jour depuis l'IFCE » avec appel réseau.** Le code temporaire du POC (jamais commité
+dans ce dépôt) a été supprimé sans laisser de trace.
+
+**Identité IFCE pérennisée.** Audit préalable : `_gwseq_ifce_nom_officiel` existait déjà (conservée
+telle quelle, aucun doublon). Ajout de `_gwseq_ifce_id` (référence externe technique PRINCIPALE,
+extraite du NOM DU FICHIER PDF téléversé — ex.
+`fs-complet_classique_M8yvnNYRRru6thoBR_NYvg_1788944320384.pdf` → `M8yvnNYRRru6thoBR_NYvg`,
+`gwseq_ifce_extract_id_from_pdf_filename()`) et `_gwseq_ifce_slug` (slug officiel, jamais fabriqué
+depuis le titre GWS — reste vide tant qu'aucune source fiable ne le fournit, ce qui est le cas normal
+en V1 après le NO-GO ci-dessus). URL canonique InfoChevaux (`gwseq_get_cheval_ifce_url()`) : jamais
+stockée, calculée UNIQUEMENT quand slug ET ID sont tous deux connus — "il vaut mieux aucune URL qu'une
+URL supposée". SIRE/UELN (déjà existants, `_gwseq_sire`/`_gwseq_ueln`) rendus NON DESTRUCTIFS au
+réimport dans `gwseq_ifce_map_import()` : une absence de détection (cheval ancien, ex. ALME) n'efface
+plus une valeur déjà enregistrée ; une valeur détectée différente d'une valeur déjà enregistrée est un
+conflit, jamais résolu silencieusement (signalé en prévisualisation). Même garantie pour
+`_gwseq_ifce_id` (`gwseq_set_cheval_ifce_id()` refuse lui-même tout écrasement par une valeur
+différente). BO minimal (§22) : identité IFCE affichée en lecture seule dans la boîte technique
+dev/local déjà existante (Global Horse ID), aucun nouveau champ éditable, aucune refonte d'écran.
+
+**Correction du rapprochement pedigree Père/Mère — cause exacte du bug GRANDAME D'AUBIGNY / TELDAME
+DE LA NUTRIA.** Audit : `gwseq_render_ifce_preview_parent_choice()` n'appelait strictement AUCUNE
+fonction de rapprochement pour Père/Mère (contrairement à la Production, qui utilise déjà
+`gwseq_ifce_find_certain_production_match()`/`gwseq_ifce_find_probable_production_match()`) — le
+radio "Importer comme ascendant externe" restait toujours coché par défaut, sans jamais signaler
+qu'un cheval GWS existant (Teldame) correspondait par nom et année à la mère détectée. Corrigé par
+une nouvelle fonction pure `gwseq_ifce_resolve_parent_proposal()` (`includes/ifce-import-mapper.php`),
+réutilisant SANS DUPLICATION le resolver générique nom+année déjà développé pour la Production
+(renommé `gwseq_ifce_find_unique_horse_match_by_name_year()`, `gwseq_ifce_find_probable_production_match()`
+devenant un simple alias — un seul resolver, jamais deux implémentations parallèles) et les mêmes
+règles de rejet (sexe/année) que la saisie manuelle du pedigree :
+- **Cas A** — candidat unique nom+année : proposé (candidat pré-sélectionné dans le sélecteur,
+  libellé du choix explicite), mais le mode par défaut reste "external" — jamais un rattachement
+  automatique, une confirmation explicite de l'utilisateur reste requise.
+- **Cas B** — plusieurs candidats plausibles, ou homonyme d'année différente : aucun choix proposé.
+- **Cas C** — aucun candidat : comportement inchangé.
+- **Cas D** — parent DÉJÀ lié à une fiche GWS (réimport) : **prioritaire sur tout le reste**, le mode
+  par défaut devient "gws" avec la relation déjà active pré-sélectionnée — condition d'IDEMPOTENCE :
+  sans cette règle, un réimport sans y toucher aurait silencieusement RÉTROGRADÉ une relation GWS déjà
+  correcte vers un ascendant externe (bug latent distinct, découvert pendant l'audit, également
+  corrigé). Défense en profondeur supplémentaire côté serveur
+  (`gwseq_sanitize_ifce_preview_parent_choice()`) : si le champ radio était totalement absent de la
+  soumission ET qu'une relation GWS est déjà active, le repli n'est plus jamais "external".
+
+Aucun second resolver, aucun patch `si nom == X alors rattacher` : la même règle métier
+(`gwseq_horse_parent_candidate_rejection_reason()`/`gwseq_ifce_preview_parent_candidate_rejection_reason()`,
+cheval-pedigree.php) reste seule autorité, et `gwseq_set_horse_parent()` reste le seul point d'écriture
+— le resolver propose, le setter décide. Cohérence confirmée avec `gwseq_ifce_production_maternity_case()`
+(Production → filiation, 0.44.2) : les deux mécanismes réutilisent désormais la même famille d'outils
+et ne se contredisent jamais, quel que soit l'ordre d'import mère/fille.
+
 ## 0.44.2 — Ajustements de recette 2B.2 (présentation + cohérence bidirectionnelle Production)
 
 Deux ajustements demandés après une recette réelle positive (réimport Goldame fonctionnel, pedigree

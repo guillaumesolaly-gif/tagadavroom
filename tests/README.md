@@ -638,6 +638,28 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   ne le restitue qu'une seule fois, comme descendant GWS). Un test préexistant du Lot 2B.2 a été mis
   à jour pour refléter ce changement de règle délibéré (l'« absence d'effet de bord » ne s'applique
   plus qu'à un rapprochement non confirmé).
+  **Lot IFCE — clôture du POC, identité IFCE, rapprochement pedigree (0.45.0, même fichier)** :
+  resolver générique `gwseq_ifce_find_unique_horse_match_by_name_year()` vérifié équivalent à
+  l'ancien `gwseq_ifce_find_probable_production_match()` (devenu un simple alias) et exclusion
+  explicite testée ; `gwseq_ifce_resolve_parent_proposal()` sur les 4 cas (A candidat unique
+  pré-sélectionné mais mode par défaut "external" inchangé ; B ambigu/homonyme d'année différente ->
+  aucun choix ; C aucun candidat ; D parent déjà lié -> mode "gws" par défaut, prioritaire même si le
+  nom détecté diffère), normalisation apostrophe/casse réutilisée, absence d'année jamais un
+  rapprochement arbitraire, protection contre un faux positif de sexe incompatible (réutilise
+  `gwseq_ifce_preview_parent_candidate_rejection_reason()`, jamais dupliquée) ; reproduction bout en
+  bout du cas réel GRANDAME D'AUBIGNY/TELDAME DE LA NUTRIA via `gwseq_ifce_map_import()` (relation
+  Mère enregistrée en mode "gws" vers la fiche existante, Grandame apparaît dans la Production
+  calculée de Teldame) puis réimport idempotent (la relation GWS reste intacte, jamais rétrogradée
+  vers "external") ; défense en profondeur de `gwseq_sanitize_ifce_preview_parent_choice()` (champ
+  radio absent + relation GWS déjà active -> jamais un repli sur "external", un choix explicite reste
+  toujours respecté) ; extraction de l'ID IFCE depuis le nom du fichier PDF
+  (`gwseq_ifce_extract_id_from_pdf_filename()`, sur les deux noms de fichiers réels connus, et cas
+  négatifs) ; `_gwseq_ifce_id`/`_gwseq_ifce_slug`/`gwseq_get_cheval_ifce_url()`
+  (`includes/cheval-fields.php`) — écriture, idempotence, conflit détecté et refusé silencieusement
+  par le setter lui-même, URL calculée uniquement quand slug ET ID sont connus ; non-destructivité
+  SIRE/UELN au réimport dans `gwseq_ifce_map_import()` (absence de détection n'efface jamais une
+  valeur existante, valeur détectée différente d'une valeur existante jamais écrasée, première
+  détection enregistrée normalement).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

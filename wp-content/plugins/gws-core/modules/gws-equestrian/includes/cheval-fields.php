@@ -116,6 +116,14 @@ function gwseq_register_cheval_meta() {
   // Global Horse ID (§15-19) : jamais saisi par un utilisateur, jamais exposé en REST, jamais
   // réutilisé comme jeton d'accès (voir gwseq_assign_cheval_global_id() plus bas).
   register_post_meta(GWSEQ_CPT_CHEVAL, '_gwseq_global_id', array('single' => true, 'type' => 'string', 'show_in_rest' => false));
+
+  // Identité IFCE (Lot IFCE — clôture POC, identité IFCE) : jamais saisies manuellement (aucun
+  // champ de formulaire, voir gwseq_render_cheval_ifce_identity_dev_box() plus bas — techniques,
+  // BO minimal §22), uniquement alimentées par l'import IFCE. `_gwseq_ifce_nom_officiel` existait
+  // déjà avant ce lot (non enregistrée ici, précédent conservé tel quel — voir l'audit du CR).
+  foreach (array('_gwseq_ifce_id', '_gwseq_ifce_slug') as $key) {
+    register_post_meta(GWSEQ_CPT_CHEVAL, $key, array('single' => true, 'type' => 'string', 'show_in_rest' => false));
+  }
 }
 add_action('init', 'gwseq_register_cheval_meta');
 
@@ -589,6 +597,36 @@ function gwseq_render_cheval_global_id_dev_box($post) {
   <p class="description"><?php esc_html_e('Identifiant technique global de cette fiche (Global Horse ID). Généré automatiquement, jamais modifiable manuellement, jamais un identifiant de l’animal réel, jamais un secret. Visible ici uniquement parce que l’environnement est local/développement.', 'gws-core'); ?></p>
   <input type="text" class="widefat" readonly onclick="this.select();" value="<?php echo esc_attr($global_id !== '' ? $global_id : __('(sera généré au premier enregistrement réel)', 'gws-core')); ?>">
   <?php
+  // Identité IFCE (Lot IFCE — clôture POC) : purement technique/diagnostic, jamais un champ
+  // éditable (§22 : "reste minimal... ne surcharge pas la fiche cheval"), réutilise ce même
+  // emplacement dev-only plutôt qu'une nouvelle boîte. N'affiche une ligne QUE si la donnée
+  // correspondante existe réellement — jamais "non renseigné" pour un champ qui n'a simplement
+  // jamais été concerné par cette fiche (ex. un cheval jamais importé depuis un PDF IFCE).
+  $ifce_id = gwseq_get_cheval_ifce_id($post->ID);
+  $ifce_nom_officiel = (string) get_post_meta($post->ID, '_gwseq_ifce_nom_officiel', true);
+  $ifce_slug = gwseq_get_cheval_ifce_slug($post->ID);
+  $ifce_url = gwseq_get_cheval_ifce_url($post->ID);
+  if ($ifce_id !== '' || $ifce_nom_officiel !== '') :
+    ?>
+    <hr>
+    <p class="description"><?php esc_html_e('Identité IFCE (technique, importée depuis une fiche de synthèse — jamais saisie manuellement).', 'gws-core'); ?></p>
+    <?php if ($ifce_id !== '') : ?>
+      <p><label><?php esc_html_e('ID IFCE', 'gws-core'); ?></label><br>
+      <input type="text" class="widefat" readonly onclick="this.select();" value="<?php echo esc_attr($ifce_id); ?>"></p>
+    <?php endif; ?>
+    <?php if ($ifce_nom_officiel !== '') : ?>
+      <p><label><?php esc_html_e('Nom officiel IFCE', 'gws-core'); ?></label><br>
+      <input type="text" class="widefat" readonly onclick="this.select();" value="<?php echo esc_attr($ifce_nom_officiel); ?>"></p>
+    <?php endif; ?>
+    <?php if ($ifce_slug !== '') : ?>
+      <p><label><?php esc_html_e('Slug IFCE', 'gws-core'); ?></label><br>
+      <input type="text" class="widefat" readonly onclick="this.select();" value="<?php echo esc_attr($ifce_slug); ?>"></p>
+    <?php endif; ?>
+    <?php if ($ifce_url !== '') : ?>
+      <p><a href="<?php echo esc_url($ifce_url); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Voir la fiche IFCE', 'gws-core'); ?></a></p>
+    <?php endif; ?>
+  <?php endif; ?>
+  <?php
 }
 
 /**
@@ -633,6 +671,79 @@ function gwseq_set_cheval_ifce_nom_officiel($post_id, $nom_officiel) {
   if (!$post_id || $nom_officiel === '') return false;
   update_post_meta($post_id, '_gwseq_ifce_nom_officiel', $nom_officiel);
   return true;
+}
+
+/**
+ * Identité IFCE — ID opaque, slug officiel, URL canonique (Lot IFCE — clôture POC).
+ *
+ * AUDIT PRÉALABLE (voir CR) : `_gwseq_ifce_nom_officiel` existait déjà (gwseq_set_cheval_ifce_nom_officiel()
+ * ci-dessus) — conservé strictement tel quel, aucun doublon, aucune migration. Ce lot ajoute
+ * UNIQUEMENT ce qui manquait réellement : l'identifiant opaque IFCE (référence externe technique
+ * PRINCIPALE, §3 de la demande) et le slug officiel (jamais fabriqué depuis le titre GWS — §6, "il
+ * vaut mieux aucune URL qu'une URL supposée").
+ *
+ * NON-DESTRUCTIF (§20-21) : jamais d'écrasement silencieux d'un ID/slug déjà enregistré par une
+ * valeur DIFFÉRENTE — voir gwseq_cheval_ifce_id_conflicts() ci-dessous, utilisée par
+ * gwseq_ifce_map_import() (includes/ifce-import-mapper.php) pour signaler ce cas AVANT d'appeler
+ * ces setters, qui refusent eux-mêmes silencieusement toute écriture en conflit (défense en
+ * profondeur — la même garantie s'applique donc à tout futur appelant programmatique direct).
+ * Une valeur identique à l'existante est un no-op idempotent (réimport du même cheval).
+ */
+function gwseq_get_cheval_ifce_id($post_id) {
+  return (string) get_post_meta((int) $post_id, '_gwseq_ifce_id', true);
+}
+
+function gwseq_cheval_ifce_id_conflicts($post_id, $new_ifce_id) {
+  $new_ifce_id = trim((string) $new_ifce_id);
+  if ($new_ifce_id === '') return false;
+  $existing = gwseq_get_cheval_ifce_id($post_id);
+  return $existing !== '' && $existing !== $new_ifce_id;
+}
+
+function gwseq_set_cheval_ifce_id($post_id, $ifce_id) {
+  $post_id = (int) $post_id;
+  $ifce_id = gws_core_field_sanitize('text', $ifce_id);
+  if (!$post_id || $ifce_id === '') return false;
+  if (gwseq_cheval_ifce_id_conflicts($post_id, $ifce_id)) return false; // conflit : jamais écrasé silencieusement (§20)
+  update_post_meta($post_id, '_gwseq_ifce_id', $ifce_id);
+  return true;
+}
+
+function gwseq_get_cheval_ifce_slug($post_id) {
+  return (string) get_post_meta((int) $post_id, '_gwseq_ifce_slug', true);
+}
+
+function gwseq_cheval_ifce_slug_conflicts($post_id, $new_slug) {
+  $new_slug = trim((string) $new_slug);
+  if ($new_slug === '') return false;
+  $existing = gwseq_get_cheval_ifce_slug($post_id);
+  return $existing !== '' && $existing !== $new_slug;
+}
+
+function gwseq_set_cheval_ifce_slug($post_id, $slug) {
+  $post_id = (int) $post_id;
+  $slug = gws_core_field_sanitize('text', $slug);
+  if (!$post_id || $slug === '') return false;
+  if (gwseq_cheval_ifce_slug_conflicts($post_id, $slug)) return false;
+  update_post_meta($post_id, '_gwseq_ifce_slug', $slug);
+  return true;
+}
+
+/**
+ * URL canonique InfoChevaux — CALCULÉE, jamais stockée (§4, §6, §8) : construite UNIQUEMENT à
+ * partir du slug et de l'ID déjà enregistrés (deux données déjà validées comme fiables au moment
+ * de leur propre écriture, jamais reconstruites depuis le nom GWS), donc jamais une "donnée
+ * déduite présentée comme si elle venait de l'IFCE" — c'est un simple gabarit appliqué à deux
+ * valeurs déjà sources de vérité. Chaîne vide tant que le slug n'est pas connu (aujourd'hui : le
+ * cas normal en V1, aucune intégration InfoChevaux — voir NO-GO Imperva du CR — ne fournit
+ * actuellement de slug fiable) : "il vaut mieux aucune URL qu'une URL supposée" (§8), jamais un
+ * lien construit sur le seul ID.
+ */
+function gwseq_get_cheval_ifce_url($post_id) {
+  $slug = gwseq_get_cheval_ifce_slug($post_id);
+  $id = gwseq_get_cheval_ifce_id($post_id);
+  if ($slug === '' || $id === '') return '';
+  return 'https://infochevaux.ifce.fr/fr/' . $slug . '-' . $id . '/infos-generales';
 }
 
 function gwseq_save_cheval_meta($post_id) {

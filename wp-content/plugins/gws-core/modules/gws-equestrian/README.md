@@ -1606,6 +1606,71 @@ résultat du resolver sur la fiche Cheval — pas d'interface de gestion manuell
 lignes `saillie`, identifiant provisoire) — les deux documents réels ayant permis de valider cette
 architecture au fil des audits 2B.1 à 2B.1 ter.
 
+### Lot IFCE — clôture du POC, identité IFCE, rapprochement pedigree (0.45.0)
+
+**POC technique InfoChevaux : NO-GO confirmé, piste abandonnée pour la V1.** Une automatisation
+serveur (recherche → sélection → génération/téléchargement de fiche synthèse) a été testée en
+conditions isolées : dès le premier accès à `https://infochevaux.ifce.fr/fr/info-chevaux` avec une
+session HTTP totalement fraîche, la réponse est un interstitiel Imperva (`/_Incapsula_Resource`),
+jamais la vraie page — comportement identique pour la recherche (nom et SIRE), `infos-generales`,
+`fiche-synthese` et `/pdf`. Aucun contournement n'a été tenté. **Conséquence produit ferme : aucun
+moteur de recherche IFCE dans GWS, aucun appel serveur vers InfoChevaux, aucune génération
+automatique de fiche, aucun bouton « Mettre à jour depuis l'IFCE » avec appel réseau.** Le workflow
+V1 reste et reste : import manuel du PDF de fiche de synthèse → parser existant (inchangé) →
+preview → validation → import/réimport non destructif.
+
+**Identité IFCE pérennisée** (`_gwseq_ifce_id`, `_gwseq_ifce_slug`, en complément de
+`_gwseq_ifce_nom_officiel` qui existait déjà) — voir `includes/cheval-fields.php` :
+- `gwseq_get_cheval_ifce_id()`/`gwseq_set_cheval_ifce_id()` : l'ID opaque IFCE, référence externe
+  technique PRINCIPALE. Extrait automatiquement du NOM DU FICHIER PDF téléversé
+  (`gwseq_ifce_extract_id_from_pdf_filename()`, `includes/ifce-import-admin.php`) — ex.
+  `fs-complet_classique_M8yvnNYRRru6thoBR_NYvg_1788944320384.pdf` → `M8yvnNYRRru6thoBR_NYvg`.
+- `gwseq_get_cheval_ifce_slug()`/`gwseq_set_cheval_ifce_slug()` : slug officiel — **jamais fabriqué
+  depuis le titre GWS** (`sanitize_title(get_the_title(...))` proscrit). Reste vide tant qu'aucune
+  source fiable ne le fournit — ce qui est le cas normal en V1 après le NO-GO ci-dessus (le nom de
+  fichier PDF ne contient que l'ID, jamais le slug).
+- `gwseq_get_cheval_ifce_url()` : URL canonique InfoChevaux — **jamais stockée**, calculée à la
+  volée uniquement quand slug ET ID sont tous deux connus. « Il vaut mieux aucune URL qu'une URL
+  supposée » : reste vide tant que le slug n'est pas renseigné.
+- **Non-destructif** : les deux setters refusent eux-mêmes d'écraser une valeur déjà enregistrée par
+  une valeur différente (conflit signalé en prévisualisation lors d'un réimport, jamais résolu
+  silencieusement) ; une valeur identique reste un no-op idempotent.
+- SIRE/UELN (`_gwseq_sire`/`_gwseq_ueln`, déjà existants) reçoivent la même garantie de
+  non-destructivité, appliquée dans `gwseq_ifce_map_import()` : une absence de détection (cheval
+  ancien, ex. ALME/ALME Z, sans SIRE/UELN disponible) n'efface jamais une valeur déjà enregistrée ;
+  une valeur détectée différente d'une valeur déjà enregistrée est un conflit, jamais écrasée.
+- BO minimal (aucun nouveau champ éditable) : identité IFCE affichée en lecture seule dans la boîte
+  technique dev/local déjà existante (`gwseq_render_cheval_global_id_dev_box()`, visible uniquement
+  en environnement local/développement).
+
+**Correction du rapprochement pedigree Père/Mère.** Cause exacte identifiée par audit (cas réel
+GRANDAME D'AUBIGNY/TELDAME DE LA NUTRIA) : l'écran de prévisualisation IFCE ne proposait
+STRICTEMENT AUCUN rapprochement automatique pour Père/Mère (contrairement à la Production, qui
+utilise déjà `gwseq_ifce_find_certain_production_match()`/`gwseq_ifce_find_probable_production_match()`
+ci-dessus) — un cheval GWS déjà existant correspondant par nom et année n'était jamais signalé,
+laissant le radio « Importer comme ascendant externe » coché par défaut. Corrigée par
+`gwseq_ifce_resolve_parent_proposal()` (`includes/ifce-import-mapper.php`), qui réutilise SANS
+DUPLICATION le resolver générique nom+année déjà développé pour la Production — renommé
+`gwseq_ifce_find_unique_horse_match_by_name_year()`, `gwseq_ifce_find_probable_production_match()`
+devenant un simple alias (un seul resolver, jamais deux implémentations parallèles) — et les mêmes
+règles de rejet sexe/année que la saisie manuelle du pedigree, jamais dupliquées :
+- **Cas A** (candidat unique) : proposé (pré-sélectionné dans le sélecteur), mode par défaut
+  « external » inchangé — jamais un rattachement automatique, confirmation explicite requise.
+- **Cas B** (ambigu ou homonyme d'année différente) / **Cas C** (aucun candidat) : comportement
+  historique strictement inchangé.
+- **Cas D** (parent déjà lié, réimport) : **prioritaire sur tout le reste**, condition d'idempotence
+  — le mode par défaut devient « gws » avec la relation déjà active pré-sélectionnée, jamais recalculée
+  par nom. Sans cette règle, un simple réimport sans y toucher aurait silencieusement rétrogradé une
+  relation GWS déjà correcte vers un ascendant externe (bug latent découvert pendant l'audit, corrigé
+  au même endroit). Défense en profondeur supplémentaire dans
+  `gwseq_sanitize_ifce_preview_parent_choice()` : si le champ radio était totalement absent de la
+  soumission ET qu'une relation GWS est déjà active, le repli n'est plus jamais « external ».
+
+Cohérence confirmée avec `gwseq_ifce_production_maternity_case()` (Production → filiation, voir
+0.44.2 ci-dessous) : les deux mécanismes réutilisent désormais la même famille d'outils
+(normalisation, resolver nom+année, `gwseq_set_horse_parent()` comme seul point d'écriture) et ne se
+contredisent jamais, quel que soit l'ordre d'import mère/fille.
+
 ### Pedigree (Étape 5)
 
 **Deux types de parent, chacun indépendamment pour le Père et pour la Mère** : soit une fiche

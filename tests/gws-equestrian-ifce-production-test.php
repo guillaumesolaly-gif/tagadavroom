@@ -746,6 +746,228 @@ function gws_test_extract_function_body_production($code_only, $function_name) {
 }
 
 // =====================================================================================
+// 13. Lot IFCE — clôture POC : identité IFCE + correction du rapprochement pedigree Père/Mère
+//     (cause exacte : Grandame d'Aubigny / Teldame de la Nutria, voir le CR)
+// =====================================================================================
+
+// --- Resolver générique nom+année : UNE SEULE implémentation, gwseq_ifce_find_probable_production_match()
+// devient un simple alias, sans changement de comportement pour la Production (§11 : audit préalable) ---
+gws_test_make_post(800, GWSEQ_CPT_CHEVAL, 'Homonyme Unique');
+gwseq_set_cheval_identity(800, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2010));
+gws_test_assert(
+  gwseq_ifce_find_unique_horse_match_by_name_year('Homonyme Unique', 2010) === 800,
+  'Resolver générique nom+année : trouve bien un candidat unique'
+);
+gws_test_assert(
+  gwseq_ifce_find_probable_production_match('Homonyme Unique', 2010) === gwseq_ifce_find_unique_horse_match_by_name_year('Homonyme Unique', 2010),
+  'Compatibilité (§11) : gwseq_ifce_find_probable_production_match() reste un simple alias, même résultat que le resolver générique'
+);
+gws_test_assert(
+  gwseq_ifce_find_unique_horse_match_by_name_year('Homonyme Unique', 2010, array(800)) === 0,
+  'Resolver générique : un candidat explicitement exclu (ex. la fiche important elle-même) n’est jamais retourné'
+);
+
+// --- Fixtures pour gwseq_ifce_resolve_parent_proposal() (Cas A/B/C/D, §12 de la demande) ---
+gws_test_make_post(810, GWSEQ_CPT_CHEVAL, 'TELDAME DE LA NUTRIA');
+gwseq_set_cheval_identity(810, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+
+$teldame_branch = array('name' => 'TELDAME DE LA NUTRIA', 'race' => '', 'race_autre' => '', 'annee_naissance' => 2007);
+
+// --- Cas A : candidat unique nom+année — cause exacte du bug Grandame/Teldame, désormais proposé ---
+$proposal_a = gwseq_ifce_resolve_parent_proposal('mother', $teldame_branch, 0, 2016);
+gws_test_assert($proposal_a['default_mode'] === 'external', 'Cas A : le mode par défaut reste "external" (§11-12 : jamais un rattachement automatique, même avec un candidat unique)');
+gws_test_assert($proposal_a['preselected_horse_id'] === 810, 'Cas A : le candidat unique (Teldame) est bien pré-sélectionné, visible avant validation (§12)');
+gws_test_assert($proposal_a['note'] === 'unique_match', 'Cas A : le code de note est bien "unique_match"');
+
+// --- Normalisation (§13) : apostrophe typographique, casse, accents — même candidat retrouvé ---
+// (nom distinct de "Goldame d'Aubigny"/205 déjà utilisée plus haut dans ce fichier, pour ne pas
+// créer une ambiguïté artificielle entre deux fixtures de test)
+gws_test_make_post(811, GWSEQ_CPT_CHEVAL, "Solaire d’Argentan"); // apostrophe typographique dans le titre GWS
+gwseq_set_cheval_identity(811, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+$proposal_norm = gwseq_ifce_resolve_parent_proposal('mother', array('name' => "SOLAIRE D'ARGENTAN", 'annee_naissance' => 2016), 0, 2020); // apostrophe droite côté IFCE
+gws_test_assert($proposal_norm['preselected_horse_id'] === 811, 'Normalisation (§13) : apostrophe typographique vs droite, casse — le candidat est bien retrouvé malgré la variante');
+
+// --- Cas B : homonyme MÊME nom mais ANNÉE DIFFÉRENTE — jamais proposé comme candidat unique (§14) ---
+gws_test_make_post(812, GWSEQ_CPT_CHEVAL, 'HOMONYME ANNEE');
+gwseq_set_cheval_identity(812, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 1999));
+$proposal_year_mismatch = gwseq_ifce_resolve_parent_proposal('mother', array('name' => 'HOMONYME ANNEE', 'annee_naissance' => 2016), 0, 2020);
+gws_test_assert($proposal_year_mismatch['preselected_horse_id'] === 0, 'Cas B (§14) : un homonyme dont l’année diffère n’est jamais proposé — l’année participe au niveau de confiance');
+
+// --- Cas B : plusieurs candidats plausibles (même nom+année) — AUCUN choix arbitraire (§12/§18) ---
+gws_test_make_post(813, GWSEQ_CPT_CHEVAL, 'HOMONYME AMBIGU');
+gwseq_set_cheval_identity(813, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2012));
+gws_test_make_post(814, GWSEQ_CPT_CHEVAL, 'HOMONYME AMBIGU');
+gwseq_set_cheval_identity(814, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2012));
+$proposal_ambigu = gwseq_ifce_resolve_parent_proposal('mother', array('name' => 'HOMONYME AMBIGU', 'annee_naissance' => 2012), 0, 2020);
+gws_test_assert($proposal_ambigu['preselected_horse_id'] === 0 && $proposal_ambigu['default_mode'] === 'external', 'Cas B (§12/§18) : deux candidats également plausibles -> aucun choix arbitraire, comportement "external" inchangé');
+
+// --- Cas C : aucun candidat — comportement inchangé ---
+$proposal_c = gwseq_ifce_resolve_parent_proposal('mother', array('name' => 'INTROUVABLE DU TOUT', 'annee_naissance' => 2016), 0, 2020);
+gws_test_assert($proposal_c['default_mode'] === 'external' && $proposal_c['preselected_horse_id'] === 0 && $proposal_c['note'] === '', 'Cas C : aucun candidat -> comportement "external" strictement inchangé');
+
+// --- Absence d'année (§14 : "ne doit jamais provoquer un rapprochement arbitraire") ---
+gws_test_make_post(815, GWSEQ_CPT_CHEVAL, 'SANS ANNEE CONNUE');
+gwseq_set_cheval_identity(815, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+$proposal_no_year = gwseq_ifce_resolve_parent_proposal('mother', array('name' => 'SANS ANNEE CONNUE', 'annee_naissance' => ''), 0, 2020);
+gws_test_assert($proposal_no_year['preselected_horse_id'] === 0, 'Absence d’année (§14) : jamais de rapprochement arbitraire sur le seul nom, même avec un candidat homonyme');
+
+// --- Protection contre les faux positifs (§13/§18) : candidat trouvé par nom+année mais sexe
+// incompatible avec le rôle -> jamais proposé (réutilise gwseq_ifce_preview_parent_candidate_rejection_reason(),
+// cheval-pedigree.php, jamais une règle dupliquée) ---
+gws_test_make_post(816, GWSEQ_CPT_CHEVAL, 'MALE HOMONYME MERE');
+gwseq_set_cheval_identity(816, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2007));
+$proposal_sexe_reject = gwseq_ifce_resolve_parent_proposal('mother', array('name' => 'MALE HOMONYME MERE', 'annee_naissance' => 2007), 0, 2020);
+gws_test_assert($proposal_sexe_reject['preselected_horse_id'] === 0, 'Protection faux positif (§13/§18) : un homonyme au sexe incompatible avec le rôle (mâle proposé comme Mère) n’est jamais proposé');
+
+// --- Cas D : parent DÉJÀ lié — IDEMPOTENCE (§12/§18), prioritaire sur tout candidat nom+année,
+// même si le nom actuellement détecté par l'IFCE diffère du nom de la fiche déjà liée ---
+gws_test_make_post(817, GWSEQ_CPT_CHEVAL, 'Fille Deja Liee');
+gwseq_set_cheval_identity(817, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2018));
+gwseq_set_horse_parent(817, 'mother', array('mode' => 'gws', 'horse_id' => 810)); // déjà lié à Teldame (810)
+$proposal_d = gwseq_ifce_resolve_parent_proposal('mother', array('name' => 'UN AUTRE NOM DETECTE', 'annee_naissance' => 1999), 817, 2018);
+gws_test_assert($proposal_d['default_mode'] === 'gws', 'Cas D (§12) : parent déjà lié -> mode par défaut "gws", jamais "external" (idempotence)');
+gws_test_assert($proposal_d['preselected_horse_id'] === 810, 'Cas D : le candidat pré-sélectionné reste la relation DÉJÀ ENREGISTRÉE (810), jamais recalculée par nom');
+gws_test_assert($proposal_d['note'] === 'already_linked', 'Cas D : code de note "already_linked"');
+
+// =====================================================================================
+// 14. Régression bout en bout — GRANDAME D'AUBIGNY / TELDAME DE LA NUTRIA (cas de recette exact)
+// =====================================================================================
+
+gws_test_make_post(820, GWSEQ_CPT_CHEVAL, 'TELDAME DE LA NUTRIA E2E');
+gwseq_set_cheval_identity(820, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+
+$grandame_parsed = array(
+  'valid' => true,
+  'identity' => array(
+    'nom' => 'GRANDAME D’AUBIGNY', 'nom_officiel' => '', 'sexe' => 'female', 'annee_naissance' => 2016,
+    'robe' => '', 'robe_autre' => '', 'race' => '', 'race_autre' => '', 'taille_cm' => '',
+    'eleveur' => '', 'ueln' => '', 'sire' => '',
+  ),
+  'indices' => array(),
+  'pedigree' => array(
+    'count' => 1,
+    'father' => null,
+    'mother' => array('name' => 'TELDAME DE LA NUTRIA E2E', 'race' => '', 'race_autre' => '', 'annee_naissance' => 2007),
+  ),
+);
+
+// Simule EXACTEMENT ce que soumet le formulaire de prévisualisation UNE FOIS CORRIGÉ (§12) : le
+// candidat proposé par gwseq_ifce_resolve_parent_proposal() (Cas A), explicitement confirmé par
+// l'utilisateur en cliquant "Lier à un cheval déjà enregistré" — jamais une sélection automatique
+// côté serveur, seule la PROPOSITION est automatique.
+$grandame_proposal = gwseq_ifce_resolve_parent_proposal('mother', $grandame_parsed['pedigree']['mother'], 0, 2016);
+gws_test_assert($grandame_proposal['preselected_horse_id'] === 820, 'Régression Grandame/Teldame : le candidat proposé pour la Mère est bien la fiche GWS existante de Teldame');
+
+$grandame_id = wp_insert_post(array('post_type' => GWSEQ_CPT_CHEVAL, 'post_status' => 'draft', 'post_title' => 'GRANDAME D’AUBIGNY'), true);
+gwseq_ifce_map_import($grandame_id, $grandame_parsed, array('identity' => true, 'indices' => true, 'pedigree' => true), array(
+  'mother' => array('mode' => 'gws', 'horse_id' => $grandame_proposal['preselected_horse_id']),
+));
+
+$grandame_mother_relation = gwseq_get_horse_parent($grandame_id, 'mother');
+gws_test_assert($grandame_mother_relation['mode'] === 'gws', 'Régression Grandame/Teldame : la relation Mère est bien enregistrée en mode "gws", jamais "external"');
+gws_test_assert($grandame_mother_relation['horse_id'] === 820, 'Régression Grandame/Teldame : la relation Mère pointe bien vers la fiche GWS existante de Teldame, aucune copie externe dupliquée');
+gws_test_assert(in_array($grandame_id, array_map(function ($p) { return $p->ID; }, gwseq_get_horse_offspring(820)), true), 'Régression Grandame/Teldame : Grandame apparaît bien dans la Production calculée de Teldame après validation (relation GWS réelle)');
+
+// --- Cas D en conditions réelles : un RÉIMPORT de Grandame (pedigree coché, aucun choix explicite
+// soumis — le cas normal où l'utilisateur ne fait que confirmer) ne doit JAMAIS faire régresser la
+// relation Mère déjà correcte vers "external" (§19) ---
+gwseq_ifce_map_import($grandame_id, $grandame_parsed, array('identity' => true, 'indices' => true, 'pedigree' => true), array(
+  // Aucune clé 'mother' : simule un $parent_choices construit par gwseq_sanitize_ifce_preview_parent_choice()
+  // avec le safe-default (§19, includes/ifce-import-admin.php) — voir le test dédié plus bas pour
+  // cette fonction précise ; ce test-ci vérifie le résultat une fois appliqué par le mapper.
+  'mother' => array('mode' => 'gws', 'horse_id' => 820),
+));
+$grandame_mother_after_reimport = gwseq_get_horse_parent($grandame_id, 'mother');
+gws_test_assert($grandame_mother_after_reimport['mode'] === 'gws' && $grandame_mother_after_reimport['horse_id'] === 820, 'Idempotence réimport (§18/§19) : la relation Mère GWS déjà correcte reste intacte après un réimport, jamais remplacée par un ascendant externe');
+
+// =====================================================================================
+// 15. Défense en profondeur — gwseq_sanitize_ifce_preview_parent_choice() (§19)
+// =====================================================================================
+
+$choice_field_absent_no_existing = gwseq_sanitize_ifce_preview_parent_choice(array(), 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id', 0);
+gws_test_assert($choice_field_absent_no_existing === array('mode' => 'external'), 'Défense en profondeur : champ radio absent ET aucune relation existante -> repli "external" inchangé (comportement historique)');
+
+$choice_field_absent_existing = gwseq_sanitize_ifce_preview_parent_choice(array(), 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id', 820);
+gws_test_assert($choice_field_absent_existing === array('mode' => 'gws', 'horse_id' => 820), 'Défense en profondeur (§19) : champ radio totalement absent MAIS une relation GWS est déjà active -> repli sur cette relation, JAMAIS "external" (ne remplace jamais silencieusement un parent GWS)');
+
+$choice_explicit_external_overrides_existing = gwseq_sanitize_ifce_preview_parent_choice(array('gwseq_ifce_mere_mode' => 'external'), 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id', 820);
+gws_test_assert($choice_explicit_external_overrides_existing === array('mode' => 'external'), 'Défense en profondeur : un choix EXPLICITE "external" soumis par l’utilisateur reste toujours respecté (une correction volontaire n’est jamais bloquée)');
+
+// =====================================================================================
+// 16. Identité IFCE — ID opaque extrait du nom de fichier PDF, non-destructif (§3/§20)
+// =====================================================================================
+
+gws_test_assert(
+  gwseq_ifce_extract_id_from_pdf_filename('fs-complet_classique_FlqOAbSQRt6yLcBQACZbfA_1788355627601.pdf') === 'FlqOAbSQRt6yLcBQACZbfA',
+  'Extraction ID IFCE : exemple réel n°1 (Windows VH Costersveld / Cornet Obolensky)'
+);
+gws_test_assert(
+  gwseq_ifce_extract_id_from_pdf_filename('fs-complet_classique_M8yvnNYRRru6thoBR_NYvg_1788944320384.pdf') === 'M8yvnNYRRru6thoBR_NYvg',
+  'Extraction ID IFCE : exemple réel n°2 (Dollar du Mûrier), y compris un ID contenant lui-même un "_"'
+);
+gws_test_assert(
+  gwseq_ifce_extract_id_from_pdf_filename('mon-fichier-renomme.pdf') === '',
+  'Extraction ID IFCE : un fichier renommé par l’utilisateur ne matche jamais approximativement -> chaîne vide, jamais une extraction partielle'
+);
+gws_test_assert(
+  gwseq_ifce_extract_id_from_pdf_filename('') === '',
+  'Extraction ID IFCE : nom de fichier vide -> chaîne vide, jamais une erreur'
+);
+
+gws_test_make_post(830, GWSEQ_CPT_CHEVAL, 'Fiche Identite IFCE');
+gws_test_assert(gwseq_get_cheval_ifce_id(830) === '', 'ID IFCE : vide par défaut sur une fiche jamais importée depuis un PDF');
+gws_test_assert(gwseq_set_cheval_ifce_id(830, 'ABCDEFGHIJKLMNOPQRSTUV') === true, 'ID IFCE : première écriture acceptée');
+gws_test_assert(gwseq_get_cheval_ifce_id(830) === 'ABCDEFGHIJKLMNOPQRSTUV', 'ID IFCE : relecture correcte après écriture');
+gws_test_assert(gwseq_set_cheval_ifce_id(830, 'ABCDEFGHIJKLMNOPQRSTUV') === true, 'ID IFCE : réécriture de la MÊME valeur -> idempotent, acceptée');
+gws_test_assert(gwseq_cheval_ifce_id_conflicts(830, 'UN_ID_DIFFERENT_XXXXXX') === true, 'ID IFCE (§20) : une valeur différente de celle déjà enregistrée est bien détectée comme un conflit');
+gws_test_assert(gwseq_set_cheval_ifce_id(830, 'UN_ID_DIFFERENT_XXXXXX') === false, 'ID IFCE (§20) : le setter refuse LUI-MÊME (défense en profondeur) d’écraser silencieusement un ID différent déjà enregistré');
+gws_test_assert(gwseq_get_cheval_ifce_id(830) === 'ABCDEFGHIJKLMNOPQRSTUV', 'ID IFCE (§20) : la valeur déjà enregistrée est bien restée intacte après la tentative de conflit');
+
+gws_test_assert(gwseq_get_cheval_ifce_url(830) === '', 'URL IFCE (§8) : jamais construite sur le seul ID -- vide tant que le slug n’est pas connu ("il vaut mieux aucune URL qu’une URL supposée")');
+gwseq_set_cheval_ifce_slug(830, 'fiche-identite-ifce-officielle');
+gws_test_assert(
+  gwseq_get_cheval_ifce_url(830) === 'https://infochevaux.ifce.fr/fr/fiche-identite-ifce-officielle-ABCDEFGHIJKLMNOPQRSTUV/infos-generales',
+  'URL IFCE (§4/§6) : construite UNIQUEMENT à partir du slug et de l’ID déjà enregistrés (jamais reconstruite depuis le nom GWS) une fois le slug connu'
+);
+
+// =====================================================================================
+// 17. SIRE/UELN — non-destructif au réimport (§7/§20-21), jamais inventé, jamais écrasé par un
+//     conflit silencieux
+// =====================================================================================
+
+gws_test_make_post(840, GWSEQ_CPT_CHEVAL, 'Cheval SIRE UELN');
+gwseq_set_cheval_identity(840, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2000, '_gwseq_sire' => '91412674X', '_gwseq_ueln' => '25000191412674X'));
+
+$parsed_no_sire_ueln = array(
+  'valid' => true,
+  'identity' => array(
+    'nom' => 'Cheval SIRE UELN', 'nom_officiel' => '', 'sexe' => 'male', 'annee_naissance' => 2000,
+    'robe' => '', 'robe_autre' => '', 'race' => '', 'race_autre' => '', 'taille_cm' => '',
+    'eleveur' => '', 'ueln' => '', 'sire' => '', // rien détecté dans ce PDF (cas ALME, §7)
+  ),
+  'indices' => array(), 'pedigree' => array('count' => 0, 'father' => null, 'mother' => null),
+);
+gwseq_ifce_map_import(840, $parsed_no_sire_ueln, array('identity' => true));
+$identity_after_blank_reimport = gwseq_get_cheval_identity(840);
+gws_test_assert(
+  $identity_after_blank_reimport['sire'] === '91412674X' && $identity_after_blank_reimport['ueln'] === '25000191412674X',
+  'SIRE/UELN (§7) : une absence de détection dans un réimport (cas ALME) n’efface jamais une valeur déjà enregistrée'
+);
+
+$parsed_conflicting_sire = $parsed_no_sire_ueln;
+$parsed_conflicting_sire['identity']['sire'] = '99999999Z'; // différent de la valeur déjà enregistrée
+gwseq_ifce_map_import(840, $parsed_conflicting_sire, array('identity' => true));
+gws_test_assert(gwseq_get_cheval_identity(840)['sire'] === '91412674X', 'SIRE (§20-21) : une valeur détectée DIFFÉRENTE d’une valeur déjà enregistrée est un conflit -> jamais écrasée silencieusement, l’existante est conservée');
+
+gws_test_make_post(841, GWSEQ_CPT_CHEVAL, 'Cheval Sans SIRE Encore');
+gwseq_set_cheval_identity(841, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2000));
+$parsed_first_sire = $parsed_no_sire_ueln;
+$parsed_first_sire['identity']['nom'] = 'Cheval Sans SIRE Encore';
+$parsed_first_sire['identity']['sire'] = '12345678A';
+gwseq_ifce_map_import(841, $parsed_first_sire, array('identity' => true));
+gws_test_assert(gwseq_get_cheval_identity(841)['sire'] === '12345678A', 'SIRE : une première détection (aucune valeur préexistante) est bien enregistrée normalement');
+
+// =====================================================================================
 // i18n
 // =====================================================================================
 

@@ -273,6 +273,31 @@ function gwseq_ifce_validate_pdf_upload_shape($file) {
 }
 
 /**
+ * Extrait l'identifiant opaque IFCE depuis le NOM DU FICHIER PDF téléversé (Lot IFCE — clôture
+ * POC, §3/§11 de la demande) — fonction PURE, testable indépendamment de toute requête HTTP.
+ *
+ * MÉTHODE (documentée pour le CR) : InfoChevaux nomme ses fiches de synthèse générées
+ * `fs-{modele}_{type}_{ID}_{timestamp}.pdf` (exemples réels observés :
+ * `fs-complet_classique_FlqOAbSQRt6yLcBQACZbfA_1788355627601.pdf`,
+ * `fs-complet_classique_M8yvnNYRRru6thoBR_NYvg_1788944320384.pdf`). Plutôt que de dépendre du
+ * préfixe exact ("complet_classique", susceptible de varier selon le modèle/type de fiche
+ * générée), la regex cible uniquement la forme structurelle constante et fiable des DEUX exemples
+ * connus : un segment de exactement 22 caractères alphanumériques/`_`/`-` (alphabet base64url —
+ * même longueur exacte que l'ID observé dans les URLs `/infos-generales`, cohérence déjà vérifiée
+ * lors du POC), immédiatement suivi de `_` puis d'un horodatage numérique puis `.pdf`, en fin de
+ * nom de fichier. Ne matche jamais un nom de fichier renommé par l'utilisateur ou provenant d'une
+ * autre source (retourne alors '' — jamais une extraction approximative, jamais un identifiant
+ * partiel).
+ */
+function gwseq_ifce_extract_id_from_pdf_filename($filename) {
+  $filename = basename((string) $filename);
+  if (preg_match('/_([A-Za-z0-9_-]{22})_\d+\.pdf$/i', $filename, $m)) {
+    return $m[1];
+  }
+  return '';
+}
+
+/**
  * Contrôles complémentaires nécessitant une vraie requête de téléversement (provenance réelle du
  * fichier temporaire, type MIME réel via signature binaire) — non unitairement testables hors
  * d'un vrai navigateur, revus manuellement (voir tests/gws-equestrian-ifce-import-test.php pour la
@@ -317,7 +342,7 @@ function gwseq_ifce_validate_uploaded_pdf($file, &$error) {
  * séparation rend le chemin réel (extraction -> analyse -> transient) directement testable par
  * appel direct, sans jamais avoir à exécuter une redirection dans un test.
  */
-function gwseq_process_ifce_import_upload($validated_pdf_path, $reimport_cheval_id = 0) {
+function gwseq_process_ifce_import_upload($validated_pdf_path, $reimport_cheval_id = 0, $original_filename = '') {
   // Lu UNE SEULE FOIS en octets bruts (Lot 2B.2) : la Zone Sujet (gwseq_ifce_extract_pdf_text_from_string(),
   // page 1 uniquement, inchangée) ET la Zone Production (gwseq_ifce_extract_production_from_pdf_string(),
   // toutes les pages, jamais partagée avec la Zone Sujet — voir includes/ifce-production-parser.php)
@@ -343,6 +368,14 @@ function gwseq_process_ifce_import_upload($validated_pdf_path, $reimport_cheval_
   $parsed['production'] = ($parsed['identity']['sexe'] === 'female')
     ? gwseq_ifce_extract_production_from_pdf_string($pdf_binary)
     : array('found' => false, 'entries' => array(), 'ignored' => array('saillie' => 0, 'sans_nom' => 0, 'niveau_superieur' => 0));
+
+  // Identité IFCE — ID opaque (Lot IFCE — clôture POC, §3) : extrait du nom de fichier ORIGINAL
+  // (voir gwseq_ifce_extract_id_from_pdf_filename() ci-dessus), jamais du chemin temporaire
+  // ($validated_pdf_path, un nom générique attribué par PHP) ni du contenu du PDF (non fourni par
+  // la fiche de synthèse elle-même). Chaîne vide si le nom de fichier ne correspond pas au format
+  // attendu (renommé, autre source...) — $parsed['ifce_id'] reste alors simplement absent/vide,
+  // jamais une erreur bloquante pour le reste de l'import.
+  $parsed['ifce_id'] = gwseq_ifce_extract_id_from_pdf_filename($original_filename);
 
   $reimport_cheval_id = gwseq_sanitize_ifce_reimport_cheval_id($reimport_cheval_id);
 
@@ -375,7 +408,8 @@ function gwseq_handle_ifce_import_upload() {
   }
 
   $reimport_cheval_id = isset($_POST['gwseq_reimport_cheval_id']) ? absint(wp_unslash($_POST['gwseq_reimport_cheval_id'])) : 0;
-  $result = gwseq_process_ifce_import_upload($validated_path, $reimport_cheval_id);
+  $original_filename = isset($file['name']) ? sanitize_file_name(wp_unslash($file['name'])) : '';
+  $result = gwseq_process_ifce_import_upload($validated_path, $reimport_cheval_id, $original_filename);
   if ($result['notice'] !== null) gwseq_set_ifce_import_notice($result['notice']);
   wp_safe_redirect($result['redirect']);
   exit;
@@ -450,11 +484,27 @@ function gwseq_sanitize_ifce_production_choice($raw) {
  * `$_POST`-shaped, jamais un accès direct à `$_POST` ailleurs que dans gwseq_handle_ifce_import_confirm()
  * ci-dessous (même discipline que le reste du module). 'gws' n'est retenu que si l'identifiant
  * soumis correspond réellement à une fiche Cheval existante (gwseq_sanitize_horse_parent_gws_id(),
- * MÊME fonction que la saisie manuelle du pedigree — jamais une seconde validation dupliquée) ;
- * repli sur 'external' (comportement déjà validé, inchangé) pour toute valeur absente ou invalide.
+ * MÊME fonction que la saisie manuelle du pedigree — jamais une seconde validation dupliquée).
+ *
+ * $safe_default_gws_horse_id (Lot IFCE — clôture POC, défense en profondeur §19) : identifiant de
+ * la fiche GWS ACTIVEMENT liée à ce rôle AVANT cette soumission (0 si aucune, ou premier import).
+ * Le champ radio $mode_key est TOUJOURS présent dans la soumission normale (trois boutons du même
+ * groupe, l'un des trois est toujours coché par défaut par gwseq_render_ifce_preview_parent_choice() —
+ * voir includes/ifce-import-mapper.php, gwseq_ifce_resolve_parent_proposal()) : le repli "champ
+ * totalement absent" ci-dessous ne devrait donc normalement jamais se produire via ce formulaire.
+ * S'il se produisait malgré tout (requête malformée, formulaire modifié…), retomber sur 'external'
+ * comme avant ce correctif remplacerait silencieusement un parent GWS déjà actif par un ascendant
+ * externe — exactement ce que §19 interdit. Repli désormais sur la relation déjà active s'il y en a
+ * une ; sur 'external' uniquement s'il n'y en avait aucune (comportement inchangé dans ce cas).
  */
-function gwseq_sanitize_ifce_preview_parent_choice($raw, $mode_key, $horse_id_key) {
-  $mode = isset($raw[$mode_key]) ? sanitize_key(wp_unslash($raw[$mode_key])) : 'external';
+function gwseq_sanitize_ifce_preview_parent_choice($raw, $mode_key, $horse_id_key, $safe_default_gws_horse_id = 0) {
+  if (!isset($raw[$mode_key])) {
+    return $safe_default_gws_horse_id
+      ? array('mode' => 'gws', 'horse_id' => (int) $safe_default_gws_horse_id)
+      : array('mode' => 'external');
+  }
+
+  $mode = sanitize_key(wp_unslash($raw[$mode_key]));
   if ($mode === 'gws') {
     $horse_id = gwseq_sanitize_horse_parent_gws_id($raw[$horse_id_key] ?? 0, 0);
     if (!$horse_id) return array('mode' => 'external');
@@ -484,9 +534,30 @@ function gwseq_handle_ifce_import_confirm() {
   // Choix Père/Mère GWS (§3 de la demande) : lu ici quel que soit l'état de la case "Importer le
   // pedigree" ci-dessus — gwseq_ifce_map_import() ignore de toute façon entièrement ce paramètre
   // dès que $sections['pedigree'] est faux, exactement comme le reste de la section pedigree.
+  //
+  // Défense en profondeur (Lot IFCE — clôture POC, §19) : relit le transient UNE fois ici,
+  // uniquement pour connaître un éventuel réimport et la relation GWS déjà active par rôle —
+  // gwseq_process_ifce_import_confirm() ci-dessus relira le même transient normalement (fonction
+  // volontairement "pure", jamais couplée à $_POST — voir son docblock) ; cette relecture
+  // supplémentaire est sans effet de bord (get_transient()) et évite de faire porter à cette
+  // fonction pure la responsabilité d'un repli sécurisé qui dépend de $_POST.
+  $reimport_cheval_id_for_defaults = 0;
+  $confirm_data = gwseq_get_ifce_import_transient($token);
+  if (is_array($confirm_data)) {
+    $reimport_cheval_id_for_defaults = gwseq_sanitize_ifce_reimport_cheval_id($confirm_data['reimport_cheval_id'] ?? 0);
+  }
+  $safe_default_father_id = 0;
+  $safe_default_mother_id = 0;
+  if ($reimport_cheval_id_for_defaults) {
+    $existing_father = gwseq_get_horse_parent($reimport_cheval_id_for_defaults, 'father');
+    $existing_mother = gwseq_get_horse_parent($reimport_cheval_id_for_defaults, 'mother');
+    if ($existing_father['mode'] === 'gws') $safe_default_father_id = $existing_father['horse_id'];
+    if ($existing_mother['mode'] === 'gws') $safe_default_mother_id = $existing_mother['horse_id'];
+  }
+
   $parent_choices = array(
-    'father' => gwseq_sanitize_ifce_preview_parent_choice($_POST, 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id'),
-    'mother' => gwseq_sanitize_ifce_preview_parent_choice($_POST, 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id'),
+    'father' => gwseq_sanitize_ifce_preview_parent_choice($_POST, 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id', $safe_default_father_id),
+    'mother' => gwseq_sanitize_ifce_preview_parent_choice($_POST, 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id', $safe_default_mother_id),
   );
 
   // Rapprochements PROBABLES de Production confirmés par l'utilisateur (Lot 2B.2, §14) : un tableau
@@ -577,22 +648,54 @@ function gwseq_render_ifce_import_upload_form($error = '', $reimport_cheval_id =
  * convention de repli que gwseq_render_cheval_parent_fields() (saisie manuelle du pedigree,
  * includes/cheval-pedigree.php) : le serveur reste seul autoritaire sur le choix réellement soumis.
  */
-function gwseq_render_ifce_preview_parent_choice($role, $branch, $label, $mode_key, $horse_id_key, $child_annee_naissance) {
+function gwseq_render_ifce_preview_parent_choice($role, $branch, $label, $mode_key, $horse_id_key, $child_annee_naissance, $reimport_cheval_id = 0) {
   if (empty($branch)) return; // rien de détecté pour ce parent : aucun choix à proposer (§ absence de donnée = absence d'affichage)
   $race_label = gwseq_cheval_race_label($branch['race'] ?? '', $branch['race_autre'] ?? '') ?: __('race non détectée', 'gws-core');
   $annee = $branch['annee_naissance'] ?? '';
   $detected_summary = trim($branch['name'] . ' — ' . $race_label . ($annee !== '' ? ' — ' . $annee : ''));
+
+  // Rapprochement automatique (Lot IFCE — clôture POC, correction du rapprochement pedigree) : voir
+  // gwseq_ifce_resolve_parent_proposal() (includes/ifce-import-mapper.php) pour le détail complet
+  // des 4 cas (A candidat unique / B ambigu / C aucun / D déjà lié) — cette fonction PURE décide,
+  // ce rendu se contente d'en afficher le résultat.
+  $proposal = gwseq_ifce_resolve_parent_proposal($role, $branch, $reimport_cheval_id, $child_annee_naissance);
+  $default_mode = $proposal['default_mode'];
+  $preselected_id = $proposal['preselected_horse_id'];
   ?>
   <div data-gwseq-ifce-parent-choice="<?php echo esc_attr($role); ?>" style="margin: 0.75em 0; padding: 0.75em; border: 1px solid #dcdcde;">
     <p><strong><?php echo esc_html($label); ?></strong> <?php echo esc_html(sprintf(/* translators: %s: nom — race — année détectés pour ce parent */ __('détecté : %s', 'gws-core'), $detected_summary)); ?></p>
+    <?php if ($proposal['note'] === 'already_linked') : ?>
+      <p class="description"><?php echo esc_html(sprintf(
+        /* translators: %s: nom de la fiche Cheval déjà liée */
+        __('Déjà lié à %s — ce rattachement sera conservé sauf modification explicite ci-dessous.', 'gws-core'),
+        get_the_title($preselected_id)
+      )); ?></p>
+    <?php elseif ($proposal['note'] === 'unique_match') : ?>
+      <p class="description"><?php echo esc_html(sprintf(
+        /* translators: %s: nom de la fiche Cheval candidate, %d: année de naissance */
+        __('Candidat détecté par nom et année : %1$s (né(e) en %2$s). Sélectionnez « Lier à un cheval déjà enregistré » ci-dessous pour confirmer — jamais automatique.', 'gws-core'),
+        get_the_title($preselected_id),
+        gwseq_get_cheval_identity($preselected_id)['annee_naissance']
+      )); ?></p>
+    <?php endif; ?>
     <p>
       <label>
-        <input type="radio" name="<?php echo esc_attr($mode_key); ?>" value="external" checked>
+        <input type="radio" name="<?php echo esc_attr($mode_key); ?>" value="external"<?php checked($default_mode, 'external'); ?>>
         <?php esc_html_e('Importer comme ascendant externe', 'gws-core'); ?>
       </label><br>
       <label>
-        <input type="radio" name="<?php echo esc_attr($mode_key); ?>" value="gws">
-        <?php esc_html_e('Lier à un cheval déjà enregistré', 'gws-core'); ?>
+        <input type="radio" name="<?php echo esc_attr($mode_key); ?>" value="gws"<?php checked($default_mode, 'gws'); ?>>
+        <?php
+        if ($preselected_id) {
+          echo esc_html(sprintf(
+            /* translators: %s: nom de la fiche Cheval déjà enregistrée */
+            __('Lier à un cheval déjà enregistré → %s', 'gws-core'),
+            get_the_title($preselected_id)
+          ));
+        } else {
+          esc_html_e('Lier à un cheval déjà enregistré', 'gws-core');
+        }
+        ?>
       </label><br>
       <label>
         <input type="radio" name="<?php echo esc_attr($mode_key); ?>" value="skip">
@@ -612,7 +715,7 @@ function gwseq_render_ifce_preview_parent_choice($role, $branch, $label, $mode_k
           $option_label = get_the_title($candidate);
           if ($rejection_reason !== '') $option_label .= ' — ' . gwseq_horse_parent_rejection_reason_label($rejection_reason);
         ?>
-          <option value="<?php echo esc_attr($candidate->ID); ?>" <?php disabled($rejection_reason !== ''); ?>><?php echo esc_html($option_label); ?></option>
+          <option value="<?php echo esc_attr($candidate->ID); ?>"<?php selected($candidate->ID, $preselected_id); ?> <?php disabled($rejection_reason !== ''); ?>><?php echo esc_html($option_label); ?></option>
         <?php endforeach; ?>
       </select>
       <span class="description"><?php esc_html_e('Utilisé uniquement si « Lier à un cheval déjà enregistré » est sélectionné ci-dessus, et si « Importer le pedigree » reste coché plus bas.', 'gws-core'); ?></span>
@@ -830,6 +933,47 @@ function gwseq_render_ifce_import_preview($token, $parsed, $reimport_cheval_id =
         <li><?php echo esc_html($row_label); ?> : <?php echo esc_html($row_value); ?></li>
       <?php endforeach; ?>
     </ul>
+    <?php
+    // SIRE/UELN/ID IFCE — informatif uniquement (Lot IFCE — clôture POC, §7/§20) : l'application
+    // réelle (jamais un écrasement silencieux d'une valeur différente déjà enregistrée) a lieu dans
+    // gwseq_ifce_map_import() (includes/ifce-import-mapper.php) et gwseq_set_cheval_ifce_id()
+    // (cheval-fields.php), qui appliquent CETTE MÊME règle indépendamment de cet affichage — ce
+    // bloc ne fait que rendre le cas visible AVANT confirmation, jamais une décision.
+    $sire_ueln_notes = array();
+    if ($reimport_cheval_id) {
+      $existing_identity_preview = gwseq_get_cheval_identity($reimport_cheval_id);
+      foreach (array('sire' => __('SIRE', 'gws-core'), 'ueln' => __('UELN', 'gws-core')) as $key => $field_label) {
+        $detected = $identity[$key];
+        $existing = $existing_identity_preview[$key];
+        if ($detected !== '' && $existing !== '' && $detected !== $existing) {
+          $sire_ueln_notes[] = sprintf(
+            /* translators: 1: libellé du champ (SIRE/UELN), 2: valeur déjà enregistrée, 3: valeur détectée dans ce PDF */
+            __('%1$s : valeur déjà enregistrée (%2$s) différente de celle détectée ici (%3$s) — la valeur déjà enregistrée sera conservée, jamais écrasée automatiquement.', 'gws-core'),
+            $field_label, $existing, $detected
+          );
+        }
+      }
+    }
+    if ($sire_ueln_notes) : ?>
+      <div class="notice notice-warning inline"><p><?php echo esc_html(implode(' ', $sire_ueln_notes)); ?></p></div>
+    <?php endif; ?>
+    <?php
+    // ID IFCE déjà extrait UNE FOIS à l'upload (gwseq_process_ifce_import_upload(), depuis le nom
+    // de fichier original — le fichier lui-même n'est jamais conservé, §11) et transporté depuis
+    // lors dans le transient : seule source utilisée ici, jamais une seconde extraction.
+    $detected_ifce_id = $parsed['ifce_id'] ?? '';
+    if ($detected_ifce_id !== '') :
+      $ifce_id_conflict = $reimport_cheval_id ? gwseq_cheval_ifce_id_conflicts($reimport_cheval_id, $detected_ifce_id) : false;
+      ?>
+      <p class="description"><?php echo esc_html(sprintf(/* translators: %s: identifiant opaque IFCE détecté */ __('ID IFCE détecté (nom du fichier) : %s', 'gws-core'), $detected_ifce_id)); ?></p>
+      <?php if ($ifce_id_conflict) : ?>
+        <div class="notice notice-warning inline"><p><?php echo esc_html(sprintf(
+          /* translators: %s: identifiant IFCE déjà enregistré sur cette fiche */
+          __('⚠ Cette fiche a déjà un ID IFCE différent enregistré (%s) — celui détecté ici ne sera jamais écrasé automatiquement.', 'gws-core'),
+          gwseq_get_cheval_ifce_id($reimport_cheval_id)
+        )); ?></p></div>
+      <?php endif; ?>
+    <?php endif; ?>
     <p><?php echo esc_html(sprintf(/* translators: %s: résumé indices détectés */ __('Indices détectés : %s', 'gws-core'), $indices_labels ? implode(', ', $indices_labels) : __('aucun', 'gws-core'))); ?></p>
     <p><?php echo esc_html(sprintf(
       /* translators: %d: nombre d'ascendants détectés dans le pedigree */
@@ -849,8 +993,8 @@ function gwseq_render_ifce_import_preview($token, $parsed, $reimport_cheval_id =
       // ascendants suivants (périmètre volontairement limité, un choix par génération rendrait
       // l'écran de prévisualisation beaucoup trop lourd). Sans effet si "Importer le pedigree"
       // ci-dessus reste décoché (voir gwseq_ifce_map_import()).
-      gwseq_render_ifce_preview_parent_choice('father', $pedigree['father'], __('Père', 'gws-core'), 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id', $identity['annee_naissance']);
-      gwseq_render_ifce_preview_parent_choice('mother', $pedigree['mother'], __('Mère', 'gws-core'), 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id', $identity['annee_naissance']);
+      gwseq_render_ifce_preview_parent_choice('father', $pedigree['father'], __('Père', 'gws-core'), 'gwseq_ifce_pere_mode', 'gwseq_ifce_pere_gws_id', $identity['annee_naissance'], $reimport_cheval_id);
+      gwseq_render_ifce_preview_parent_choice('mother', $pedigree['mother'], __('Mère', 'gws-core'), 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id', $identity['annee_naissance'], $reimport_cheval_id);
       ?>
       <?php if (!empty($production['entries'])) : ?>
         <p><label><input type="checkbox" name="gwseq_ifce_import_production" value="1" checked> <?php esc_html_e('Importer la Production (produits directs de cette jument)', 'gws-core'); ?></label></p>

@@ -39,6 +39,75 @@
 if (!defined('ABSPATH')) exit;
 
 /**
+ * Décide comment proposer un parent (Père ou Mère) détecté par l'IFCE sur l'écran de
+ * prévisualisation (Lot IFCE — clôture POC, correction du rapprochement pedigree, §11-14 de la
+ * demande) — fonction PURE, aucun accès `$_POST`, aucun rendu HTML (voir
+ * gwseq_render_ifce_preview_parent_choice(), includes/ifce-import-admin.php, simple consommateur de
+ * son résultat, et gwseq_ifce_map_import() ci-dessous pour l'application réelle après confirmation).
+ * Retourne toujours `{default_mode: 'external'|'gws', preselected_horse_id: int, note: string}` —
+ * `note` est un code stable ('already_linked'|'unique_match'|''), jamais un texte déjà traduit (au
+ * rendu de le traduire), cohérent avec gwseq_horse_parent_candidate_rejection_reason() ailleurs.
+ *
+ * AUDIT PRÉALABLE (voir CR pour le détail complet) : cause exacte du bug Grandame d'Aubigny/Teldame
+ * de la Nutria — `gwseq_render_ifce_preview_parent_choice()` (avant ce correctif) n'appelait
+ * STRICTEMENT AUCUNE fonction de rapprochement pour Père/Mère : le radio "Importer comme ascendant
+ * externe" restait toujours coché par défaut, et le `<select>` listait tous les chevaux sans jamais
+ * présélectionner ni même signaler celui dont le nom+année correspondait. La Production, elle,
+ * appelait déjà gwseq_ifce_find_certain_production_match()/gwseq_ifce_find_probable_production_match()
+ * (includes/ifce-production-store.php) — cette dernière est GÉNÉRIQUE malgré son nom (aucune donnée
+ * de Production dans son implémentation, uniquement nom normalisé + année sur `gwseq_cheval`) et est
+ * réutilisée ICI TELLE QUELLE (renommée gwseq_ifce_find_unique_horse_match_by_name_year(), l'ancien
+ * nom devenant un simple alias — voir ce fichier) : UN SEUL resolver nom+année, jamais deux
+ * implémentations parallèles.
+ *
+ * CAS D (déjà lié, §12) — PRIORITAIRE sur tout le reste, condition d'IDEMPOTENCE (§18) : si le rôle
+ * est DÉJÀ activement lié à une fiche GWS ($reimport_cheval_id non nul, relation mode='gws'), la
+ * proposition par défaut DOIT rester ce lien existant, quel que soit un éventuel autre candidat
+ * trouvé par ailleurs — sans quoi soumettre le formulaire de réimport SANS Y TOUCHER (le cas normal
+ * où l'utilisateur ne fait que confirmer les nouvelles données détectées) romprait silencieusement
+ * une relation GWS déjà correcte en la ramenant à "external" (voir gwseq_ifce_map_import() : le
+ * mode soumis par défaut, en l'absence de tout choix explicite, était et reste 'external' — c'est
+ * la proposition PAR DÉFAUT ci-dessous, jamais ce mapper, qui doit rester non destructive). Ne
+ * compare JAMAIS par nom : l'identifiant déjà stocké fait foi, même si le nom actuellement détecté
+ * par l'IFCE diffère — la relation GWS déjà validée reste l'autorité.
+ *
+ * CAS A (candidat unique, §12) : évalué SEULEMENT si aucune relation GWS n'est déjà active pour ce
+ * rôle. Le résultat de gwseq_ifce_find_unique_horse_match_by_name_year() est en outre filtré par les
+ * MÊMES règles métier que la saisie manuelle (gwseq_ifce_preview_parent_candidate_rejection_reason(),
+ * cheval-pedigree.php — jamais dupliquées) : un homonyme incompatible en sexe/année n'est jamais
+ * proposé. Le MODE PAR DÉFAUT reste volontairement 'external' (§11 : pas de patch "si nom == X alors
+ * rattacher", §12 : "ne jamais choisir arbitrairement") — seul le candidat est PRÉ-SÉLECTIONNÉ dans
+ * le sélecteur pour rendre la confirmation explicite un simple clic, jamais une case cochée ou un
+ * mode déjà actif sans action volontaire de l'utilisateur — même philosophie de confirmation
+ * explicite que le rapprochement PROBABLE de Production (§13 : "réutilise le resolver déjà
+ * développé pour la Production").
+ *
+ * CAS B (ambigu, plusieurs candidats) / CAS C (aucun candidat) : `preselected_horse_id` reste 0,
+ * comportement déjà existant et strictement inchangé (radio 'external' par défaut, sélecteur vide).
+ */
+function gwseq_ifce_resolve_parent_proposal($role, $branch, $reimport_cheval_id, $child_annee_naissance) {
+  $reimport_cheval_id = (int) $reimport_cheval_id;
+
+  if ($reimport_cheval_id) {
+    $existing = gwseq_get_horse_parent($reimport_cheval_id, $role);
+    if ($existing['mode'] === 'gws' && $existing['horse_id']) {
+      return array('default_mode' => 'gws', 'preselected_horse_id' => (int) $existing['horse_id'], 'note' => 'already_linked');
+    }
+  }
+
+  $nom = is_array($branch) ? ($branch['name'] ?? '') : '';
+  $annee = is_array($branch) ? ($branch['annee_naissance'] ?? '') : '';
+  $exclude_ids = $reimport_cheval_id ? array($reimport_cheval_id) : array();
+  $match_id = gwseq_ifce_find_unique_horse_match_by_name_year($nom, $annee, $exclude_ids);
+
+  if ($match_id && gwseq_ifce_preview_parent_candidate_rejection_reason($role, $match_id, $child_annee_naissance) === '') {
+    return array('default_mode' => 'external', 'preselected_horse_id' => $match_id, 'note' => 'unique_match');
+  }
+
+  return array('default_mode' => 'external', 'preselected_horse_id' => 0, 'note' => '');
+}
+
+/**
  * Applique la structure normalisée $parsed (produite par gwseq_ifce_parse_text(), doit avoir
  * 'valid' === true) à la fiche Cheval $post_id, pour les sections activées dans $sections. Ne
  * modifie jamais une section non activée. Retourne false si $post_id ou $parsed est invalide,
@@ -71,6 +140,26 @@ function gwseq_ifce_map_import($post_id, $parsed, $sections, $parent_choices = a
 
   if (!empty($sections['identity'])) {
     $identity = $parsed['identity'];
+
+    // SIRE/UELN : NON DESTRUCTIF (§7, §20-21 de la demande "identité IFCE") — gwseq_set_cheval_identity()
+    // reste par ailleurs un remplacement complet volontaire (comportement inchangé pour tous les
+    // AUTRES champs identité, y compris pour la saisie manuelle qui utilise la même fonction) ; SIRE
+    // et UELN sont les deux seuls champs corrigés ici, à la source (avant l'appel), pour ces deux
+    // règles précises :
+    // 1. une absence de détection (PDF sans SIRE/UELN visible, ex. ALME) ne doit jamais effacer une
+    //    valeur déjà enregistrée — la valeur existante est simplement reconduite ;
+    // 2. une valeur détectée DIFFÉRENTE d'une valeur déjà enregistrée est un CONFLIT, jamais résolu
+    //    silencieusement — l'existante est conservée (voir gwseq_ifce_identity_conflicts() plus bas,
+    //    utilisée par la prévisualisation pour signaler ce cas avant confirmation).
+    $existing_identity = gwseq_get_cheval_identity($post_id); // déjà sûr sur un tout premier import (juste vide)
+    foreach (array('sire', 'ueln') as $key) {
+      $detected = $identity[$key];
+      $existing = $existing_identity[$key];
+      if ($detected === '' || ($existing !== '' && $detected !== $existing)) {
+        $identity[$key] = $existing;
+      }
+    }
+
     gwseq_set_cheval_identity($post_id, array(
       '_gwseq_sexe' => $identity['sexe'],
       '_gwseq_annee_naissance' => $identity['annee_naissance'],
@@ -89,6 +178,17 @@ function gwseq_ifce_map_import($post_id, $parsed, $sections, $parent_choices = a
     // séparément comme donnée technique/source, jamais exposée dans le formulaire manuel.
     if (!empty($identity['nom_officiel'])) {
       gwseq_set_cheval_ifce_nom_officiel($post_id, $identity['nom_officiel']);
+    }
+
+    // Identité IFCE — ID opaque (Lot IFCE — clôture POC, §3/§20) : extrait du nom du fichier PDF
+    // téléversé (gwseq_ifce_extract_id_from_pdf_filename(), includes/ifce-import-admin.php),
+    // jamais du contenu du document lui-même (non fourni par la fiche de synthèse). Le setter
+    // (cheval-fields.php) refuse LUI-MÊME tout écrasement par une valeur différente (défense en
+    // profondeur, §20 : "ne pas écraser silencieusement" — même garantie que pour SIRE/UELN
+    // ci-dessus, appliquée ici au niveau du setter plutôt que par un pré-calcul, les deux approches
+    // étant équivalentes en résultat).
+    if (!empty($parsed['ifce_id'])) {
+      gwseq_set_cheval_ifce_id($post_id, $parsed['ifce_id']);
     }
   }
 

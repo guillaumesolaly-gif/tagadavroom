@@ -39,8 +39,12 @@ function esc_url($value) { return $value; }
 function absint($value) { return abs((int) $value); }
 function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
-function selected($a, $b) { return $a == $b ? ' selected' : ''; }
-function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
+// FIDÈLE au comportement réel de selected()/checked() (WordPress core, via
+// _checked_selected_helper()) : échouent par défaut ($echo = true), comme disabled() ci-dessous —
+// convention déjà utilisée telle quelle dans includes/ifce-import-admin.php (appels sans echo()
+// explicite, en confiance dans ce comportement natif).
+function selected($a, $b = true, $echo = true) { $r = $a == $b ? ' selected' : ''; if ($echo) echo $r; return $r; }
+function checked($a, $b = true, $echo = true) { $r = $a == $b ? ' checked' : ''; if ($echo) echo $r; return $r; }
 function disabled($a, $b = true, $echo = true) { $r = $a == $b ? ' disabled' : ''; if ($echo) echo $r; return $r; }
 function wp_nonce_field($action, $field) { echo '<input type="hidden" name="' . esc_attr($field) . '" value="stub-nonce">'; }
 function wp_json_encode($data, $options = 0, $depth = 512) { return json_encode($data, $options, $depth); }

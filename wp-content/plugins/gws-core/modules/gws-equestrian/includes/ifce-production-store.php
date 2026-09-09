@@ -258,12 +258,19 @@ function gwseq_ifce_find_certain_production_match($cheval_id, $nom, $annee) {
 }
 
 /**
- * Rattachement PROBABLE (§14) : nom normalisé + année de naissance correspondent à EXACTEMENT une
- * fiche GWS existante, quelle qu'elle soit — jamais le nom seul (§ "le nom seul n'est jamais
- * suffisant"). En cas d'ambiguïté (plusieurs fiches correspondent également), aucun rapprochement
- * n'est proposé plutôt que de deviner lequel est le bon.
+ * Résolution GÉNÉRIQUE par nom normalisé + année de naissance (Lot IFCE — clôture POC, audit
+ * préalable §11 de la demande) : EXACTEMENT une fiche Cheval GWS correspond parmi toutes les fiches
+ * existantes (hors $exclude_ids, ex. la fiche important elle-même sur un réimport — un cheval ne
+ * peut jamais être son propre parent), jamais le nom seul, jamais un choix arbitraire en cas
+ * d'ambiguïté. Cette fonction N'A JAMAIS rien eu de spécifique à la Production malgré son ancien nom
+ * (gwseq_ifce_find_probable_production_match(), ci-dessous, conservée à l'identique pour la
+ * compatibilité de son contrat et de ses appelants/tests existants — désormais un simple alias) :
+ * l'audit préalable à ce lot a confirmé qu'elle pouvait être directement réutilisée telle quelle
+ * pour le rapprochement Père/Mère du pedigree (voir gwseq_ifce_resolve_parent_proposal(),
+ * includes/pedigree-resolver.php) SANS créer un second resolver parallèle — exactement la
+ * "logique commune" demandée.
  */
-function gwseq_ifce_find_probable_production_match($nom, $annee) {
+function gwseq_ifce_find_unique_horse_match_by_name_year($nom, $annee, array $exclude_ids = array()) {
   if (trim((string) $nom) === '' || $annee === '') return 0;
   $target = gwseq_ifce_normalize_horse_name_for_match($nom);
 
@@ -272,6 +279,7 @@ function gwseq_ifce_find_probable_production_match($nom, $annee) {
     'post_type' => GWSEQ_CPT_CHEVAL,
     'post_status' => array('publish', 'draft', 'pending', 'private'),
     'numberposts' => -1,
+    'exclude' => array_values(array_map('intval', $exclude_ids)),
   )) as $post) {
     if (gwseq_ifce_normalize_horse_name_for_match(get_the_title($post)) !== $target) continue;
     $identity = gwseq_get_cheval_identity($post->ID);
@@ -280,6 +288,15 @@ function gwseq_ifce_find_probable_production_match($nom, $annee) {
   }
 
   return count($matches) === 1 ? $matches[0] : 0;
+}
+
+/**
+ * Rattachement PROBABLE de Production (§14) — conservée SOUS CE NOM pour ne pas modifier les
+ * appelants/tests existants ; délègue entièrement à gwseq_ifce_find_unique_horse_match_by_name_year()
+ * ci-dessus, seule implémentation réelle (Lot IFCE — clôture POC, plus de duplication).
+ */
+function gwseq_ifce_find_probable_production_match($nom, $annee) {
+  return gwseq_ifce_find_unique_horse_match_by_name_year($nom, $annee);
 }
 
 /* -------------------------------------------------------------------------------------------
