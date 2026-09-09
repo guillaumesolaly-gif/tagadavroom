@@ -11,7 +11,7 @@
  * Schéma attendu, un tableau associatif clé => définition :
  *   'clé_du_champ' => [
  *     'label'       => 'Libellé affiché',
- *     'type'        => 'text|textarea|url|email|number|select|checkbox|attachment_id',
+ *     'type'        => 'text|textarea|url|email|number|select|checkbox|attachment_id|color',
  *     'description' => 'Aide optionnelle affichée sous le champ',
  *     'options'     => ['valeur' => 'Libellé', ...], // uniquement pour 'select'
  *     'default'     => '', // valeur si aucune meta enregistrée
@@ -45,6 +45,16 @@ function gws_core_field_sanitize($type, $raw_value) {
       return sanitize_textarea_field(wp_unslash($raw_value));
     case 'select':
       return sanitize_key(wp_unslash($raw_value));
+    case 'color':
+      // Couleur strictement validée (Lot 2C) : uniquement la forme hexadécimale à 6 chiffres
+      // produite par le sélecteur natif WordPress (wp-color-picker/Iris), jamais un nom de
+      // couleur CSS ni une forme abrégée à 3 chiffres — une seule forme normalisée, directement
+      // exploitable par un futur renderer (site, PDF...) sans reformatage. Une valeur qui ne
+      // correspond pas exactement à ce format est rejetée (chaîne vide), jamais devinée ou
+      // corrigée : voir gws_core_get_primary_color()/gws_core_get_secondary_color() dans
+      // settings.php pour le repli sur une couleur par défaut GWS dans ce cas.
+      $value = trim((string) wp_unslash($raw_value));
+      return preg_match('/^#[0-9a-fA-F]{6}$/', $value) ? strtolower($value) : '';
     case 'text':
     default:
       return sanitize_text_field(wp_unslash($raw_value));

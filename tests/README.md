@@ -64,6 +64,18 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   dédoublonnage entre un réseau structuré et `social_links`, réglages d'affichage des
   pictogrammes sociaux en header/footer (footer activé par défaut, header désactivé), crédit
   Tagada Vroom activé par défaut et désactivable, URL du crédit personnalisable.
+- « Ma structure » — identité de marque (Lot 2C, même fichier `settings-helpers-logic-test.php`) :
+  champ `color` du sanitizer générique (uniquement `#rrggbb`, jamais un nom CSS ni une forme
+  abrégée à 3 chiffres) ; couleurs principale/secondaire vides par défaut, repli sur les couleurs
+  GWS par défaut (`gws_core_get_primary_color()`/`gws_core_get_secondary_color()`), priorité à une
+  couleur personnalisée valide, AUCUNE écriture automatique de la couleur par défaut dans
+  `gws_core_settings` lors d'un enregistrement sans couleur choisie ; présentation de la structure
+  enregistrée normalement puis tronquée (jamais rejetée) au-delà de sa limite documentée
+  (`gws_core_structure_presentation_max_length()`) ; algorithme de contraste
+  (`gws_core_contrast_color()`) sur noir/blanc, les deux couleurs GWS par défaut, et plusieurs cas
+  clair/foncé ; `gws_core_structure_name()` (repli sur le nom du site WordPress) ; API consolidée
+  `gws_core_structure_identity()` ; non-régression explicite d'une installation existante dont
+  l'option `gws_core_settings` ne contient encore aucune des clés ajoutées par ce lot.
 - Normalisation WhatsApp (v1.5.0) : format international obligatoire (`+` ou `00`), espaces/
   tirets/parenthèses ignorés, aucun indicatif jamais deviné — une saisie nationale sans
   indicatif renvoie une chaîne vide plutôt qu'un lien wa.me non fonctionnel.

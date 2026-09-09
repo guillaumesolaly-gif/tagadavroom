@@ -8,11 +8,17 @@ stockée par ce thème — voir le plugin compagnon `gws-core`
 ## Démarrer un nouveau projet
 
 1. Activer le plugin `gws-core` puis ce thème.
-2. Renseigner Réglages > Entité (coordonnées, logo, réseaux sociaux — tous les champs au-delà du
-   socle minimal nom/téléphone/e-mail/adresse/ville sont facultatifs).
+2. Renseigner Réglages > Ma structure (identité, identité visuelle, présentation, coordonnées,
+   logo, réseaux sociaux — tous les champs au-delà du socle minimal nom/téléphone/e-mail/adresse/
+   ville sont facultatifs).
 3. Personnaliser `assets/css/tokens.css` avec la charte du projet (couleurs, typographies,
-   espacements) — c'est le seul fichier CSS à modifier pour l'identité visuelle ; ne jamais
-   coder une couleur en dur ailleurs.
+   espacements) — c'est le seul fichier CSS à modifier pour l'identité visuelle du THÈME ; ne
+   jamais coder une couleur en dur ailleurs. Les couleurs principale/secondaire renseignées dans
+   Réglages > Ma structure (Lot 2C, `gws_core_get_primary_color()`/`gws_core_get_secondary_color()`
+   côté `gws-core`) sont des données de MARQUE côté client, distinctes des tokens CSS du thème —
+   ce lot ne les connecte volontairement pas encore au design du site (voir
+   `wp-content/plugins/gws-core/README.md`) : à un thème/projet de décider, plus tard, s'il les
+   consomme.
 4. Créer les pages du site dans wp-admin (contenu Gutenberg standard).
 5. Pour un contenu métier répétable (fiches produit, réalisations, biens...), dupliquer
    `wp-content/plugins/gws-core/modules/_boilerplate-cpt/` plutôt que de créer des pages
@@ -20,10 +26,10 @@ stockée par ce thème — voir le plugin compagnon `gws-core`
 
 ## Ce que le cœur du thème affiche réellement par défaut
 
-Volontairement sobre : l'en-tête affiche le logo (ou le nom de l'entité en texte s'il n'y en a
-pas) et la navigation ; le pied de page affiche le nom de l'entité, la navigation de pied de
+Volontairement sobre : l'en-tête affiche le logo (ou le nom de la structure en texte s'il n'y en a
+pas) et la navigation ; le pied de page affiche le nom de la structure, la navigation de pied de
 page, les pictogrammes des réseaux sociaux structurés s'il y en a au moins un de renseigné
-(réglage activé par défaut — désactivable dans Réglages > Entité), et si activé, le crédit
+(réglage activé par défaut — désactivable dans Réglages > Ma structure), et si activé, le crédit
 Tagada Vroom. **Le téléphone, l'e-mail, l'adresse, WhatsApp et la fiche Google Business Profile
 ne s'affichent nulle part automatiquement** — ce sont des réglages disponibles via des helpers
 (`gws_get_setting()`, `gws_core_whatsapp_url()`, `gws_core_google_business_url()`...), à un
@@ -52,8 +58,8 @@ le flush tout seul (voir `ARCHITECTURE.md`, §5).
 
 ## Checklist avant mise en production
 
-- [ ] Réglages de l'entité renseignés (Réglages > Entité), y compris le logo si le projet en a
-      un.
+- [ ] Réglages de Ma structure renseignés (Réglages > Ma structure), y compris le logo et, si
+      pertinent, les couleurs de marque et la présentation, si le projet en a.
 - [ ] Crédit Tagada Vroom : décider avec le client s'il reste affiché (activé par défaut) ou
       non, et vérifier que l'URL renseignée est correcte si affiché.
 - [ ] Envoi d'e-mail testé depuis l'environnement réel (`wp_mail()` ne délivre pas forcément en

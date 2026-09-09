@@ -11,6 +11,15 @@ function gws_get_setting($key) {
   return function_exists('gws_core_get_setting') ? gws_core_get_setting($key) : '';
 }
 
+/**
+ * Nom de la structure (Ma structure > Nom de la structure), avec repli natif WordPress si le
+ * champ est vide — centralise ce qui était dupliqué à l'identique dans site-header.php,
+ * site-footer.php et inc/schema.php (Lot 2C).
+ */
+function gws_structure_name() {
+  return function_exists('gws_core_structure_name') ? gws_core_structure_name() : get_bloginfo('name');
+}
+
 function gws_phone_href() {
   return function_exists('gws_core_phone_href') ? gws_core_phone_href() : '';
 }

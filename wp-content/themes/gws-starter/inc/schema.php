@@ -48,7 +48,7 @@ function gws_site_structured_data() {
   if (!is_page() && !$is_front) return;
 
   $site_url = home_url('/');
-  $entity_name = gws_get_setting('entity_name') ?: get_bloginfo('name');
+  $entity_name = gws_structure_name();
   $business_id = $site_url . '#organization';
   $website_id = $site_url . '#website';
 

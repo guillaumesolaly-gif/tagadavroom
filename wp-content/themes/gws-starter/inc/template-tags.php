@@ -24,7 +24,7 @@ function gws_render_contact_card() {
 
 /**
  * Crédit de réalisation Tagada Vroom — affiché uniquement si l'option est activée ET qu'une
- * URL valide est renseignée (Réglages > Entité). Aucun markup si l'une des deux conditions
+ * URL valide est renseignée (Réglages > Ma structure). Aucun markup si l'une des deux conditions
  * manque. Ancre naturelle « Tagada Vroom » ; lien externe, ouvert dans un nouvel onglet avec les
  * attributs de sécurité appropriés (rel="noopener noreferrer").
  */

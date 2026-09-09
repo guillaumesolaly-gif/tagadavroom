@@ -34,6 +34,7 @@ function get_queried_object_id() { return 42; }
 function get_permalink($id = null) { return 'https://example.test/une-page/'; }
 function get_the_title($id = null) { return 'Une page'; }
 function gws_get_setting($key) { return $key === 'entity_name' ? 'Entité de test' : ''; }
+function gws_structure_name() { return 'Entité de test'; } // Lot 2C : remplace gws_get_setting('entity_name') ?: get_bloginfo('name') dans schema.php
 function gws_phone_href() { return ''; }
 function wp_json_encode($data, $flags = 0) { return json_encode($data, $flags); }
 

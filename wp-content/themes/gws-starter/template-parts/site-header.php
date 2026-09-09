@@ -1,10 +1,10 @@
 <?php
 /**
- * En-tête visible du site. Structure générique : logo (ou nom de l'entité en secours si aucun
- * logo n'est renseigné dans Réglages > Entité), navigation principale (menu WordPress natif
+ * En-tête visible du site. Structure générique : logo (ou nom de la structure en secours si aucun
+ * logo n'est renseigné dans Réglages > Ma structure), navigation principale (menu WordPress natif
  * "primary"), bouton de menu mobile.
  */
-$gws_entity_name = gws_get_setting('entity_name') ?: get_bloginfo('name');
+$gws_entity_name = gws_structure_name();
 $gws_logo_url = gws_get_logo_url();
 ?>
 <header class="site-header">

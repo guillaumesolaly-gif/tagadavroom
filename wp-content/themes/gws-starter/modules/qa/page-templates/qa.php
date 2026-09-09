@@ -119,10 +119,41 @@ get_header();
     </section>
 
     <section>
-      <h2>Réglages génériques de l’entité</h2>
-      <p>Vérifie que les réglages ajoutés en v1.4.0 (Réglages &gt; Entité) sont bien
-        récupérables via les helpers de <code>gws-core</code>, et qu’aucune valeur vide n’est
-        jamais produite en façade ou dans le Schema quand un champ est laissé vide.</p>
+      <h2>Ma structure (réglages génériques)</h2>
+      <p>Vérifie que les réglages de « Ma structure » (Réglages &gt; Ma structure — anciennement
+        « Entité », renommage BO uniquement en Lot 2C) sont bien récupérables via les helpers de
+        <code>gws-core</code>, et qu’aucune valeur vide n’est jamais produite en façade ou dans le
+        Schema quand un champ est laissé vide.</p>
+
+      <h3>Nom de la structure (<code>gws_structure_name()</code>)</h3>
+      <p><?php echo esc_html(gws_structure_name()); ?></p>
+      <p><small>Doit toujours afficher une valeur (nom de la structure si renseigné, sinon le nom
+        du site WordPress en secours) — jamais vide.</small></p>
+
+      <h3>Identité visuelle — couleurs (Lot 2C)</h3>
+      <?php
+      $gws_qa_primary = function_exists('gws_core_get_primary_color') ? gws_core_get_primary_color() : '';
+      $gws_qa_secondary = function_exists('gws_core_get_secondary_color') ? gws_core_get_secondary_color() : '';
+      ?>
+      <p>
+        <span style="display:inline-block;width:1em;height:1em;vertical-align:middle;margin-right:6px;border:1px solid #000;background-color:<?php echo esc_attr($gws_qa_primary); ?>;"></span>
+        Couleur principale effective : <code><?php echo esc_html($gws_qa_primary); ?></code>
+        (texte lisible dessus : <code style="background-color:<?php echo esc_attr($gws_qa_primary); ?>;color:<?php echo esc_attr(function_exists('gws_core_contrast_color') ? gws_core_contrast_color($gws_qa_primary) : ''); ?>;padding:2px 6px;">Aa</code>)
+      </p>
+      <p>
+        <span style="display:inline-block;width:1em;height:1em;vertical-align:middle;margin-right:6px;border:1px solid #000;background-color:<?php echo esc_attr($gws_qa_secondary); ?>;"></span>
+        Couleur secondaire effective : <code><?php echo esc_html($gws_qa_secondary); ?></code>
+        (texte lisible dessus : <code style="background-color:<?php echo esc_attr($gws_qa_secondary); ?>;color:<?php echo esc_attr(function_exists('gws_core_contrast_color') ? gws_core_contrast_color($gws_qa_secondary) : ''); ?>;padding:2px 6px;">Aa</code>)
+      </p>
+      <p><small>Sans couleur choisie dans Réglages &gt; Ma structure, ces deux valeurs doivent être
+        les couleurs GWS par défaut (jamais une valeur vide, jamais une erreur) — et
+        <code>gws_core_settings</code> en base ne doit alors contenir AUCUNE valeur pour
+        <code>primary_color</code>/<code>secondary_color</code> (vérifiable via Outils &gt;
+        Requêtes SQL ou WP-CLI) : le repli est calculé, jamais écrit automatiquement.</small></p>
+
+      <h3>Présentation de la structure</h3>
+      <p><?php $gws_qa_presentation = gws_get_setting('presentation'); ?>
+        <?php echo $gws_qa_presentation ? nl2br(esc_html($gws_qa_presentation)) : '(non renseignée)'; ?></p>
 
       <h3>Logo</h3>
       <p>
@@ -139,6 +170,9 @@ get_header();
       <ul>
         <li>Téléphone : <?php echo gws_get_setting('phone_display') ? esc_html(gws_get_setting('phone_display')) : '(non renseigné)'; ?></li>
         <li>E-mail : <?php echo gws_get_setting('public_email') ? esc_html(gws_get_setting('public_email')) : '(non renseigné)'; ?></li>
+        <li>Site web : <?php echo gws_get_setting('website_url') ? esc_html(gws_get_setting('website_url')) : '(non renseigné)'; ?></li>
+        <li>Adresse : <?php echo gws_get_setting('address_line') ? esc_html(gws_get_setting('address_line')) : '(non renseignée)'; ?><?php echo gws_get_setting('address_line_2') ? ' — ' . esc_html(gws_get_setting('address_line_2')) : ''; ?></li>
+        <li>Code postal / Ville / Pays : <?php echo esc_html(trim(gws_get_setting('postal_code') . ' ' . gws_get_setting('city') . ' ' . gws_get_setting('country'))) ?: '(non renseignés)'; ?></li>
         <li>WhatsApp (<code>gws_core_whatsapp_url()</code>) :
           <?php $gws_qa_wa = function_exists('gws_core_whatsapp_url') ? gws_core_whatsapp_url() : ''; ?>
           <?php echo $gws_qa_wa ? esc_html($gws_qa_wa) : '(non renseigné, ou numéro saisi sans indicatif international)'; ?>

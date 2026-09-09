@@ -1,5 +1,5 @@
 /**
- * Sélecteur de logo (Réglages > Entité) — usage unique à cet écran, s'appuie sur le
+ * Sélecteur de logo (Réglages > Ma structure) — usage unique à cet écran, s'appuie sur le
  * sélecteur de médias natif de WordPress (wp.media). N'enregistre rien lui-même : se contente
  * de renseigner le champ caché #gws-logo_id, la sauvegarde reste gérée par le formulaire natif.
  */

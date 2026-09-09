@@ -45,6 +45,11 @@ function wp_get_attachment_image_url($id, $size = 'full') {
   return $GLOBALS['__gws_test_attachment_urls'][$id] ?? false;
 }
 
+$GLOBALS['__gws_test_bloginfo_name'] = 'Site de test';
+function get_bloginfo($key = '') {
+  return $key === 'name' ? $GLOBALS['__gws_test_bloginfo_name'] : '';
+}
+
 define('ABSPATH', __DIR__ . '/');
 $repo_root = dirname(__DIR__);
 require $repo_root . '/wp-content/plugins/gws-core/includes/fields.php';
@@ -202,6 +207,115 @@ gws_test_assert(
   $sanitized['credit_enabled'] === '1' && $sanitized['credit_url'] === 'https://exemple-agence.test/',
   'Le formulaire de réglages peut changer l’URL du crédit (pas figée sur tagadavroom.fr)'
 );
+
+// =====================================================================================
+// Lot 2C — Ma structure & identité de marque (§21 de la demande) : couleurs, contraste,
+// présentation, helpers consolidés. Même esprit et mêmes stubs que ci-dessus.
+// =====================================================================================
+
+// --- Sanitation de la couleur : uniquement '#rrggbb', jamais un nom CSS ni une forme abrégée ---
+gws_test_assert(gws_core_field_sanitize('color', '#1d4ed8') === '#1d4ed8', 'color : une valeur hex valide (minuscules) est conservée telle quelle');
+gws_test_assert(gws_core_field_sanitize('color', '#1D4ED8') === '#1d4ed8', 'color : une valeur hex valide en majuscules est normalisée en minuscules');
+gws_test_assert(gws_core_field_sanitize('color', '#fff') === '', 'color : la forme abrégée à 3 chiffres est rejetée (jamais devinée)');
+gws_test_assert(gws_core_field_sanitize('color', 'blue') === '', 'color : un nom de couleur CSS est rejeté');
+gws_test_assert(gws_core_field_sanitize('color', 'javascript:alert(1)') === '', 'color : une valeur arbitraire non hexadécimale est rejetée');
+gws_test_assert(gws_core_field_sanitize('color', '') === '', 'color : une valeur vide reste vide (pas d’erreur)');
+
+// --- Réglages par défaut : les nouveaux champs du Lot 2C sont vides par défaut ---
+$GLOBALS['__gws_test_options'] = array();
+gws_test_assert(gws_core_get_setting('primary_color') === '', 'Par défaut : aucune couleur principale personnalisée enregistrée');
+gws_test_assert(gws_core_get_setting('secondary_color') === '', 'Par défaut : aucune couleur secondaire personnalisée enregistrée');
+gws_test_assert(gws_core_get_setting('presentation') === '', 'Par défaut : présentation vide');
+gws_test_assert(gws_core_get_setting('website_url') === '', 'Par défaut : site web vide');
+gws_test_assert(gws_core_get_setting('address_line_2') === '', 'Par défaut : complément d’adresse vide');
+gws_test_assert(gws_core_get_setting('country') === '', 'Par défaut : pays vide');
+
+// --- Couleurs effectives : repli sur les couleurs GWS par défaut, jamais une chaîne vide ---
+$GLOBALS['__gws_test_options'] = array();
+gws_test_assert(gws_core_get_primary_color() === gws_core_default_primary_color(), 'Sans couleur choisie : gws_core_get_primary_color() renvoie la couleur GWS par défaut');
+gws_test_assert(gws_core_get_secondary_color() === gws_core_default_secondary_color(), 'Sans couleur choisie : gws_core_get_secondary_color() renvoie la couleur GWS par défaut');
+gws_test_assert(gws_core_default_primary_color() !== '#03A9F4' && gws_core_default_primary_color() !== '#03a9f4', 'La couleur par défaut n’est jamais le bleu de branding BO Tagada Vroom (#03A9F4)');
+
+// --- Une couleur personnalisée et valide prend toujours le pas sur la couleur par défaut ---
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('primary_color' => '#ff0000', 'secondary_color' => '#00ff00'));
+gws_test_assert(gws_core_get_primary_color() === '#ff0000', 'Couleur principale personnalisée : prioritaire sur la couleur par défaut');
+gws_test_assert(gws_core_get_secondary_color() === '#00ff00', 'Couleur secondaire personnalisée : prioritaire sur la couleur par défaut');
+
+// --- Aucune écriture automatique de la couleur par défaut dans les réglages enregistrés (§8) ---
+$GLOBALS['__gws_test_options'] = array();
+$sanitized_empty = gws_core_sanitize_settings(array());
+gws_test_assert(
+  $sanitized_empty['primary_color'] === '' && $sanitized_empty['secondary_color'] === '',
+  'Un enregistrement sans couleur choisie ne persiste JAMAIS la couleur GWS par défaut dans gws_core_settings — le repli reste purement calculé à la lecture'
+);
+gws_test_assert(
+  gws_core_sanitize_settings(array('primary_color' => 'pas-une-couleur'))['primary_color'] === '',
+  'Une couleur invalide soumise au formulaire est rejetée (jamais enregistrée telle quelle)'
+);
+
+// --- Présentation : enregistrée normalement, tronquée au-delà de la limite (§5) ---
+$long_presentation = str_repeat('a', gws_core_structure_presentation_max_length() + 50);
+$sanitized_presentation = gws_core_sanitize_settings(array('presentation' => 'Une présentation raisonnable.'));
+gws_test_assert($sanitized_presentation['presentation'] === 'Une présentation raisonnable.', 'Présentation : une valeur dans la limite est enregistrée telle quelle');
+$sanitized_long = gws_core_sanitize_settings(array('presentation' => $long_presentation));
+gws_test_assert(
+  mb_strlen($sanitized_long['presentation']) === gws_core_structure_presentation_max_length(),
+  'Présentation : un texte trop long est tronqué exactement à la limite documentée, jamais rejeté en bloc'
+);
+
+// --- Contraste : noir/blanc, couleurs par défaut GWS, et quelques cas limites clair/foncé ---
+gws_test_assert(gws_core_contrast_color('#000000') === '#ffffff', 'Contraste : texte blanc sur fond noir');
+gws_test_assert(gws_core_contrast_color('#ffffff') === '#000000', 'Contraste : texte noir sur fond blanc');
+gws_test_assert(gws_core_contrast_color(gws_core_default_primary_color()) === '#ffffff', 'Contraste : la couleur principale GWS par défaut (bleu foncé) appelle un texte blanc');
+gws_test_assert(gws_core_contrast_color(gws_core_default_secondary_color()) === '#ffffff', 'Contraste : la couleur secondaire GWS par défaut (vert-bleu foncé) appelle un texte blanc');
+gws_test_assert(gws_core_contrast_color('#ffff00') === '#000000', 'Contraste : jaune vif (clair) appelle un texte noir');
+gws_test_assert(gws_core_contrast_color('#0000ff') === '#ffffff', 'Contraste : bleu pur (foncé) appelle un texte blanc');
+gws_test_assert(gws_core_contrast_color('#808080') === '#000000', 'Contraste : gris moyen (cas limite) — vérifie que l’algorithme reste déterministe et ne plante pas');
+gws_test_assert(gws_core_contrast_color('invalide') === '#000000', 'Contraste : une valeur non hexadécimale retombe sur noir par sécurité, jamais une erreur');
+
+// --- Nom de la structure : repli natif WordPress si le champ est vide ---
+$GLOBALS['__gws_test_options'] = array();
+$GLOBALS['__gws_test_bloginfo_name'] = 'Site de test';
+gws_test_assert(gws_core_structure_name() === 'Site de test', 'Sans nom de structure renseigné : repli sur le nom du site WordPress');
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array('entity_name' => 'Haras de Test'));
+gws_test_assert(gws_core_structure_name() === 'Haras de Test', 'Avec un nom de structure renseigné : celui-ci est utilisé, jamais le nom du site');
+
+// --- API consolidée gws_core_structure_identity() : jamais une clé manquante, jamais d'erreur ---
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array(
+  'entity_name' => 'Haras de Test',
+  'primary_color' => '#123456',
+  'presentation' => 'Une structure de test.',
+  'address_line' => '1 rue de Test',
+  'address_line_2' => 'Bâtiment B',
+  'postal_code' => '75000',
+  'city' => 'Paris',
+  'country' => 'France',
+  'website_url' => 'https://exemple-structure.test/',
+));
+$identity = gws_core_structure_identity();
+gws_test_assert($identity['name'] === 'Haras de Test', 'gws_core_structure_identity() : nom correctement assemblé');
+gws_test_assert($identity['primary_color'] === '#123456', 'gws_core_structure_identity() : couleur principale personnalisée reprise telle quelle');
+gws_test_assert($identity['secondary_color'] === gws_core_default_secondary_color(), 'gws_core_structure_identity() : couleur secondaire non choisie => repli par défaut');
+gws_test_assert($identity['primary_color_contrast'] === gws_core_contrast_color('#123456'), 'gws_core_structure_identity() : contraste calculé cohérent avec gws_core_contrast_color()');
+gws_test_assert($identity['presentation'] === 'Une structure de test.', 'gws_core_structure_identity() : présentation reprise');
+gws_test_assert($identity['address_line_2'] === 'Bâtiment B' && $identity['country'] === 'France' && $identity['website_url'] === 'https://exemple-structure.test/', 'gws_core_structure_identity() : nouvelles coordonnées (complément, pays, site web) correctement reprises');
+
+// --- Non-régression : une installation existante SANS les nouvelles clés en base continue de
+// fonctionner sans avertissement PHP ni valeur incohérente (§19 — compatibilité champs absents) ---
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array(
+  // Simule une option enregistrée AVANT le Lot 2C : uniquement les anciennes clés.
+  'entity_name' => 'Ancienne Structure',
+  'phone_display' => '+33 1 23 45 67 89',
+  'address_line' => '1 rue Historique',
+  'postal_code' => '75001',
+  'city' => 'Paris',
+));
+gws_test_assert(gws_core_get_setting('entity_name') === 'Ancienne Structure', 'Donnée historique (avant Lot 2C) : toujours lue normalement');
+gws_test_assert(gws_core_get_setting('primary_color') === '', 'Donnée historique : clé de couleur absente => vide, jamais un avertissement PHP');
+gws_test_assert(gws_core_get_primary_color() === gws_core_default_primary_color(), 'Donnée historique : la couleur effective retombe proprement sur la couleur par défaut GWS');
+gws_test_assert(gws_core_get_setting('address_line') === '1 rue Historique' && gws_core_get_setting('postal_code') === '75001', 'Donnée historique : coordonnées existantes non régressées par l’ajout des nouveaux champs');
+$identity_legacy = gws_core_structure_identity();
+gws_test_assert(is_array($identity_legacy) && $identity_legacy['name'] === 'Ancienne Structure', 'Donnée historique : gws_core_structure_identity() reste utilisable sans erreur sur une ancienne installation');
 
 echo "\n" . ($failures === 0 ? 'Tous les tests sont passés.' : "$failures test(s) en échec.") . "\n";
 exit($failures === 0 ? 0 : 1);
