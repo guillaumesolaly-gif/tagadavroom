@@ -1562,9 +1562,19 @@ relation Père/Mère GWS pointant vers le sujet (nom normalisé + année, appliq
 aucune confirmation demandée) ; PROBABLE quand nom normalisé + année correspondent à une fiche GWS
 existante sans filiation déclarée (proposé en prévisualisation, coché explicitement par
 l'utilisateur — jamais automatique, jamais sur le nom seul, une ambiguïté entre plusieurs
-candidats n'est jamais résolue arbitrairement). Confirmer un rattachement n'écrit JAMAIS de
-filiation en effet de bord sur la fiche tierce liée — action strictement distincte, non construite
-dans ce lot.
+candidats n'est jamais résolue arbitrairement).
+
+**Cohérence bidirectionnelle Production -> filiation (0.44.2)** : lorsqu'un produit se retrouve
+rattaché (certain, ou probable explicitement confirmé) à la validation globale de l'import, sa
+relation Mère est réconciliée avec la jument via 5 cas
+(`gwseq_ifce_production_maternity_case()`/`gwseq_ifce_apply_production_maternity_case()`,
+`includes/ifce-production-store.php`) : déjà cohérente -> rien à faire ; aucune mère renseignée ->
+relation GWS créée ; mère externe correspondante (nom normalisé + année quand connue des deux
+côtés) -> convertie en relation GWS (l'ancien arbre externe reste inactif en base, jamais supprimé,
+conservation non destructive déjà garantie par `gwseq_set_horse_parent()`, réutilisée telle quelle) ;
+une AUTRE mère GWS ou externe déjà renseignée -> jamais écrasée, signalée en prévisualisation.
+Jamais déclenché par un simple rapprochement `nom + année` non confirmé — uniquement après
+détection, proposition, confirmation explicite, puis validation globale.
 
 **Actualisation ISO/ICC/IDR d'un produit GWS lié** (`gwseq_ifce_map_production()`) : principe
 retenu — « la dernière actualisation validée gagne » — chaque import IFCE validé réécrit simplement

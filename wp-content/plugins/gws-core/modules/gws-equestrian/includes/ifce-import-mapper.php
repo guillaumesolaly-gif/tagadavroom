@@ -168,6 +168,17 @@ function gwseq_ifce_map_import($post_id, $parsed, $sections, $parent_choices = a
  * (déjà explicite, déjà l'unique porte d'entrée de cette fonction) suffit. Ni la fiche liée elle-même
  * (nom/sexe/année/robe/...) ni le produit externe rattaché ne sont modifiés au-delà de ces trois
  * indices — voir §18 dans l'en-tête de ce fichier.
+ *
+ * COHÉRENCE BIDIRECTIONNELLE PRODUCTION -> FILIATION (correctif de recette, cas réel Goldame
+ * d'Aubigny/Teldame de la Nutria) : pour CHAQUE produit rattaché, la relation Mère est également
+ * réconciliée avec $post_id via gwseq_ifce_production_maternity_case()/
+ * gwseq_ifce_apply_production_maternity_case() (includes/ifce-production-store.php) — conversion
+ * d'une Mère externe correspondante ou création si aucune Mère n'est renseignée, JAMAIS l'écrasement
+ * d'une Mère GWS ou externe déjà renseignée pointant ailleurs (signalé en amont, à la
+ * prévisualisation, jamais silencieusement ici). Réutilise gwseq_set_horse_parent() (cheval-pedigree.php,
+ * MÊME fonction que la saisie manuelle), jamais une écriture directe. Comme pour les indices,
+ * atteinte UNIQUEMENT après confirmation explicite du rattachement ET validation globale de
+ * l'import — jamais pour un simple rapprochement proposé mais non coché.
  */
 function gwseq_ifce_map_production($post_id, $entries, $production_choices = array()) {
   $post_id = (int) $post_id;
@@ -205,6 +216,17 @@ function gwseq_ifce_map_production($post_id, $entries, $production_choices = arr
       if (($indice['valeur'] ?? '') === '') continue;
       gwseq_set_cheval_sport_indice($linked_id, $key, $indice);
     }
+
+    // Cohérence bidirectionnelle Production -> filiation (correctif de recette) : UNIQUEMENT
+    // atteint ici, à la validation globale de l'import, pour un produit déjà rattaché (certain ou
+    // probable explicitement confirmé ci-dessus) — jamais pour un simple rapprochement proposé mais
+    // non coché. Cas A (déjà cohérent)/D/E (conflit) n'écrivent rien, voir
+    // gwseq_ifce_apply_production_maternity_case() (includes/ifce-production-store.php).
+    gwseq_ifce_apply_production_maternity_case(
+      gwseq_ifce_production_maternity_case($linked_id, $post_id),
+      $linked_id,
+      $post_id
+    );
   }
 
   return true;

@@ -534,10 +534,129 @@ gwseq_ifce_map_production(305, array(
 )); // aucun choix transmis
 gws_test_assert((int) gwseq_get_cheval_production_externe(305)[0]['cheval_gws_id'] === 0, 'Mapping (§14) : sans choix explicite transmis, un rattachement seulement probable n’est JAMAIS appliqué automatiquement — le produit reste externe');
 
-// --- Rattachement (probable confirmé ou certain) : jamais d'écriture de filiation en effet de bord
-// sur la fiche tierce liée (§14) ---
-gws_test_assert(gwseq_get_horse_parent(304, 'mother')['mode'] === '', 'ABSENCE D’EFFET DE BORD (§14) : confirmer un rattachement de Production n’écrit JAMAIS, en retour, une relation de filiation Père/Mère sur la fiche tierce liée');
-gws_test_assert(gwseq_get_horse_parent(302, 'mother')['mode'] === 'gws' && gwseq_get_horse_parent(302, 'mother')['horse_id'] === 301, 'Non-régression : la filiation GWS de "Produit Certain" (déjà existante avant tout mapping) reste inchangée par le mapping de Production');
+// --- Rattachement (probable confirmé ou certain) : la RÈGLE A CHANGÉ (correctif de recette, cas réel
+// Goldame d'Aubigny) — confirmer un rattachement écrit désormais, EN RETOUR, une relation de
+// filiation cohérente sur la fiche tierce liée (voir section dédiée "Cohérence bidirectionnelle"
+// ci-dessous pour le détail des 5 cas) — jamais pour un rapprochement seulement PROPOSÉ mais non
+// confirmé (voir la fiche 305 ci-dessus, restée externe, jamais examinée pour sa filiation).
+gws_test_assert(gwseq_get_horse_parent(304, 'mother')['mode'] === 'gws' && gwseq_get_horse_parent(304, 'mother')['horse_id'] === 303, 'COHÉRENCE BIDIRECTIONNELLE (Cas C) : confirmer le rattachement PROBABLE de "Produit Probable" crée désormais la relation Mère GWS vers la jument (303) — aucune mère n’était renseignée avant');
+gws_test_assert(gwseq_get_horse_parent(302, 'mother')['mode'] === 'gws' && gwseq_get_horse_parent(302, 'mother')['horse_id'] === 301, 'Non-régression (Cas A) : la filiation GWS de "Produit Certain" (déjà existante avant tout mapping) reste inchangée par le mapping de Production — déjà cohérente, aucune écriture supplémentaire');
+
+// =====================================================================================
+// 10bis. COHÉRENCE BIDIRECTIONNELLE PRODUCTION -> FILIATION (correctif de recette, cas réel
+// Goldame d'Aubigny/Teldame de la Nutria) : gwseq_ifce_production_maternity_case() (5 cas A-E),
+// gwseq_ifce_apply_production_maternity_case(), câblage dans gwseq_ifce_map_production(), et
+// non-duplication du resolver après conversion.
+// =====================================================================================
+
+gws_test_make_post(600, GWSEQ_CPT_CHEVAL, 'Jument Maternite');
+gwseq_set_cheval_identity(600, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+
+// --- Cas A : filiation GWS déjà cohérente -> noop ---
+gws_test_make_post(601, GWSEQ_CPT_CHEVAL, 'Produit Cas A');
+gwseq_set_horse_parent(601, 'mother', array('mode' => 'gws', 'horse_id' => 600));
+gws_test_assert(gwseq_ifce_production_maternity_case(601, 600) === 'noop', 'Cas A : filiation GWS déjà cohérente -> "noop"');
+
+// --- Cas B : mère externe correspondant à la jument (nom normalisé + année) -> "convert" ---
+gws_test_make_post(602, GWSEQ_CPT_CHEVAL, 'Produit Cas B Annee');
+gwseq_set_horse_parent(602, 'mother', array('mode' => 'external', 'external' => array('name' => 'Jument Maternite', 'annee_naissance' => 2007)));
+gws_test_assert(gwseq_ifce_production_maternity_case(602, 600) === 'convert', 'Cas B (nom + année correspondants) : mère externe -> "convert"');
+
+gws_test_make_post(603, GWSEQ_CPT_CHEVAL, 'Produit Cas B Sans Annee');
+gwseq_set_horse_parent(603, 'mother', array('mode' => 'external', 'external' => array('name' => 'Jument Maternite'))); // année absente côté externe
+gws_test_assert(gwseq_ifce_production_maternity_case(603, 600) === 'convert', 'Cas B (§ "année lorsqu’elle est disponible") : nom correspondant, année ABSENTE côté externe -> "convert" tout de même, jamais bloqué par une donnée manquante');
+
+// --- Cas C : aucune mère renseignée -> "create" ---
+gws_test_make_post(604, GWSEQ_CPT_CHEVAL, 'Produit Cas C');
+gws_test_assert(gwseq_ifce_production_maternity_case(604, 600) === 'create', 'Cas C : aucune mère renseignée -> "create"');
+
+// --- Cas D : une AUTRE fiche GWS est déjà mère -> "conflict_gws", jamais écrasée ---
+gws_test_make_post(605, GWSEQ_CPT_CHEVAL, 'Autre Jument GWS');
+gws_test_make_post(606, GWSEQ_CPT_CHEVAL, 'Produit Cas D');
+gwseq_set_horse_parent(606, 'mother', array('mode' => 'gws', 'horse_id' => 605));
+gws_test_assert(gwseq_ifce_production_maternity_case(606, 600) === 'conflict_gws', 'Cas D : une autre fiche GWS déjà mère -> "conflict_gws"');
+
+// --- Cas E : une mère externe DIFFÉRENTE (nom différent) est déjà renseignée -> "conflict_external" ---
+gws_test_make_post(607, GWSEQ_CPT_CHEVAL, 'Produit Cas E Nom');
+gwseq_set_horse_parent(607, 'mother', array('mode' => 'external', 'external' => array('name' => 'Une Autre Jument', 'annee_naissance' => 2007)));
+gws_test_assert(gwseq_ifce_production_maternity_case(607, 600) === 'conflict_external', 'Cas E (nom différent) : mère externe différente -> "conflict_external"');
+
+// --- Cas E : même nom, mais année DIFFÉRENTE des deux côtés -> ambigu, "conflict_external" par
+// prudence (jamais deviné) ---
+gws_test_make_post(608, GWSEQ_CPT_CHEVAL, 'Produit Cas E Annee');
+gwseq_set_horse_parent(608, 'mother', array('mode' => 'external', 'external' => array('name' => 'Jument Maternite', 'annee_naissance' => 1999)));
+gws_test_assert(gwseq_ifce_production_maternity_case(608, 600) === 'conflict_external', 'Cas E (nom identique, ANNÉES différentes et toutes deux connues) : "conflict_external", jamais deviné');
+
+// --- gwseq_ifce_apply_production_maternity_case() : n'écrit RIEN pour noop/conflict_*, applique
+// bien "create"/"convert" ---
+gwseq_ifce_apply_production_maternity_case('conflict_gws', 606, 600);
+gws_test_assert(gwseq_get_horse_parent(606, 'mother')['horse_id'] === 605, 'apply() : "conflict_gws" n’écrit strictement rien — la mère existante (605) reste intacte');
+gwseq_ifce_apply_production_maternity_case('conflict_external', 607, 600);
+gws_test_assert(gwseq_get_horse_parent(607, 'mother')['mode'] === 'external' && gwseq_get_horse_parent(607, 'mother')['external']['name'] === 'Une Autre Jument', 'apply() : "conflict_external" n’écrit strictement rien — la mère externe existante reste intacte');
+
+gwseq_ifce_apply_production_maternity_case('create', 604, 600);
+gws_test_assert(gwseq_get_horse_parent(604, 'mother')['mode'] === 'gws' && gwseq_get_horse_parent(604, 'mother')['horse_id'] === 600, 'apply() : "create" crée bien la relation Mère GWS');
+
+// --- Cas B appliqué : conversion réelle, ANCIENNE branche externe conservée (inactive, jamais
+// supprimée — conservation non destructive déjà garantie par gwseq_set_horse_parent(), aucune
+// meta orpheline, aucune duplication : le resolver ne lit jamais la branche inactive) ---
+gwseq_ifce_apply_production_maternity_case('convert', 602, 600);
+$converted_mother = gwseq_get_horse_parent(602, 'mother');
+gws_test_assert($converted_mother['mode'] === 'gws' && $converted_mother['horse_id'] === 600, 'apply() : "convert" bascule bien la relation Mère en mode GWS vers la jument');
+gws_test_assert(is_array($converted_mother['external']) && $converted_mother['external']['name'] === 'Jument Maternite', 'CONSERVATION NON DESTRUCTIVE : l’ancien arbre externe reste lisible en base (inactif, jamais supprimé, aucune meta orpheline) après la conversion');
+
+// --- Aucune destruction de donnée de pedigree NON concernée : le Père du produit converti, sans
+// aucun rapport avec cette conversion, reste strictement intact ---
+gwseq_set_horse_parent(602, 'father', array('mode' => 'external', 'external' => array('name' => 'Un Pere Independant')));
+gwseq_ifce_apply_production_maternity_case('convert', 602, 600); // reconversion idempotente
+gws_test_assert(gwseq_get_horse_parent(602, 'father')['external']['name'] === 'Un Pere Independant', 'NON-DESTRUCTION : le Père du produit, sans rapport avec cette conversion de la Mère, reste strictement intact');
+
+// --- Câblage bout en bout dans gwseq_ifce_map_production() : Cas B (conversion) sur un vrai
+// rattachement PROBABLE confirmé ---
+gws_test_make_post(700, GWSEQ_CPT_CHEVAL, 'Jument E2E');
+gwseq_set_cheval_identity(700, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+gws_test_make_post(701, GWSEQ_CPT_CHEVAL, 'Produit E2E');
+gwseq_set_cheval_identity(701, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+gwseq_set_horse_parent(701, 'mother', array('mode' => 'external', 'external' => array('name' => 'Jument E2E', 'annee_naissance' => 2007)));
+gwseq_ifce_map_production(700, array(
+  array('annee' => 2016, 'nom' => 'Produit E2E', 'pere' => 'Un Père'),
+), array(0 => array('mode' => 'link', 'horse_id' => 701)));
+gws_test_assert(gwseq_get_horse_parent(701, 'mother')['mode'] === 'gws' && gwseq_get_horse_parent(701, 'mother')['horse_id'] === 700, 'BOUT EN BOUT (Cas B via mapper) : la confirmation du rattachement PROBABLE convertit bien la mère externe correspondante en relation GWS');
+
+// --- Câblage bout en bout : un rapprochement PROBABLE proposé mais JAMAIS confirmé ne modifie
+// AUCUNE filiation d'une fiche tierce (§ "aucun rapprochement probable non confirmé ne doit
+// modifier le pedigree d'un autre Cheval GWS") ---
+gws_test_make_post(702, GWSEQ_CPT_CHEVAL, 'Jument E2E Non Confirme');
+gwseq_set_cheval_identity(702, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+gws_test_make_post(703, GWSEQ_CPT_CHEVAL, 'Produit E2E Non Confirme');
+gwseq_set_cheval_identity(703, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+gwseq_set_horse_parent(703, 'mother', array('mode' => 'external', 'external' => array('name' => 'Jument E2E Non Confirme', 'annee_naissance' => 2007)));
+gwseq_ifce_map_production(702, array(
+  array('annee' => 2016, 'nom' => 'Produit E2E Non Confirme', 'pere' => 'Un Père'),
+)); // AUCUN choix transmis -> rapprochement seulement proposé, jamais confirmé
+gws_test_assert(gwseq_get_horse_parent(703, 'mother')['mode'] === 'external' && gwseq_get_horse_parent(703, 'mother')['external']['name'] === 'Jument E2E Non Confirme', 'BOUT EN BOUT : un rapprochement PROBABLE proposé mais NON confirmé ne touche STRICTEMENT RIEN à la filiation de la fiche tierce — celle-ci reste externe et inchangée');
+
+// --- Câblage bout en bout : la relation n'est créée QU'À la validation globale de l'import — la
+// simple DÉTECTION/proposition du rapprochement (gwseq_ifce_find_probable_production_match(), déjà
+// utilisée en amont) n'écrit jamais rien par elle-même (vérification déclarative : cette fonction
+// pure ne contient aucun appel d'écriture) ---
+$probable_fn_body = substr($ifce_production_store_code_only, strpos($ifce_production_store_code_only, 'function gwseq_ifce_find_probable_production_match'));
+$probable_fn_body = substr($probable_fn_body, 0, strpos($probable_fn_body, "\nfunction "));
+foreach (array('update_post_meta', 'gwseq_set_horse_parent', 'gwseq_ifce_apply_production_maternity_case') as $write_marker) {
+  gws_test_assert(strpos($probable_fn_body, $write_marker) === false, "BOUT EN BOUT : gwseq_ifce_find_probable_production_match() (simple détection/proposition) n’appelle jamais $write_marker() — la relation n’est créée qu’à la validation globale, jamais à la seule détection");
+}
+
+// --- Resolver SANS DOUBLON après conversion : gwseq_get_horse_offspring() ET
+// gwseq_get_horse_direct_production() sont désormais cohérents, sans qu'aucun code du resolver
+// n'ait eu besoin d'être modifié (le mécanisme de déduplication déjà existant, basé sur
+// $linked_gws_ids, couvre déjà ce nouveau cas) ---
+$e2e_offspring_ids = array_map(function ($p) { return $p->ID; }, gwseq_get_horse_offspring(700));
+gws_test_assert(in_array(701, $e2e_offspring_ids, true), 'RESOLVER SANS DOUBLON : gwseq_get_horse_offspring(jument) inclut désormais le produit converti (descendant GWS relationnel à part entière)');
+
+$e2e_production = gwseq_get_horse_direct_production(700);
+$e2e_matches = array_values(array_filter($e2e_production, function ($e) { return (int) $e['cheval_gws_id'] === 701; }));
+gws_test_assert(count($e2e_matches) === 1, 'RESOLVER SANS DOUBLON : le produit converti apparaît EXACTEMENT une fois dans gwseq_get_horse_direct_production(jument), jamais deux (une fois comme descendant GWS, une seconde fois comme entrée externe liée)');
+gws_test_assert($e2e_matches[0]['source'] === 'gws', 'RESOLVER SANS DOUBLON : le produit converti est bien restitué comme source "gws" (fiche liée, jamais le snapshot externe désormais inactif)');
 
 // =====================================================================================
 // 11. Resolver gwseq_get_horse_direct_production() : fusion GWS + externe, jamais de doublon

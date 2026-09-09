@@ -283,6 +283,85 @@ function gwseq_ifce_find_probable_production_match($nom, $annee) {
 }
 
 /* -------------------------------------------------------------------------------------------
+ * Cohérence bidirectionnelle Production -> filiation (correctif de recette, cas réel Goldame
+ * d'Aubigny/Teldame de la Nutria) : lorsqu'un produit de Production est rattaché (certain ou
+ * PROBABLE EXPLICITEMENT CONFIRMÉ — jamais un simple nom+année non validé) à une jument, la relation
+ * Mère du produit doit rester cohérente avec ce rattachement, sans jamais écraser silencieusement une
+ * donnée déjà renseignée qui pointerait ailleurs.
+ *
+ * AUDIT DU MODÈLE DE FILIATION EXISTANT (préalable à cette implémentation) : `gwseq_set_horse_parent()`
+ * (cheval-pedigree.php) gère déjà, nativement et depuis l'Étape 5, le passage du mode "external" au
+ * mode "gws" pour un rôle donné — elle se contente d'écrire `{prefix}mode='gws'` et `{prefix}id`,
+ * SANS jamais toucher à `{prefix}externe` (conservation non destructive déjà garantie, documentée en
+ * tête de cheval-pedigree.php : "changer de mode ne touche jamais les meta de l'autre branche —
+ * restent stockées mais inactives"). Le resolver (pedigree-resolver.php) ne lit jamais une branche
+ * inactive. Convertir une Mère externe en Mère GWS ne nécessite donc AUCUN nouveau mécanisme
+ * d'écriture ni de nettoyage de meta : un simple appel à cette fonction déjà existante et déjà
+ * testée suffit — jamais de meta orpheline (l'arbre externe reste simplement inerte, récupérable si
+ * l'utilisateur revient un jour en arrière), jamais de duplication (voir le resolver plus bas, qui
+ * exclut déjà tout produit externe dont le `cheval_gws_id` apparaît parmi les descendants GWS
+ * relationnels — inchangé, ce mécanisme couvre déjà ce nouveau cas sans modification).
+ * ----------------------------------------------------------------------------------------- */
+
+/**
+ * Détermine l'action nécessaire sur la relation Mère du Cheval GWS $linked_id lorsqu'un produit de
+ * Production est rattaché à la jument $jument_id — voir la note d'audit ci-dessus. N'ÉCRIT RIEN
+ * elle-même (fonction de décision pure) ; voir gwseq_ifce_apply_production_maternity_case().
+ * Retourne un code stable :
+ * - 'noop'  (Cas A) : la Mère GWS pointe déjà vers $jument_id — déjà cohérent, rien à faire (cas
+ *   normal d'un rattachement CERTAIN, dont la filiation existait déjà par construction).
+ * - 'create' (Cas C) : aucune Mère renseignée (mode vide, ou externe sans nom exploitable) — la
+ *   confirmation explicite du rattachement vaut désormais confirmation de cette filiation.
+ * - 'convert' (Cas B) : une Mère EXTERNE est renseignée et correspond suffisamment à $jument_id —
+ *   nom normalisé identique (gwseq_ifce_normalize_horse_name_for_match(), même comparaison robuste
+ *   aux entités/apostrophes que le rattachement lui-même) ET, lorsque les DEUX années sont connues,
+ *   année identique (une année manquante d'un côté ou de l'autre n'empêche jamais la conversion —
+ *   "l'année lorsqu'elle est disponible").
+ * - 'conflict_gws' (Cas D) : une AUTRE fiche GWS est déjà Mère — jamais écrasée automatiquement.
+ * - 'conflict_external' (Cas E) : une Mère externe DIFFÉRENTE (nom et/ou année ne correspondent pas)
+ *   est déjà renseignée — jamais écrasée silencieusement.
+ */
+function gwseq_ifce_production_maternity_case($linked_id, $jument_id) {
+  $linked_id = (int) $linked_id;
+  $jument_id = (int) $jument_id;
+  if (!$linked_id || !$jument_id) return 'conflict_gws'; // défense en profondeur, ne devrait jamais survenir
+
+  $mother = gwseq_get_horse_parent($linked_id, 'mother');
+
+  if ($mother['mode'] === 'gws') {
+    return $mother['horse_id'] === $jument_id ? 'noop' : 'conflict_gws';
+  }
+
+  if ($mother['mode'] === 'external' && is_array($mother['external']) && ($mother['external']['name'] ?? '') !== '') {
+    $external_name = gwseq_ifce_normalize_horse_name_for_match($mother['external']['name']);
+    $jument_name = gwseq_ifce_normalize_horse_name_for_match(get_the_title($jument_id));
+    if ($external_name !== $jument_name) return 'conflict_external';
+
+    $external_annee = $mother['external']['annee_naissance'] ?? '';
+    $jument_annee = gwseq_get_cheval_identity($jument_id)['annee_naissance'] ?? '';
+    if ($external_annee !== '' && $jument_annee !== '' && (string) $external_annee !== (string) $jument_annee) {
+      return 'conflict_external';
+    }
+    return 'convert';
+  }
+
+  return 'create';
+}
+
+/**
+ * Applique la décision de gwseq_ifce_production_maternity_case() ci-dessus — réutilise SANS LA
+ * DUPLIQUER gwseq_set_horse_parent() (cheval-pedigree.php), la MÊME fonction que la saisie manuelle
+ * du pedigree : aucune écriture directe de meta ici. N'écrit strictement rien pour 'noop',
+ * 'conflict_gws' ou 'conflict_external' — ces trois codes restent un simple signal (à la
+ * prévisualisation notamment, voir gwseq_render_ifce_preview_production_section(),
+ * ifce-import-admin.php), jamais une décision automatique.
+ */
+function gwseq_ifce_apply_production_maternity_case($case, $linked_id, $jument_id) {
+  if ($case !== 'create' && $case !== 'convert') return false;
+  return gwseq_set_horse_parent((int) $linked_id, 'mother', array('mode' => 'gws', 'horse_id' => (int) $jument_id));
+}
+
+/* -------------------------------------------------------------------------------------------
  * Resolver métier — fusion GWS + externe (§12), source de vérité unique.
  * ----------------------------------------------------------------------------------------- */
 
@@ -388,10 +467,34 @@ function gwseq_add_cheval_ifce_reimport_meta_box($post) {
 }
 add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, 'gwseq_add_cheval_ifce_reimport_meta_box');
 
+/**
+ * CORRECTIF RECETTE (présentation uniquement, aucun changement fonctionnel) : le libellé du bouton
+ * est trop long pour la largeur étroite d'une boîte 'side' — le `.button` natif WordPress est
+ * `white-space: nowrap` par défaut, débordant alors horizontalement du cadre de la meta box. Passage
+ * en bloc pleine largeur avec retour à la ligne autorisé, scopé à CETTE boîte uniquement
+ * (`.gwseq-cheval-ifce-reimport-box`, jamais une règle globale sur `.button` qui affecterait d'autres
+ * écrans). Même convention que gwseq_render_cheval_choice_page() (ifce-import-admin.php) : un style
+ * scopé en ligne pour un unique petit ajustement, pas un nouveau fichier CSS pour une seule règle.
+ */
 function gwseq_render_cheval_ifce_reimport_box($post) {
   $url = gwseq_ifce_import_page_url(array('gwseq_reimport_cheval_id' => $post->ID));
+  echo '<div class="gwseq-cheval-ifce-reimport-box">';
   echo '<p><a href="' . esc_url($url) . '" class="button">' . esc_html__('Réimporter depuis un nouveau PDF IFCE', 'gws-core') . '</a></p>';
   echo '<p class="description">' . esc_html__('Analyse un nouveau PDF IFCE et propose de mettre à jour cette fiche — rien n’est modifié avant votre validation explicite.', 'gws-core') . '</p>';
+  echo '</div>';
+  echo '<style>
+    .gwseq-cheval-ifce-reimport-box .button {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      white-space: normal;
+      height: auto;
+      line-height: 1.4;
+      text-align: center;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+  </style>';
 }
 
 function gwseq_render_cheval_production_box($post) {

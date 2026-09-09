@@ -678,11 +678,13 @@ function gwseq_render_ifce_preview_production_section($production, $reimport_che
     if ($certain_id) {
       echo '<span>' . esc_html(sprintf(/* translators: %s: nom de la fiche Cheval déjà liée */ __('Rattachement certain : %s', 'gws-core'), get_the_title($certain_id))) . '</span>';
       gwseq_render_ifce_preview_production_indice_diff($certain_id, $entry);
+      gwseq_render_ifce_preview_production_maternity_note($certain_id, $reimport_cheval_id);
     } elseif ($probable_id) {
       echo '<label><input type="checkbox" name="gwseq_ifce_production_choice[' . esc_attr($i) . '][mode]" value="link">'
         . ' ' . esc_html(sprintf(/* translators: %s: nom de la fiche Cheval candidate, %d: année de naissance */ __('Rattacher à %1$s (né(e) en %2$s)', 'gws-core'), get_the_title($probable_id), gwseq_get_cheval_identity($probable_id)['annee_naissance'])) . '</label>'
         . '<input type="hidden" name="gwseq_ifce_production_choice[' . esc_attr($i) . '][horse_id]" value="' . esc_attr($probable_id) . '">';
       gwseq_render_ifce_preview_production_indice_diff($probable_id, $entry);
+      gwseq_render_ifce_preview_production_maternity_note($probable_id, $reimport_cheval_id);
     } else {
       echo '<span class="description">' . esc_html__('Aucun rapprochement — restera un produit externe', 'gws-core') . '</span>';
     }
@@ -711,6 +713,55 @@ function gwseq_render_ifce_preview_production_indice_diff($horse_id, $entry) {
     $diffs[] = strtoupper($key) . ' : ' . $current_label . ' → ' . $new_valeur;
   }
   if ($diffs) echo '<br><span class="description">' . esc_html(implode(' — ', $diffs)) . '</span>';
+}
+
+/**
+ * Signal de cohérence bidirectionnelle Production -> filiation (correctif de recette, §Cas B/C/D/E,
+ * gwseq_ifce_production_maternity_case(), includes/ifce-production-store.php) — purement informatif,
+ * l'application réelle n'a lieu qu'à la validation globale de l'import
+ * (gwseq_ifce_map_production(), includes/ifce-import-mapper.php). Rendu UNIQUEMENT lorsque la fiche
+ * jument existe déjà réellement ($jument_id, un réimport) : pour un tout premier import, elle n'est
+ * créée qu'à la confirmation, son identité n'est donc pas encore comparable ici — la conversion/
+ * création n'en reste pas moins correctement appliquée à ce moment-là (le mapper reçoit toujours le
+ * post_id réel, qu'il vienne d'être créé ou qu'il s'agisse d'un réimport), simplement non
+ * prévisualisée pour ce cas précis.
+ */
+function gwseq_render_ifce_preview_production_maternity_note($linked_id, $jument_id) {
+  if (!$jument_id) return;
+  $case = gwseq_ifce_production_maternity_case($linked_id, $jument_id);
+  if ($case === 'noop') return;
+
+  if ($case === 'convert') {
+    echo '<br><span class="description">' . esc_html(sprintf(
+      /* translators: %s: nom de la fiche Cheval jument */
+      __('La validation convertira aussi sa mère externe déjà enregistrée en relation vers %s.', 'gws-core'),
+      get_the_title($jument_id)
+    )) . '</span>';
+    return;
+  }
+  if ($case === 'create') {
+    echo '<br><span class="description">' . esc_html(sprintf(
+      /* translators: %s: nom de la fiche Cheval jument */
+      __('La validation créera aussi la relation Mère vers %s.', 'gws-core'),
+      get_the_title($jument_id)
+    )) . '</span>';
+    return;
+  }
+
+  $mother = gwseq_get_horse_parent($linked_id, 'mother');
+  if ($case === 'conflict_gws') {
+    echo '<br><span class="description">' . esc_html(sprintf(
+      /* translators: %s: nom de la fiche Cheval déjà enregistrée comme mère */
+      __('⚠ possède déjà une autre mère enregistrée (%s) — ne sera jamais remplacée automatiquement.', 'gws-core'),
+      get_the_title($mother['horse_id'])
+    )) . '</span>';
+  } elseif ($case === 'conflict_external') {
+    echo '<br><span class="description">' . esc_html(sprintf(
+      /* translators: %s: nom de l'ascendant externe déjà enregistré comme mère */
+      __('⚠ possède déjà une autre mère externe enregistrée (%s) — ne sera jamais remplacée automatiquement.', 'gws-core'),
+      $mother['external']['name'] ?? ''
+    )) . '</span>';
+  }
 }
 
 function gwseq_render_ifce_import_preview($token, $parsed, $reimport_cheval_id = 0) {

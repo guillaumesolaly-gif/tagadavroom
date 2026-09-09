@@ -5,6 +5,60 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.44.2 — Ajustements de recette 2B.2 (présentation + cohérence bidirectionnelle Production)
+
+Deux ajustements demandés après une recette réelle positive (réimport Goldame fonctionnel, pedigree
+corrigé, données hors IFCE préservées, rapprochement Goldame détecté dans la Production de Teldame,
+rattachement confirmé).
+
+**1. Débordement du bouton « Réimporter depuis un nouveau PDF IFCE »** — présentation uniquement,
+aucun changement fonctionnel : le `.button` natif WordPress est `white-space: nowrap` par défaut,
+débordant du cadre d'une boîte `side` étroite. Corrigé par un style scopé à cette seule boîte
+(`.gwseq-cheval-ifce-reimport-box .button` — bloc pleine largeur, retour à la ligne autorisé),
+jamais une règle globale sur `.button`.
+
+**2. Cohérence bidirectionnelle Production -> filiation** — la recette Goldame a révélé qu'après
+confirmation du rattachement `Teldame → Production → Goldame`, Goldame conservait pourtant `Mère =
+Teldame` comme ASCENDANT EXTERNE au lieu d'une relation GWS. Nouvelle règle : lorsqu'un produit de
+Production est rattaché (certain, ou PROBABLE explicitement confirmé par l'utilisateur), la relation
+Mère du produit est désormais réconciliée avec la jument — 5 cas
+(`gwseq_ifce_production_maternity_case()`/`gwseq_ifce_apply_production_maternity_case()`,
+`includes/ifce-production-store.php`) :
+- **Cas A** — filiation GWS déjà cohérente (rattachement certain) : rien à faire.
+- **Cas B** — mère externe correspondant à la jument (nom normalisé + année, robuste aux entités/
+  apostrophes via `gwseq_ifce_normalize_horse_name_for_match()`, année exigée UNIQUEMENT si connue
+  des deux côtés) : conversion en relation GWS.
+- **Cas C** — aucune mère renseignée : création de la relation GWS.
+- **Cas D** — une AUTRE fiche GWS est déjà mère : jamais écrasée, signalé en prévisualisation.
+- **Cas E** — une mère externe DIFFÉRENTE (nom ou année ne correspondent pas) est déjà renseignée :
+  jamais écrasée silencieusement, signalé également.
+
+**Audit préalable du modèle de filiation** (avant toute implémentation) : `gwseq_set_horse_parent()`
+(cheval-pedigree.php) gère déjà nativement, depuis l'Étape 5, le passage externe -> GWS pour un rôle
+donné, sans jamais toucher à l'arbre externe (conservation non destructive déjà garantie et testée) —
+la conversion réutilise donc cette fonction telle quelle, aucun nouveau mécanisme d'écriture, aucune
+meta orpheline (l'ancien arbre externe devient simplement inactif, jamais supprimé). Le resolver
+(`gwseq_get_horse_direct_production()`) n'a nécessité AUCUNE modification : sa déduplication déjà
+existante (basée sur les descendants GWS relationnels déjà représentés) couvre déjà ce nouveau cas —
+`gwseq_get_horse_offspring(jument)` inclut désormais le produit converti, sans jamais le dupliquer
+dans la Production fusionnée.
+
+Câblé dans `gwseq_ifce_map_production()` (`ifce-import-mapper.php`), donc UNIQUEMENT à la validation
+globale de l'import, après détection + proposition + confirmation explicite — jamais pour un simple
+rapprochement `nom + année` non confirmé, jamais à la seule détection. Signal des Cas D/E (et
+information des Cas B/C) ajouté à l'écran de prévisualisation (`gwseq_render_ifce_preview_production_maternity_note()`,
+`ifce-import-admin.php`), purement informatif tant que l'import n'est pas validé.
+
+**Tests** : nouvelle section dédiée dans `gws-equestrian-ifce-production-test.php` — les 5 cas
+unitairement, application réelle (écriture/non-écriture), non-destruction d'une donnée de pedigree
+non concernée (Père du produit converti), câblage bout en bout via le mapper (Cas B en conditions
+réelles, non-écriture pour un rapprochement proposé mais non confirmé, vérification déclarative que
+la seule détection n'écrit jamais), et absence de doublon du resolver après conversion. Un test
+préexistant du Lot 2B.2 (« absence d'effet de bord » sur la filiation d'un rattachement confirmé) a
+été mis à jour pour refléter ce changement de règle DÉLIBÉRÉ — l'ancien comportement (jamais toucher
+la filiation) est désormais celui d'un rapprochement NON confirmé uniquement. Suite complète (24
+fichiers PHP/Node) revérifiée sans régression.
+
 ## 0.44.1 — Correctifs de recette 2B.2 (cas réel Goldame d'Aubigny)
 
 Trois défauts distincts révélés par la recette runtime du Lot 2B.2, tous les trois reproduits avec

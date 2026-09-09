@@ -610,6 +610,20 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   pays/stud-book/année pur) — avec cas négatifs dédiés garantissant qu'un ascendant réel sans année
   (« Perra Holst », sans "Alias") ou une ligne "Alias" déjà complète ne déclenchent jamais une fusion
   à tort.
+  **Cohérence bidirectionnelle Production -> filiation (0.44.2)** :
+  `gwseq_ifce_production_maternity_case()`/`gwseq_ifce_apply_production_maternity_case()` — les 5 cas
+  unitairement (déjà cohérente/aucune mère/mère externe correspondante avec ou sans année
+  disponible/autre mère GWS/autre mère externe), application réelle (écriture pour créer/convertir,
+  strictement aucune écriture pour les deux cas de conflit), non-destruction d'une donnée de
+  pedigree non concernée par la conversion (Père du produit converti, vérifié intact), câblage bout
+  en bout dans `gwseq_ifce_map_production()` (conversion réelle sur rattachement PROBABLE confirmé ;
+  strictement aucune modification de la filiation d'une fiche tierce pour un rapprochement proposé
+  mais NON confirmé ; vérification déclarative que la seule fonction de détection/proposition
+  n'appelle jamais aucune fonction d'écriture), et absence de doublon du resolver après conversion
+  (`gwseq_get_horse_offspring()` inclut désormais le produit converti, `gwseq_get_horse_direct_production()`
+  ne le restitue qu'une seule fois, comme descendant GWS). Un test préexistant du Lot 2B.2 a été mis
+  à jour pour refléter ce changement de règle délibéré (l'« absence d'effet de bord » ne s'applique
+  plus qu'à un rapprochement non confirmé).
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 
