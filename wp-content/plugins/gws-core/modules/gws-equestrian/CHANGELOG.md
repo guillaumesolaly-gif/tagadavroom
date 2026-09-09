@@ -5,6 +5,55 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.46.1 — Correctif UELN Selle Français
+
+Correction du raisonnement de l'audit UELN de 0.46.0. L'audit précédent concluait à "aucun signal
+fiable de nationalité française" et n'implémentait aucune dérivation. Correction reçue : le
+stud-book Selle Français (déjà disponible dans le champ `Race / Stud-book / Appellation` du PDF
+IFCE) utilise la racine UELN `250001` **même pour un cheval né à l'étranger** — le raisonnement
+précédent ("né en France" vs "importé") était donc trop restrictif pour ce cas précis, qui NE
+dépend PAS du pays de naissance mais du stud-book d'enregistrement lui-même.
+
+**Une seule règle explicitement autorisée**, volontairement restreinte, jamais généralisée à
+d'autres stud-books sans validation explicite : stud-book = Selle Français (code référentiel `SF`)
++ SIRE valide disponible + UELN actuellement vide → `UELN = '250001' + SIRE`. Exemple réel :
+GOLDAME D'AUBIGNY, Selle Français, SIRE `16398915R` → UELN `25000116398915R` (vérifié par un test
+bout en bout sur le vrai PDF IFCE de ce cheval, SHF mocké pour retourner ce SIRE réel).
+
+**Nouvelles fonctions pures** (`includes/ifce-shf-enrichment.php`) :
+`gwseq_ifce_ueln_eligible_race_codes()` (liste fermée, `['SF']` pour l'instant) et
+`gwseq_ifce_derive_ueln_from_sire($race_code, $sire)`, sans aucun rapport avec le réseau — le SIRE
+utilisé peut venir de SHF, du PDF lui-même, ou être déjà enregistré sur la fiche réimportée : la
+dérivation n'est jamais artificiellement liée à la provenance SHF du SIRE. Règle de fusion non
+destructive SIRE/UELN extraite en fonction pure réutilisable
+(`gwseq_ifce_resolve_nondestructive_identity_value()`, `includes/ifce-import-mapper.php`) pour que
+la prévisualisation (à l'upload) calcule exactement la même valeur finale que l'écriture réelle (à
+la confirmation), sans jamais dupliquer cette règle.
+
+**Câblage dans `gwseq_ifce_map_import()`** : dérivation tentée UNIQUEMENT si l'UELN final (après la
+fusion non destructive déjà existante) est encore vide — garantit par construction qu'un UELN déjà
+présent n'est jamais recalculé/écrasé. Fonctionne aussi bien à la création qu'au réimport : si le
+SIRE est déjà enregistré sur la fiche (donc sans qu'aucun appel SHF n'ait été nécessaire, §1 déjà
+existant), un réimport confirmant simplement le stud-book Selle Français peut compléter l'UELN
+manquant. Preview : nouvelle ligne "UELN : ... — déterminé automatiquement à partir du SIRE",
+purement informative, calculée à l'upload et recalculée à neuf (jamais mise en cache) au moment de
+l'écriture réelle.
+
+**Provenance minimale** (même principe que le SIRE) : `_gwseq_sire_source`/`_gwseq_ueln_source`
+distincts, `gwseq_get/set_cheval_ueln_source()` (`cheval-fields.php`), marqueur `'derived_sire'`
+posé uniquement quand la valeur écrite provient réellement de cette dérivation, effacé dès que
+l'UELN change pour toute autre raison (saisie manuelle, détection PDF directe).
+
+**Tests** : nouvelles fonctions pures testées dans `gws-equestrian-ifce-shf-test.php` (éligibilité,
+dérivation correcte, étranger/importé avec SIRE français → aucune dérivation, origine incertaine →
+aucune dérivation, SIRE absent/mal formé → aucune dérivation). Intégration testée dans
+`gws-equestrian-ifce-import-test.php` (reproduction exacte de l'exemple réel Goldame via le vrai
+PDF + SHF mocké, preview puis confirmation) et `gws-equestrian-ifce-production-test.php` (cas
+éligible, étranger avec SIRE, origine incertaine, UELN déjà présent → non-destruction, SIRE absent,
+réimport complétant l'UELN sans appel SHF). Provenance testée dans
+`gws-equestrian-cheval-logic-test.php` (effacée/préservée selon qu'une saisie manuelle change
+réellement l'UELN). Suite complète intégralement verte.
+
 ## 0.46.0 — Lot SHF : enrichissement opportuniste du N° SIRE via SHF, audit UELN
 
 **Contexte.** Un POC autonome (`poc-shf-panel.php`, jamais versionné avec GWS) a validé en

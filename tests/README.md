@@ -710,10 +710,25 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   déclarative de câblage confirmant que l'appel SHF a lieu textuellement APRÈS le verrou d'identité,
   jamais avant. Provenance : `gws-equestrian-cheval-logic-test.php` vérifie que le marqueur "shf"
   est effacé par une saisie manuelle qui change RÉELLEMENT le SIRE, et préservé si la valeur
-  resoumise est identique. **UELN : audit documenté, zéro dérivation automatique implémentée** —
-  vérifié explicitement que l'UELN reste vide même après qu'un SIRE ait été obtenu via SHF (création
-  et réimport), aucune déduction hasardeuse de nationalité française à partir des données GWS/IFCE
-  actuelles (voir le CR du lot pour le détail complet de l'audit).
+  resoumise est identique. **UELN (0.46.0) : audit documenté, zéro dérivation automatique** — voir
+  le correctif 0.46.1 ci-dessous, qui introduit la seule exception confirmée depuis.
+- **Correctif UELN Selle Français (0.46.1)** — le stud-book Selle Français utilise la racine UELN
+  `250001` même pour un cheval né à l'étranger (raisonnement précédent trop restrictif). Fonctions
+  pures testées dans `gws-equestrian-ifce-shf-test.php` :
+  `gwseq_ifce_ueln_eligible_race_codes()` (liste fermée `['SF']`), `gwseq_ifce_derive_ueln_from_sire()`
+  — exemples réels Goldame (`16398915R` -> `25000116398915R`) et Jamerose (`19369410S` ->
+  `25000119369410S`), stud-book étranger (KWPN) avec SIRE français -> aucune dérivation, "Origine
+  Étrangère" (`OE`, témoin réel Teldame) -> aucune dérivation, race non détectée -> aucune
+  dérivation, SIRE absent/mal formé -> aucune dérivation. Intégration testée dans
+  `gws-equestrian-ifce-import-test.php` : reproduction bout en bout EXACTE de l'exemple réel (vrai
+  PDF de GOLDAME D'AUBIGNY + SHF mocké renvoyant son vrai SIRE), preview affichant la valeur dérivée
+  avant toute écriture, écriture SIRE+UELN à la confirmation. Intégration testée dans
+  `gws-equestrian-ifce-production-test.php` : cas éligible avec provenance posée, étranger/importé
+  avec SIRE -> aucune dérivation, origine incertaine -> aucune dérivation, UELN déjà présent -> jamais
+  recalculé/écrasé (même Selle Français avec SIRE disponible), SIRE absent -> aucune dérivation,
+  réimport où le SIRE existe déjà (aucun appel SHF nécessaire) complétant quand même l'UELN manquant.
+  Provenance testée dans `gws-equestrian-cheval-logic-test.php` : marqueur `derived_sire` effacé par
+  une saisie manuelle qui change réellement l'UELN, préservé si la valeur resoumise est identique.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

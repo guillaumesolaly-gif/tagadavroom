@@ -512,6 +512,22 @@ function gwseq_process_ifce_import_upload($validated_pdf_path, $reimport_cheval_
     }
   }
 
+  // Aperçu de la dérivation UELN — correctif "UELN Selle Français" : calcule ICI, à l'upload, EXACTEMENT
+  // la même valeur finale que celle que gwseq_ifce_map_import() écrira réellement à la confirmation
+  // (réutilise gwseq_ifce_resolve_nondestructive_identity_value() et gwseq_ifce_derive_ueln_from_sire(),
+  // jamais une seconde implémentation de cette règle) — purement pour l'afficher en prévisualisation,
+  // recalculée à neuf depuis l'état ACTUEL de la fiche à la confirmation (jamais fait confiance à
+  // cette valeur de preview pour l'écriture réelle). "Le SIRE peut provenir de SHF ou être déjà
+  // disponible" : $final_sire_preview couvre les deux cas indifféremment, y compris un réimport où le
+  // SIRE existe déjà sur la fiche (donc SANS jamais avoir appelé SHF ci-dessus).
+  $existing_identity_for_preview = $reimport_cheval_id ? gwseq_get_cheval_identity($reimport_cheval_id) : array('sire' => '', 'ueln' => '');
+  $sire_detected_or_shf = $parsed['identity']['sire'] !== '' ? $parsed['identity']['sire'] : $parsed['shf_sire'];
+  $final_sire_preview = gwseq_ifce_resolve_nondestructive_identity_value($sire_detected_or_shf, $existing_identity_for_preview['sire']);
+  $final_ueln_preview = gwseq_ifce_resolve_nondestructive_identity_value($parsed['identity']['ueln'], $existing_identity_for_preview['ueln']);
+  $parsed['derived_ueln'] = ($final_ueln_preview === '')
+    ? gwseq_ifce_derive_ueln_from_sire($parsed['identity']['race'], $final_sire_preview)
+    : '';
+
   $token = wp_generate_password(32, false, false);
   gwseq_set_ifce_import_transient($token, $parsed, $reimport_cheval_id);
 
@@ -1121,6 +1137,19 @@ function gwseq_render_ifce_import_preview($token, $parsed, $reimport_cheval_id =
         /* translators: %s: numéro SIRE trouvé automatiquement via SHF */
         __('N° SIRE : %s — trouvé automatiquement via SHF.', 'gws-core'),
         $parsed['shf_sire']
+      )); ?></p>
+    <?php endif; ?>
+    <?php
+    // UELN dérivé du SIRE — correctif "UELN Selle Français" : même principe purement informatif,
+    // écriture réelle uniquement dans gwseq_ifce_map_import() à la confirmation. Rendu UNIQUEMENT
+    // quand $parsed['derived_ueln'] est effectivement renseigné (déjà calculé, à l'upload, à partir
+    // du SIRE final — qu'il vienne de SHF, du PDF, ou d'une valeur déjà enregistrée — et du
+    // stud-book éligible, voir gwseq_process_ifce_import_upload()).
+    if (!empty($parsed['derived_ueln'])) : ?>
+      <p class="description"><?php echo esc_html(sprintf(
+        /* translators: %s: UELN déterminé automatiquement à partir du SIRE */
+        __('UELN : %s — déterminé automatiquement à partir du SIRE.', 'gws-core'),
+        $parsed['derived_ueln']
       )); ?></p>
     <?php endif; ?>
     <?php

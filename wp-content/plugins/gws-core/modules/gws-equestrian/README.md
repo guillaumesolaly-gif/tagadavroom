@@ -1715,6 +1715,19 @@ de champ fiable dans les données GWS/IFCE actuelles pour distinguer avec certit
 français-SIRE d'un cheval étranger porteur d'un SIRE français (voir le CR du lot pour le détail) ;
 l'UELN reste dans son état actuel, jamais fabriqué.
 
+**Correctif UELN Selle Français (0.46.1)** — le raisonnement précédent était trop restrictif : le
+stud-book Selle Français (`Race / Stud-book / Appellation` du PDF IFCE, code référentiel `SF`)
+utilise la racine UELN `250001` MÊME pour un cheval né à l'étranger, indépendamment du pays de
+naissance. Nouvelle règle unique et volontairement restreinte : stud-book Selle Français + SIRE
+disponible + UELN vide → `UELN = '250001' + SIRE` (`gwseq_ifce_derive_ueln_from_sire()`,
+`includes/ifce-shf-enrichment.php`, liste fermée `gwseq_ifce_ueln_eligible_race_codes()`). Le SIRE
+utilisé peut venir de SHF, du PDF, ou être déjà enregistré (réimport, sans appel SHF nécessaire) —
+jamais artificiellement lié à la provenance SHF. Non destructif (UELN déjà présent jamais
+recalculé), écrit uniquement à la confirmation, preview dédiée ("UELN : ... — déterminé
+automatiquement à partir du SIRE"), provenance `_gwseq_ueln_source = 'derived_sire'` symétrique à
+celle du SIRE. Vérifié sur le vrai PDF de GOLDAME D'AUBIGNY (Selle Français, SIRE `16398915R` →
+UELN `25000116398915R`).
+
 ### Pedigree (Étape 5)
 
 **Deux types de parent, chacun indépendamment pour le Père et pour la Mère** : soit une fiche

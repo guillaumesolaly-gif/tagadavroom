@@ -635,6 +635,11 @@ function gwseq_render_cheval_global_id_dev_box($post) {
     <p class="description"><?php esc_html_e('N° SIRE obtenu automatiquement via SHF.', 'gws-core'); ?></p>
   <?php endif; ?>
   <?php
+  // Provenance de l'UELN (correctif "UELN Selle Français") : même principe, même emplacement.
+  if (gwseq_get_cheval_ueln_source($post->ID) === 'derived_sire') : ?>
+    <p class="description"><?php esc_html_e('UELN déterminé automatiquement à partir du SIRE (Selle Français).', 'gws-core'); ?></p>
+  <?php endif; ?>
+  <?php
 }
 
 /**
@@ -703,6 +708,27 @@ function gwseq_set_cheval_sire_source($post_id, $source) {
     return true;
   }
   update_post_meta($post_id, '_gwseq_sire_source', $source);
+  return true;
+}
+
+/**
+ * Provenance de l'UELN (correctif "UELN Selle Français", même principe minimal que le SIRE
+ * ci-dessus) — seule valeur actuellement posée : 'derived_sire' (UELN dérivé de `250001` + SIRE pour
+ * un stud-book éligible, voir gwseq_ifce_derive_ueln_from_sire(), includes/ifce-shf-enrichment.php).
+ */
+function gwseq_get_cheval_ueln_source($post_id) {
+  return (string) get_post_meta((int) $post_id, '_gwseq_ueln_source', true);
+}
+
+function gwseq_set_cheval_ueln_source($post_id, $source) {
+  $post_id = (int) $post_id;
+  if (!$post_id) return false;
+  $source = sanitize_key($source);
+  if ($source === '') {
+    delete_post_meta($post_id, '_gwseq_ueln_source');
+    return true;
+  }
+  update_post_meta($post_id, '_gwseq_ueln_source', $source);
   return true;
 }
 
@@ -790,9 +816,15 @@ function gwseq_save_cheval_meta($post_id) {
   // potentiellement inexact — effacé ici dès que la valeur change réellement, jamais si l'écran est
   // simplement resoumis sans modification de ce champ précis (comparaison AVANT/APRÈS l'écriture).
   $sire_before_manual_save = get_post_meta($post_id, '_gwseq_sire', true);
+  // Provenance de l'UELN (correctif "UELN Selle Français") : même garde symétrique — une saisie
+  // manuelle qui change réellement l'UELN efface le marqueur 'derived_sire' potentiellement inexact.
+  $ueln_before_manual_save = get_post_meta($post_id, '_gwseq_ueln', true);
   gwseq_set_cheval_identity($post_id, $_POST);
   if (get_post_meta($post_id, '_gwseq_sire', true) !== $sire_before_manual_save) {
     gwseq_set_cheval_sire_source($post_id, '');
+  }
+  if (get_post_meta($post_id, '_gwseq_ueln', true) !== $ueln_before_manual_save) {
+    gwseq_set_cheval_ueln_source($post_id, '');
   }
   gwseq_race_referentiel_record_recent_code(get_current_user_id(), sanitize_key(wp_unslash($_POST['_gwseq_race'] ?? '')));
 

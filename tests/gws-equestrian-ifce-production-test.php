@@ -1008,6 +1008,90 @@ gwseq_ifce_map_import(841, $parsed_first_sire, array('identity' => true));
 gws_test_assert(gwseq_get_cheval_identity(841)['sire'] === '12345678A', 'SIRE : une première détection (aucune valeur préexistante) est bien enregistrée normalement');
 
 // =====================================================================================
+// 18. Dérivation opportuniste de l'UELN à partir du SIRE — correctif "UELN Selle Français" :
+//     UNIQUEMENT stud-book Selle Français ('SF'), UNIQUEMENT si l'UELN est vide, quelle que soit la
+//     provenance du SIRE (détecté par ce PDF ici — le cas "via SHF" est couvert séparément par un
+//     test bout en bout sur le vrai PDF de GOLDAME D'AUBIGNY dans gws-equestrian-ifce-import-test.php).
+// =====================================================================================
+
+// --- Cas éligible : Selle Français + SIRE détecté + UELN vide -> dérivé et provenance posée ---
+gws_test_make_post(842, GWSEQ_CPT_CHEVAL, 'Cheval SF Eligible UELN');
+gwseq_set_cheval_identity(842, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+$parsed_sf_eligible = array(
+  'valid' => true,
+  'identity' => array(
+    'nom' => 'Cheval SF Eligible UELN', 'nom_officiel' => '', 'sexe' => 'female', 'annee_naissance' => 2016,
+    'robe' => '', 'robe_autre' => '', 'race' => 'SF', 'race_autre' => '', 'taille_cm' => '',
+    'eleveur' => '', 'ueln' => '', 'sire' => '16398915R',
+  ),
+  'indices' => array(), 'pedigree' => array('count' => 0, 'father' => null, 'mother' => null),
+);
+gwseq_ifce_map_import(842, $parsed_sf_eligible, array('identity' => true));
+gws_test_assert(gwseq_get_cheval_identity(842)['ueln'] === '25000116398915R', 'UELN Selle Français : dérivé correctement (250001 + SIRE) — exemple réel GOLDAME D’AUBIGNY (SIRE 16398915R -> UELN 25000116398915R)');
+gws_test_assert(gwseq_get_cheval_ueln_source(842) === 'derived_sire', 'Provenance UELN : marqueur "derived_sire" posé après dérivation réelle');
+
+// --- Cheval étranger/importé (stud-book non SF, ex. KWPN) + SIRE disponible -> AUCUNE dérivation,
+// même avec un SIRE français valide (§ "un cheval étranger peut avoir un SIRE français sans que son
+// UELN soit basé sur 250001") ---
+gws_test_make_post(843, GWSEQ_CPT_CHEVAL, 'Cheval KWPN Avec SIRE FR');
+gwseq_set_cheval_identity(843, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+$parsed_foreign_race = $parsed_sf_eligible;
+$parsed_foreign_race['identity']['nom'] = 'Cheval KWPN Avec SIRE FR';
+$parsed_foreign_race['identity']['race'] = 'KWPN';
+gwseq_ifce_map_import(843, $parsed_foreign_race, array('identity' => true));
+gws_test_assert(gwseq_get_cheval_identity(843)['ueln'] === '', 'UELN Selle Français : cheval étranger/importé (KWPN) avec SIRE disponible -> AUCUNE dérivation automatique');
+gws_test_assert(gwseq_get_cheval_ueln_source(843) === '', 'Provenance UELN : aucun marqueur posé quand rien n’a été dérivé');
+
+// --- Origine incertaine (race non détectée/vide) + SIRE disponible -> AUCUNE dérivation (jamais une
+// déduction hasardeuse en l'absence de stud-book identifié) ---
+gws_test_make_post(844, GWSEQ_CPT_CHEVAL, 'Cheval Race Inconnue');
+gwseq_set_cheval_identity(844, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+$parsed_unknown_race = $parsed_sf_eligible;
+$parsed_unknown_race['identity']['nom'] = 'Cheval Race Inconnue';
+$parsed_unknown_race['identity']['race'] = '';
+gwseq_ifce_map_import(844, $parsed_unknown_race, array('identity' => true));
+gws_test_assert(gwseq_get_cheval_identity(844)['ueln'] === '', 'UELN Selle Français : origine/stud-book incertain (race non détectée) -> AUCUNE dérivation');
+
+// --- UELN déjà renseigné (même sur un cheval Selle Français avec SIRE) -> jamais recalculé/écrasé ---
+gws_test_make_post(845, GWSEQ_CPT_CHEVAL, 'Cheval SF UELN Deja Present');
+gwseq_set_cheval_identity(845, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016, '_gwseq_ueln' => '25000199999999Z'));
+$parsed_ueln_already_present = $parsed_sf_eligible;
+$parsed_ueln_already_present['identity']['nom'] = 'Cheval SF UELN Deja Present';
+gwseq_ifce_map_import(845, $parsed_ueln_already_present, array('identity' => true));
+gws_test_assert(gwseq_get_cheval_identity(845)['ueln'] === '25000199999999Z', 'UELN Selle Français (non-destruction) : un UELN déjà enregistré n’est JAMAIS recalculé ni écrasé, même Selle Français avec SIRE disponible');
+gws_test_assert(gwseq_get_cheval_ueln_source(845) === '', 'Provenance UELN : aucun marqueur "derived_sire" pour une valeur qui n’a jamais été dérivée par ce lot');
+
+// --- SIRE absent -> aucune dérivation, même Selle Français ---
+gws_test_make_post(846, GWSEQ_CPT_CHEVAL, 'Cheval SF Sans SIRE');
+gwseq_set_cheval_identity(846, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+$parsed_sf_no_sire = $parsed_sf_eligible;
+$parsed_sf_no_sire['identity']['nom'] = 'Cheval SF Sans SIRE';
+$parsed_sf_no_sire['identity']['sire'] = '';
+gwseq_ifce_map_import(846, $parsed_sf_no_sire, array('identity' => true));
+gws_test_assert(gwseq_get_cheval_identity(846)['ueln'] === '', 'UELN Selle Français : SIRE absent -> AUCUNE dérivation, même pour un stud-book éligible');
+
+// --- Réimport : le SIRE existe DÉJÀ sur la fiche (déjà couvert §1, zéro appel SHF nécessaire), le
+// PDF réimporté ne le redétecte pas lui-même mais confirme le stud-book Selle Français -> l'UELN
+// encore vide PEUT être complété SANS jamais avoir appelé SHF (§ "le prochain import IFCE doit
+// pouvoir compléter l'UELN sans appeler SHF, puisque le SIRE existe déjà") ---
+gws_test_make_post(847, GWSEQ_CPT_CHEVAL, 'Cheval SF Reimport Sire Existant');
+gwseq_set_cheval_identity(847, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016, '_gwseq_sire' => '16398915R'));
+$parsed_reimport_ueln_completion = array(
+  'valid' => true,
+  'identity' => array(
+    'nom' => 'Cheval SF Reimport Sire Existant', 'nom_officiel' => '', 'sexe' => 'female', 'annee_naissance' => 2016,
+    'robe' => '', 'robe_autre' => '', 'race' => 'SF', 'race_autre' => '', 'taille_cm' => '',
+    'eleveur' => '', 'ueln' => '', 'sire' => '', // ce PDF-ci ne redétecte pas le SIRE lui-même (cas ALME)
+  ),
+  'indices' => array(), 'pedigree' => array('count' => 0, 'father' => null, 'mother' => null),
+  'shf_sire' => '', // aucun appel SHF n'était nécessaire : le SIRE existait déjà (§1)
+);
+gwseq_ifce_map_import(847, $parsed_reimport_ueln_completion, array('identity' => true));
+gws_test_assert(gwseq_get_cheval_identity(847)['sire'] === '16398915R', 'UELN Selle Français (réimport) : le SIRE déjà enregistré reste bien préservé (non-destruction inchangée)');
+gws_test_assert(gwseq_get_cheval_identity(847)['ueln'] === '25000116398915R', 'UELN Selle Français (réimport) : complété à partir du SIRE déjà enregistré, sans qu’aucun appel SHF n’ait été nécessaire ($parsed[\'shf_sire\'] vide)');
+gws_test_assert(gwseq_get_cheval_ueln_source(847) === 'derived_sire', 'Provenance UELN (réimport) : marqueur "derived_sire" bien posé même quand le SIRE utilisé était déjà enregistré (pas nouvellement détecté)');
+
+// =====================================================================================
 // 18. Correctif recette réelle — Production : lien fantôme GOLDAME supprimée -> TELDAME
 // =====================================================================================
 

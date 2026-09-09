@@ -1019,6 +1019,24 @@ $_POST['_gwseq_sire'] = '19369410S'; // valeur RESOUMISE IDENTIQUE
 gwseq_save_cheval_meta(1007);
 gws_test_assert(gwseq_get_cheval_sire_source(1007) === 'shf', 'Provenance SIRE (§8) : le marqueur "shf" est bien préservé quand le SIRE resoumis reste identique (rien n’a réellement changé)');
 
+// --- Provenance de l'UELN (correctif "UELN Selle Français") : même garde symétrique — une saisie
+// manuelle qui change RÉELLEMENT l'UELN efface le marqueur "derived_sire" ---
+gws_test_reset_security();
+$GLOBALS['__gwseq_test_meta'][1008] = array('_gwseq_ueln' => '25000116398915R', '_gwseq_ueln_source' => 'derived_sire');
+$_POST = gws_test_cheval_post_payload();
+$_POST['_gwseq_ueln'] = '25000199999999Z'; // valeur manuelle DIFFÉRENTE de celle dérivée
+gwseq_save_cheval_meta(1008);
+gws_test_assert($GLOBALS['__gwseq_test_meta'][1008]['_gwseq_ueln'] === '25000199999999Z', 'Provenance UELN : la nouvelle valeur manuelle est bien enregistrée');
+gws_test_assert(gwseq_get_cheval_ueln_source(1008) === '', 'Provenance UELN (correctif) : le marqueur "derived_sire" est bien effacé dès que l’UELN change réellement via une saisie manuelle');
+
+// --- Resoumission SANS changement de l'UELN : le marqueur "derived_sire" reste un fait exact -> PRÉSERVÉ ---
+gws_test_reset_security();
+$GLOBALS['__gwseq_test_meta'][1009] = array('_gwseq_ueln' => '25000116398915R', '_gwseq_ueln_source' => 'derived_sire');
+$_POST = gws_test_cheval_post_payload();
+$_POST['_gwseq_ueln'] = '25000116398915R'; // valeur RESOUMISE IDENTIQUE
+gwseq_save_cheval_meta(1009);
+gws_test_assert(gwseq_get_cheval_ueln_source(1009) === 'derived_sire', 'Provenance UELN (correctif) : le marqueur "derived_sire" est bien préservé quand l’UELN resoumis reste identique');
+
 // --- Autosave : testé en dernier, DOING_AUTOSAVE ne peut être défini qu'une fois par processus
 // PHP (resterait sinon "vrai" pour tous les cas suivants) ---
 gws_test_reset_security();

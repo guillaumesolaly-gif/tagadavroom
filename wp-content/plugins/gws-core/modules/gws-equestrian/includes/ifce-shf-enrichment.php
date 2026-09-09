@@ -29,6 +29,18 @@
  * HTTP/Content-Type, reconnaissance de fiche, extraction ciblée du SIRE, validation de forme — est
  * séparée dans des fonctions PURES (gwseq_ifce_shf_extract_valid_sire(), etc.), directement
  * testables avec de simples chaînes/tableaux synthétiques, sans le moindre mock.
+ *
+ * CORRECTIF "UELN Selle Français" — dérivation de l'UELN à partir du SIRE (fonctions PURES en fin de
+ * fichier, gwseq_ifce_derive_ueln_from_sire() et gwseq_ifce_ueln_eligible_race_codes()) : SANS AUCUN
+ * RAPPORT AVEC LE RÉSEAU (le SIRE utilisé peut venir de SHF, du PDF lui-même, ou être déjà enregistré
+ * sur la fiche) — regroupée ici car elle appartient au même enrichissement d'identité pendant
+ * l'import IFCE, jamais un fichier séparé pour une règle aussi ciblée. Audit préalable (voir CR) :
+ * aucun champ GWS/IFCE actuel ne permet d'établir avec certitude la nationalité française d'un
+ * cheval — SEULE exception confirmée et volontairement retenue ici, le stud-book Selle Français
+ * (code référentiel 'SF'), dont l'UELN utilise la racine `250001` MÊME pour un cheval né à
+ * l'étranger (donc jamais conditionné au pays de naissance). Liste FERMÉE, volontairement restreinte
+ * à ce seul cas — n'importe quel autre stud-book/race reste sans dérivation tant qu'une règle
+ * équivalente n'a pas été explicitement confirmée.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -284,4 +296,39 @@ function gwseq_ifce_shf_lookup_sire_by_id($ifce_id, $expected_name = '') {
     // aucune exception ne remonte jamais au-delà de cette fonction, quelle qu'en soit la cause.
     return '';
   }
+}
+
+/* -------------------------------------------------------------------------------------------
+ * Dérivation de l'UELN à partir du SIRE — correctif "UELN Selle Français" (fonctions PURES, aucun
+ * rapport avec le réseau — voir la note en tête de fichier).
+ * ----------------------------------------------------------------------------------------- */
+
+const GWSEQ_IFCE_UELN_FR_ROOT = '250001';
+
+/**
+ * Liste FERMÉE des codes de race/stud-book (référentiel `gwseq_race_referentiel_data()`,
+ * race-referentiel.php) pour lesquels la racine UELN française `250001` est confirmée s'appliquer
+ * MÊME à un cheval né à l'étranger — Selle Français (`SF`) UNIQUEMENT pour l'instant. Volontairement
+ * restreinte : un autre stud-book n'est ajouté ici qu'après validation explicite au cas par cas,
+ * jamais par extrapolation ("stud-book français" n'est pas une catégorie fiable en l'état des
+ * données GWS/IFCE — voir l'audit documenté dans le CR de ce correctif).
+ */
+function gwseq_ifce_ueln_eligible_race_codes() {
+  return array('SF');
+}
+
+/**
+ * Dérive l'UELN d'un cheval Selle Français à partir de son SIRE : `250001` + SIRE (ex. SIRE
+ * `16398915R` -> UELN `25000116398915R`). Retourne '' pour absolument tout cas non éligible —
+ * jamais une valeur partielle ou déduite au-delà de cette seule concaténation (§ "ne transforme, ne
+ * complète et n'infère jamais" — même discipline que l'extraction SIRE ci-dessus). Ne vérifie PAS
+ * elle-même qu'un UELN existant serait écrasé : c'est la responsabilité de l'appelant (voir
+ * gwseq_ifce_map_import(), includes/ifce-import-mapper.php, qui ne l'appelle QUE lorsque l'UELN
+ * final — après la fusion non destructive déjà existante — est encore vide).
+ */
+function gwseq_ifce_derive_ueln_from_sire($race_code, $sire) {
+  $sire = trim((string) $sire);
+  if (!preg_match('/^\d{8}[A-Za-z]$/', $sire)) return '';
+  if (!in_array((string) $race_code, gwseq_ifce_ueln_eligible_race_codes(), true)) return '';
+  return GWSEQ_IFCE_UELN_FR_ROOT . $sire;
 }

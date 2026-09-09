@@ -113,6 +113,33 @@ gws_test_assert(gwseq_ifce_shf_extract_valid_sire(500, 'text/html', $html_jamero
 gws_test_assert(gwseq_ifce_shf_extract_valid_sire(200, 'text/html', '<div>N° SIRE : 1234567A</div>', '') === '', 'Classification (§4) : une valeur ne respectant pas la forme stricte 8 chiffres + 1 lettre (ici 7 chiffres) -> ""');
 
 // =====================================================================================
+// 3bis. Dérivation UELN à partir du SIRE — correctif "UELN Selle Français" (fonctions pures, aucun
+// rapport avec le réseau : gwseq_ifce_derive_ueln_from_sire()/gwseq_ifce_ueln_eligible_race_codes()).
+// =====================================================================================
+
+gws_test_assert(gwseq_ifce_ueln_eligible_race_codes() === array('SF'), 'Liste d’éligibilité UELN : volontairement restreinte au seul Selle Français (\'SF\') pour l’instant');
+
+// Exemple réel : GOLDAME D'AUBIGNY, Selle Français, SIRE 16398915R -> UELN 25000116398915R.
+gws_test_assert(gwseq_ifce_derive_ueln_from_sire('SF', '16398915R') === '25000116398915R', 'Dérivation UELN : exemple réel GOLDAME D’AUBIGNY (Selle Français) — 250001 + SIRE');
+gws_test_assert(gwseq_ifce_derive_ueln_from_sire('SF', '19369410S') === '25000119369410S', 'Dérivation UELN : témoin Jamerose (Selle Français) — 250001 + SIRE');
+
+// Stud-book non éligible (étranger/importé) : AUCUNE dérivation, même avec un SIRE français valide —
+// "un cheval étranger/importé peut avoir un numéro SIRE français sans que son UELN soit basé sur
+// 250001", jamais conditionné au pays de naissance du cheval lui-même (règle Selle Français
+// s'applique même à un SF né à l'étranger, donc pas de raccourci "race étrangère = jamais éligible"
+// généralisé au-delà de ce que la liste fermée exprime déjà).
+gws_test_assert(gwseq_ifce_derive_ueln_from_sire('KWPN', '16398915R') === '', 'Dérivation UELN : stud-book non éligible (KWPN) -> "" même avec un SIRE français valide');
+gws_test_assert(gwseq_ifce_derive_ueln_from_sire('OE', '50440832H') === '', 'Dérivation UELN : "Origine Étrangère" (OE) -> "" — témoin réel Teldame de la Nutria');
+
+// Origine/stud-book incertain (race non détectée) : AUCUNE dérivation, jamais une déduction hasardeuse.
+gws_test_assert(gwseq_ifce_derive_ueln_from_sire('', '16398915R') === '', 'Dérivation UELN : race non détectée (chaîne vide) -> "", jamais une déduction hasardeuse');
+
+// SIRE absent ou mal formé : AUCUNE dérivation, même pour un stud-book éligible.
+gws_test_assert(gwseq_ifce_derive_ueln_from_sire('SF', '') === '', 'Dérivation UELN : SIRE absent -> "", même Selle Français');
+gws_test_assert(gwseq_ifce_derive_ueln_from_sire('SF', '1234567A') === '', 'Dérivation UELN : SIRE mal formé (7 chiffres) -> "", jamais une concaténation sur une forme invalide');
+gws_test_assert(gwseq_ifce_derive_ueln_from_sire('SF', 'pas-un-sire') === '', 'Dérivation UELN : SIRE non numérique -> ""');
+
+// =====================================================================================
 // 4. Point d'entrée métier gwseq_ifce_shf_lookup_sire_by_id() — réseau intégralement mocké via le
 //    filtre `gwseq_ifce_shf_fetch_override` (§10 de la demande : "mocke le réseau dans la suite
 //    automatisée").

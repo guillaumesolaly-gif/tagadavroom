@@ -1028,10 +1028,14 @@ $shf_success_token = $shf_token_match[1] ?? '';
 $shf_success_transient = gwseq_get_ifce_import_transient($shf_success_token);
 gws_test_assert(($shf_success_transient['parsed']['shf_sire'] ?? null) === '19369410S', 'Enrichissement SHF (création) : le SIRE trouvé par SHF est bien transporté dans le transient de prévisualisation ($parsed[\'shf_sire\'])');
 
+// Jamerose de Félines est réellement Selle Français ($identity['race'] === 'SF', vérifié plus haut
+// dans ce fichier) : éligible à la dérivation UELN (correctif "UELN Selle Français") dès que le SIRE
+// (ici trouvé via SHF) et l'absence d'UELN existant sont réunis.
 ob_start();
 gwseq_render_ifce_import_preview($shf_success_token, $shf_success_transient['parsed'], 0);
 $shf_preview_html = ob_get_clean();
 gws_test_assert(strpos($shf_preview_html, '19369410S') !== false && stripos($shf_preview_html, 'SHF') !== false, 'Enrichissement SHF (§5, "aucune écriture avant validation") : le SIRE trouvé est bien affiché sur l’écran de prévisualisation, purement informatif à ce stade');
+gws_test_assert(strpos($shf_preview_html, '25000119369410S') !== false && strpos($shf_preview_html, 'déterminé automatiquement') !== false, 'UELN Selle Français : la valeur dérivée (250001 + SIRE) est bien affichée en prévisualisation, purement informative à ce stade');
 
 $posts_before_shf_confirm = count($GLOBALS['__gwseq_test_posts']);
 $shf_confirm_result = gwseq_process_ifce_import_confirm($shf_success_token, array('identity' => true));
@@ -1040,12 +1044,34 @@ preg_match('/post=(\d+)/', $shf_confirm_result['redirect'], $shf_post_match);
 $shf_created_post_id = (int) ($shf_post_match[1] ?? 0);
 gws_test_assert(gwseq_get_cheval_identity($shf_created_post_id)['sire'] === '19369410S', 'Enrichissement SHF (création) : le SIRE proposé par SHF est bien écrit, SEULEMENT à la confirmation explicite (jamais avant)');
 gws_test_assert(($GLOBALS['__gwseq_test_meta'][$shf_created_post_id]['_gwseq_sire_source'] ?? '') === 'shf', 'Provenance (§8) : le marqueur "_gwseq_sire_source = shf" est bien posé quand le SIRE écrit provient réellement de SHF');
-// Complément UELN (audit documenté au CR : aucun signal fiable dans les données GWS/IFCE actuelles
-// ne permet de distinguer avec certitude un cheval français-SIRE d'un cheval étranger porteur d'un
-// SIRE français — voir gwseq_ifce_country_codes()/gwseq_ifce_strip_country_markers(), qui ne
-// s'appliquent jamais au sujet lui-même, uniquement aux noms d'ascendants dans le pedigree) : ZÉRO
-// dérivation automatique dans ce lot, même quand un SIRE est trouvé via SHF -> l'UELN reste vide.
-gws_test_assert(gwseq_get_cheval_identity($shf_created_post_id)['ueln'] === '', 'UELN (audit, aucune dérivation dans ce lot) : reste vide même après qu’un SIRE ait été trouvé via SHF et écrit — aucun signal fiable de nationalité française disponible, décision documentée au CR, jamais une déduction hasardeuse');
+gws_test_assert(gwseq_get_cheval_identity($shf_created_post_id)['ueln'] === '25000119369410S', 'UELN Selle Français (correctif) : dérivé et écrit à la confirmation — GOLDAME D’AUBIGNY réelle : 16398915R -> 25000116398915R ; ici Jamerose (SF) : 19369410S -> 25000119369410S');
+gws_test_assert(gwseq_get_cheval_ueln_source($shf_created_post_id) === 'derived_sire', 'Provenance UELN : marqueur "derived_sire" bien posé quand l’UELN écrit provient réellement de cette dérivation');
+remove_all_filters('gwseq_ifce_shf_fetch_override');
+
+// --- Reproduction EXACTE de l'exemple réel fourni pour le correctif "UELN Selle Français" : le vrai
+// PDF de GOLDAME D'AUBIGNY (Selle Français, SIRE ni UELN détectés dans la zone exploitée de ce
+// document — vérifié plus haut dans ce fichier), SHF mocké pour retourner le SIRE réel 16398915R ---
+$goldame_pdf_path = __DIR__ . '/fixtures/ifce-goldame-d-aubigny.pdf';
+copy($goldame_pdf_path, sys_get_temp_dir() . '/gwseq-shf-goldame-ueln-test.pdf');
+$goldame_ueln_tmp = sys_get_temp_dir() . '/gwseq-shf-goldame-ueln-test.pdf';
+add_filter('gwseq_ifce_shf_fetch_override', function ($default, $url) {
+  return array(
+    'http_code' => 200,
+    'content_type' => 'text/html; charset=utf-8',
+    'body' => '<html><body><h1>GOLDAME D\'AUBIGNY</h1><table><tr><td>N&deg; SIRE</td><td>16398915R</td></tr></table></body></html>',
+  );
+});
+$goldame_ueln_upload = gwseq_process_ifce_import_upload($goldame_ueln_tmp, 0, 'fs-complet_classique_504XiE_PTUSA9QMsMUk7Yw_1788999999998.pdf');
+preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $goldame_ueln_upload['redirect'], $goldame_ueln_token_match);
+$goldame_ueln_token = $goldame_ueln_token_match[1] ?? '';
+$goldame_ueln_transient = gwseq_get_ifce_import_transient($goldame_ueln_token);
+gws_test_assert(($goldame_ueln_transient['parsed']['shf_sire'] ?? '') === '16398915R', 'Reproduction exemple réel GOLDAME D’AUBIGNY : SIRE trouvé via SHF exactement conforme');
+gws_test_assert(($goldame_ueln_transient['parsed']['derived_ueln'] ?? '') === '25000116398915R', 'Reproduction exemple réel GOLDAME D’AUBIGNY : UELN dérivé exactement conforme (25000116398915R) dès l’upload, avant toute confirmation');
+$goldame_ueln_confirm = gwseq_process_ifce_import_confirm($goldame_ueln_token, array('identity' => true));
+preg_match('/post=(\d+)/', $goldame_ueln_confirm['redirect'], $goldame_ueln_post_match);
+$goldame_ueln_post_id = (int) ($goldame_ueln_post_match[1] ?? 0);
+$goldame_ueln_final_identity = gwseq_get_cheval_identity($goldame_ueln_post_id);
+gws_test_assert($goldame_ueln_final_identity['sire'] === '16398915R' && $goldame_ueln_final_identity['ueln'] === '25000116398915R', 'Reproduction exemple réel GOLDAME D’AUBIGNY : SIRE et UELN tous deux exactement conformes après confirmation (16398915R / 25000116398915R)');
 remove_all_filters('gwseq_ifce_shf_fetch_override');
 
 // --- Preview abandonnée (§5, "si l'utilisateur abandonne la preview : aucune écriture du SIRE") :
@@ -1071,6 +1097,7 @@ gws_test_assert($shf_404_upload['notice'] === null, 'Non-destruction (§6) : un 
 preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $shf_404_upload['redirect'], $shf_404_token_match);
 $shf_404_transient = gwseq_get_ifce_import_transient($shf_404_token_match[1] ?? '');
 gws_test_assert(($shf_404_transient['parsed']['shf_sire'] ?? 'absent') === '', 'Non-destruction (§6) : après un 404 SHF, $parsed[\'shf_sire\'] reste une chaîne vide — jamais une erreur remontée jusqu’au transient');
+gws_test_assert(($shf_404_transient['parsed']['derived_ueln'] ?? 'absent') === '', 'UELN Selle Français : SHF échoue (404) -> aucun SIRE disponible -> aucune dérivation d’UELN, même pour un cheval Selle Français');
 remove_all_filters('gwseq_ifce_shf_fetch_override');
 
 // --- Non-destruction (§6) : SHF lève une exception (timeout/erreur réseau) -> même comportement,
@@ -1082,6 +1109,9 @@ add_filter('gwseq_ifce_shf_fetch_override', function ($default, $url) {
 });
 $shf_timeout_upload = gwseq_process_ifce_import_upload($shf_timeout_tmp, 0, GWS_TEST_JAMEROSE_IFCE_FILENAME);
 gws_test_assert($shf_timeout_upload['notice'] === null, 'Non-destruction (§6) : un timeout/erreur réseau SHF ne bloque jamais l’import IFCE — aucun message d’erreur, aucune exception remontée');
+preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $shf_timeout_upload['redirect'], $shf_timeout_token_match);
+$shf_timeout_transient = gwseq_get_ifce_import_transient($shf_timeout_token_match[1] ?? '');
+gws_test_assert(($shf_timeout_transient['parsed']['derived_ueln'] ?? 'absent') === '', 'UELN Selle Français : SHF échoue (timeout) -> aucune dérivation d’UELN');
 remove_all_filters('gwseq_ifce_shf_fetch_override');
 
 // --- Page générique (§7) : SHF répond 200 mais ni le nom ni le libellé "N° SIRE" ne sont trouvés
@@ -1095,6 +1125,7 @@ $shf_generic_upload = gwseq_process_ifce_import_upload($shf_generic_tmp, 0, GWS_
 preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $shf_generic_upload['redirect'], $shf_generic_token_match);
 $shf_generic_transient = gwseq_get_ifce_import_transient($shf_generic_token_match[1] ?? '');
 gws_test_assert(($shf_generic_transient['parsed']['shf_sire'] ?? 'absent') === '', '§7 : une réponse SHF 200 générique (ni nom, ni libellé SIRE) n’est jamais considérée suffisante — SIRE non proposé');
+gws_test_assert(($shf_generic_transient['parsed']['derived_ueln'] ?? 'absent') === '', 'UELN Selle Français : page générique SHF -> aucun SIRE -> aucune dérivation d’UELN');
 remove_all_filters('gwseq_ifce_shf_fetch_override');
 
 // --- Vérification déclarative de câblage (§1/§12, "points d'extension les plus étroits") : l'appel

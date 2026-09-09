@@ -113,6 +113,23 @@ function gwseq_ifce_resolve_parent_proposal($role, $branch, $reimport_cheval_id,
 }
 
 /**
+ * Règle de fusion non destructive SIRE/UELN (§7, §20-21 de la demande "identité IFCE") — fonction
+ * PURE extraite de gwseq_ifce_map_import() ci-dessous (correctif "UELN Selle Français", Lot SHF) :
+ * une absence de détection ($detected === '') ne doit jamais effacer une valeur déjà enregistrée, et
+ * une valeur détectée DIFFÉRENTE d'une valeur déjà enregistrée est un conflit jamais résolu
+ * silencieusement — l'existante est conservée dans les deux cas. Réutilisée EXACTEMENT telle quelle
+ * par gwseq_process_ifce_import_upload() (ifce-import-admin.php) pour calculer, à l'upload, la même
+ * valeur finale que celle que la confirmation écrira réellement — nécessaire pour prévisualiser une
+ * éventuelle dérivation d'UELN AVANT confirmation sans jamais dupliquer cette règle.
+ */
+function gwseq_ifce_resolve_nondestructive_identity_value($detected, $existing) {
+  $detected = (string) $detected;
+  $existing = (string) $existing;
+  if ($detected === '' || ($existing !== '' && $detected !== $existing)) return $existing;
+  return $detected;
+}
+
+/**
  * Applique la structure normalisée $parsed (produite par gwseq_ifce_parse_text(), doit avoir
  * 'valid' === true) à la fiche Cheval $post_id, pour les sections activées dans $sections. Ne
  * modifie jamais une section non activée. Retourne false si $post_id ou $parsed est invalide,
@@ -171,10 +188,28 @@ function gwseq_ifce_map_import($post_id, $parsed, $sections, $parent_choices = a
     //    utilisée par la prévisualisation pour signaler ce cas avant confirmation).
     $existing_identity = gwseq_get_cheval_identity($post_id); // déjà sûr sur un tout premier import (juste vide)
     foreach (array('sire', 'ueln') as $key) {
-      $detected = $identity[$key];
-      $existing = $existing_identity[$key];
-      if ($detected === '' || ($existing !== '' && $detected !== $existing)) {
-        $identity[$key] = $existing;
+      // gwseq_ifce_resolve_nondestructive_identity_value() (ci-dessous) — extraite en fonction PURE
+      // réutilisable pour que gwseq_process_ifce_import_upload() (ifce-import-admin.php) calcule
+      // EXACTEMENT la même valeur finale pour la prévisualisation, sans jamais dupliquer cette règle.
+      $identity[$key] = gwseq_ifce_resolve_nondestructive_identity_value($identity[$key], $existing_identity[$key]);
+    }
+
+    // Dérivation opportuniste de l'UELN à partir du SIRE — correctif "UELN Selle Français" (Lot SHF) :
+    // UNIQUEMENT si aucun UELN n'est de toute façon disponible ($identity['ueln'] toujours vide après
+    // la fusion non destructive ci-dessus — ni détecté par ce PDF, ni déjà enregistré), un SIRE FINAL
+    // est disponible (peu importe sa provenance — PDF direct, SHF, ou déjà enregistré sur la fiche
+    // réimportée : §"la dérivation UELN ne doit pas être artificiellement liée à la provenance SHF du
+    // SIRE"), et le stud-book de CET import est reconnu comme éligible (voir
+    // gwseq_ifce_ueln_eligible_race_codes(), includes/ifce-shf-enrichment.php — liste FERMÉE,
+    // volontairement restreinte à Selle Français pour l'instant). "UELN déjà présent -> jamais
+    // recalculé" est donc garanti par construction : cette dérivation n'est même jamais atteinte
+    // sinon.
+    $ueln_derived_this_import = false;
+    if ($identity['ueln'] === '') {
+      $derived_ueln = gwseq_ifce_derive_ueln_from_sire($identity['race'], $identity['sire']);
+      if ($derived_ueln !== '') {
+        $identity['ueln'] = $derived_ueln;
+        $ueln_derived_this_import = true;
       }
     }
 
@@ -206,6 +241,16 @@ function gwseq_ifce_map_import($post_id, $parsed, $sections, $parent_choices = a
       gwseq_set_cheval_sire_source($post_id, 'shf');
     } elseif ($identity['sire'] !== $existing_identity['sire']) {
       gwseq_set_cheval_sire_source($post_id, '');
+    }
+
+    // Provenance de l'UELN (même principe minimal que le SIRE ci-dessus, correctif "UELN Selle
+    // Français") : marqueur 'derived_sire' posé UNIQUEMENT quand cet import vient réellement de
+    // dériver la valeur écrite ; effacé dès que l'UELN change pour toute autre raison (détection PDF
+    // directe, saisie manuelle via gwseq_save_cheval_meta()).
+    if ($ueln_derived_this_import) {
+      gwseq_set_cheval_ueln_source($post_id, 'derived_sire');
+    } elseif ($identity['ueln'] !== $existing_identity['ueln']) {
+      gwseq_set_cheval_ueln_source($post_id, '');
     }
 
     // Nom officiel IFCE (correctif runtime, §8) : quand un alias existe, `post_title`/`nom` porte
