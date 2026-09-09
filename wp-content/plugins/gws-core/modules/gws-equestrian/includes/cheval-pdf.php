@@ -1002,21 +1002,19 @@ function gwseq_etalon_header($pdf, $data, $continued = false) {
  */
 function gwseq_etalon_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
   if (!$lines) return 0;
-  $tint = gws_core_pdf_lighten_color(sprintf('#%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2]), 0.91);
-  $pad = 3.2;
+  // Passe graphique V4 : teinte à peine perceptible, aucun angle arrondi (jamais l'air d'une carte
+  // d'interface), padding resserré — un point d'accroche éditorial, pas un encart.
+  $tint = gws_core_pdf_lighten_color(sprintf('#%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2]), 0.94);
+  $pad = 2.6;
   $tw = $w - (2 * $pad);
-  $label_h = gwseq_etalon_text($pdf, 0, 0, $tw, 'À RETENIR', 7.5, 'B', false);
+  $label_h = gwseq_etalon_text($pdf, 0, 0, $tw, 'À RETENIR', 7, 'B', false);
   $body = implode("\n", $lines);
   $body_h = gwseq_etalon_text($pdf, 0, 0, $tw, $body, 9.5, 'I', false, array(40, 42, 38), 'times');
   $box_h = (2 * $pad) + $label_h + 1 + $body_h;
   if ($draw) {
     $pdf->SetFillColor($tint[0], $tint[1], $tint[2]);
-    if (method_exists($pdf, 'RoundedRect')) {
-      $pdf->RoundedRect($x, $y, $w, $box_h, 1.4, '1111', 'F');
-    } else {
-      $pdf->Rect($x, $y, $w, $box_h, 'F');
-    }
-    gwseq_etalon_text($pdf, $x + $pad, $y + $pad, $tw, 'À RETENIR', 7.5, 'B', true, $rgb);
+    $pdf->Rect($x, $y, $w, $box_h, 'F');
+    gwseq_etalon_text($pdf, $x + $pad, $y + $pad, $tw, 'À RETENIR', 7, 'B', true, $rgb);
     gwseq_etalon_text($pdf, $x + $pad, $y + $pad + $label_h + 1, $tw, $body, 9.5, 'I', true, array(40, 42, 38), 'times');
   }
   return $box_h;
@@ -1038,13 +1036,15 @@ function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extr
   $ix = $photo ? $x + $pw + 8 : $x;
   $iw = $w - ($ix - $x);
   $iy = $y;
-  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 21 : 23, 'B', $draw, array(30, 53, 45), 'times') + 2;
+  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 22 : 24, 'B', $draw, array(30, 53, 45), 'times') + 2.5;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
   if (($id['taille_cm'] ?? '') !== '') $parts[] = number_format((float) $id['taille_cm'] / 100, 2, ',', '') . ' m';
   $parts = array_filter($parts, function ($v) { return (string) $v !== ''; });
-  if ($parts) $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 1;
-  if (!empty($id['eleveur'])) $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, 'Naisseur : ' . $id['eleveur'], 9, '', $draw) + 1;
+  if ($parts) $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 1.5;
+  // Naisseur discret (passe graphique V4) : plus petit, gris atténué — jamais au même niveau que
+  // l'identité elle-même.
+  if (!empty($id['eleveur'])) $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, 'Naisseur : ' . $id['eleveur'], 8.3, '', $draw, array(128, 124, 116)) + 2.5;
 
   // Indices et qualités : plus de titres "PERFORMANCES"/"QUALITÉS" ni de filets techniques (passe
   // graphique) — hiérarchie typographique seule : indices en gras dans la couleur de structure,
@@ -1057,30 +1057,36 @@ function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extr
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) $iy += gwseq_etalon_text($pdf, $ix, $iy + 2, $iw, implode('   ·   ', $indices), $compact ? 10 : 10.5, 'B', $draw, $rgb) + 2;
+  if ($indices) $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 10.5 : 11, 'B', $draw, $rgb) + 2.2;
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
-  if ($qualites !== '') $iy += gwseq_etalon_text($pdf, $ix, $iy + 1, $iw, $qualites, 9.5, 'I', $draw, array(95, 100, 92)) + 1;
+  if ($qualites !== '') $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, $qualites, 9, 'I', $draw, array(120, 124, 114)) + 1.5;
 
   $faits = array_slice(array_filter((array) ($data['faits_marquants'] ?? array()), 'strlen'), 0, 3);
-  if ($faits) $iy += gwseq_etalon_callout($pdf, $ix, $iy + 2, $iw, $faits, $rgb, $draw) + 2;
+  if ($faits) $iy += gwseq_etalon_callout($pdf, $ix, $iy + 2.5, $iw, $faits, $rgb, $draw) + 2;
 
   $identity_h = $iy - $y;
 
-  // Galerie (passe graphique, point 1) : miniatures dans la MÊME colonne que la grande photo,
-  // jamais en pellicule pleine largeur — ratio 3:2 toujours préservé (rétréci sans être déformé si
-  // la colonne est trop étroite pour 3 côte à côte), la grande photo reste toujours l'élément
-  // dominant (§ "clairement secondaires par rapport à la grande photo"). Le nombre de miniatures
-  // (0 à 3) découle directement du nombre de photos réellement valides — jamais de vignette
-  // factice.
+  // Galerie (passe graphique V4, point 1) : les miniatures occupent ENSEMBLE toute la largeur de la
+  // grande photo (jamais une bande étroite anecdotique) — ratio ~4:3 dérivé de cette largeur, crop
+  // `cover` centré, jamais de déformation. La grande photo reste dominante : c'est sa hauteur
+  // minimale ($min_main_photo_h ci-dessous), jamais celle des miniatures, qui gouverne la colonne.
+  // Le nombre de miniatures (0 à 3) découle directement du nombre de photos réellement valides —
+  // jamais de vignette factice.
   $thumb_gap = 3;
   $thumb_h = 0;
   $thumb_w = 0;
   if ($photos) {
     $n = count($photos);
-    $thumb_h = $compact ? 18 : 22;
-    $max_cell_w = ($pw - (($n - 1) * $thumb_gap)) / $n;
-    $thumb_w = min($thumb_h * 1.5, $max_cell_w);
-    $thumb_h = $thumb_w / 1.5;
+    $thumb_w = ($pw - (($n - 1) * $thumb_gap)) / $n;
+    $thumb_h = $thumb_w / 1.34;
+    // Avec une seule miniature, "toute la largeur" donnerait une vignette démesurément haute
+    // (largeur de la photo principale entière) — le ratio 4:3 reste la contrainte réelle : hauteur
+    // plafonnée à une taille "regardable" mais raisonnable, largeur recalculée pour préserver ce
+    // ratio (jamais de déformation, jamais un chevauchement du reste de la page).
+    if ($thumb_h > ($compact ? 26 : 36)) {
+      $thumb_h = $compact ? 26 : 36;
+      $thumb_w = $thumb_h * 1.34;
+    }
   }
   $thumb_strip = $photos ? ($thumb_gap + $thumb_h) : 0;
   $min_main_photo_h = $photo ? (($compact ? 75 : 86) + $extra_photo_h) : 0;
@@ -1091,7 +1097,9 @@ function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extr
   if ($draw && $photo) {
     gwseq_horse_pdf_draw_photo_box($pdf, $x, $y, $pw, $main_photo_h, $photo, false);
     if ($photos) {
-      $tx = $x;
+      $n = count($photos);
+      $row_w = ($n * $thumb_w) + (($n - 1) * $thumb_gap);
+      $tx = $x + max(0, ($pw - $row_w) / 2); // centré si le plafond de hauteur a réduit la largeur totale
       $ty = $y + $main_photo_h + $thumb_gap;
       foreach ($photos as $path) {
         gwseq_horse_pdf_draw_photo_box($pdf, $tx, $ty, $thumb_w, $thumb_h, $path, true);
@@ -1119,15 +1127,15 @@ function gwseq_etalon_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) {
   if (!$parents) return 0;
   $top = $y;
   $y += gwseq_etalon_section($pdf, $x, $y, $w, 'PEDIGREE', $rgb, $draw);
-  // Passe graphique (point 4) : exploite davantage la largeur — le sujet (déjà nommé dans le hero
-  // juste au-dessus) n'a besoin que d'une colonne étroite, ce qui libère de la place pour les
-  // parents (hiérarchie la plus nette) et les grands-parents (noms longs plus lisibles).
-  $widths = array($w * 0.17, $w * 0.33, $w * 0.41);
-  $xs = array($x, $x + $w * 0.21, $x + $w * 0.59);
+  // Passe graphique V4 (point 4) : le sujet (déjà nommé dans le hero juste au-dessus) ne consomme
+  // plus qu'une colonne minimale, au profit des parents (hiérarchie encore plus nette) et des
+  // grands-parents (parfaitement lisibles, jamais le maillon faible du pedigree).
+  $widths = array($w * 0.13, $w * 0.34, $w * 0.44);
+  $xs = array($x, $x + $w * 0.17, $x + $w * 0.57);
   $node = function ($label, $col, $cy, $paint) use ($pdf, $widths, $xs, $compact) {
-    if ($col === 1) $size = $compact ? 11.5 : 12.5;
-    elseif ($col === 2) $size = $compact ? 9.5 : 10;
-    else $size = $compact ? 10 : 10.5;
+    if ($col === 1) $size = $compact ? 12.5 : 13.5;
+    elseif ($col === 2) $size = $compact ? 10 : 10.5;
+    else $size = $compact ? 9.5 : 10;
     $name = mb_strtoupper($label['name']);
     // Réduction locale modérée, puis retour à la ligne sans compression horizontale.
     $pdf->SetFont('times', 'B', $size);
@@ -1145,8 +1153,8 @@ function gwseq_etalon_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) {
   foreach ($parents as $parent) {
     $ph = $node($parent['label'], 1, 0, false);
     $heights = array();
-    foreach ($parent['children'] as $child) $heights[] = max($compact ? 15 : 17, $node($child, 2, 0, false) + 4);
-    $group_h = max($ph + 6, array_sum($heights), $compact ? 32 : 38);
+    foreach ($parent['children'] as $child) $heights[] = max($compact ? 15 : 18, $node($child, 2, 0, false) + ($compact ? 4 : 4.5));
+    $group_h = max($ph + ($compact ? 6 : 7), array_sum($heights), $compact ? 32 : 41);
     $cy = $cursor + $group_h / 2;
     $centers[] = $cy;
     $node($parent['label'], 1, $cy, $draw);
@@ -1154,8 +1162,8 @@ function gwseq_etalon_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) {
     foreach ($parent['children'] as $i => $child) {
       $gy = $child_y + $heights[$i] / 2;
       if ($draw) {
-        $pdf->SetDrawColor(160, 172, 166);
-        $pdf->SetLineWidth(0.2);
+        $pdf->SetDrawColor(178, 187, 181);
+        $pdf->SetLineWidth(0.18);
         $bx = $xs[2] - $w * 0.025;
         $pdf->Line($xs[1] + $widths[1], $cy, $bx, $cy);
         $pdf->Line($bx, $cy, $bx, $gy);
@@ -1241,20 +1249,23 @@ function gwseq_render_horse_pdf_template_etalon($pdf, $data) {
       foreach (array($tree_h, $eh, $rh, $ch, $ih) as $height) if ($height > 0) $total += $height + $gap;
       if ($total <= $limit) break;
     }
-    // Cas pauvre (passe graphique, point 8) : du blanc en trop en mode aéré ne doit jamais donner
-    // l'impression que des blocs manquent — la photo dominante est agrandie et les respirations
-    // légèrement augmentées pour absorber ce blanc volontairement, jamais une donnée fabriquée.
-    // Sans effet si le mode compact a dû être choisi (contenu déjà dense) ou sans photo valide
-    // (gwseq_etalon_hero() ignore alors $extra_photo_h).
+    // Cas pauvre (passe graphique V4, point 2) : du blanc en trop en mode aéré ne doit jamais
+    // donner l'impression que des blocs manquent — la photo/le hero dominants sont nettement
+    // agrandis et les respirations augmentées pour absorber ce blanc volontairement (jamais les
+    // mêmes proportions que le cas riche), jamais une donnée fabriquée. Sans effet si le mode
+    // compact a dû être choisi (contenu déjà dense) ou sans photo valide (gwseq_etalon_hero()
+    // ignore alors $extra_photo_h).
     $extra_photo_h = 0;
     if (!$compact) {
       $slack = $limit - $total;
-      if ($slack > 15) {
-        $boosted_hero_h = gwseq_etalon_hero($pdf, $data, $x, 24, $w, $rgb, $compact, false, min($slack - 6, 30));
+      if ($slack > 8) {
+        $extra_photo_h = min($slack - 4, 55);
+        $boosted_hero_h = gwseq_etalon_hero($pdf, $data, $x, 24, $w, $rgb, $compact, false, $extra_photo_h);
         if ($boosted_hero_h > $hero_h) {
-          $extra_photo_h = min($slack - 6, 30);
           $hero_h = $boosted_hero_h;
-          $gap += 1;
+          $gap += 1.5;
+        } else {
+          $extra_photo_h = 0;
         }
       }
     }
@@ -1331,7 +1342,9 @@ function gwseq_render_horse_pdf_template_etalon($pdf, $data) {
     } else foreach ($editorial as $block) $flow($block[0], $block[1]);
     if ($repro) {
       $room($rh);
-      $y += gwseq_etalon_section($pdf, $x, $y, $w, 'REPRODUCTION', $rgb, true);
+      // Passe graphique V4 (point 6) : intitulé discret sans filet pleine largeur — moins
+      // "section technique", plus proche du traitement éditorial de "À RETENIR".
+      $y += gwseq_etalon_text($pdf, $x, $y, $w, 'REPRODUCTION', 8, 'B', true, array(115, 120, 110)) + 1.8;
       if ($repro_line1) {
         $line_h = gwseq_etalon_text($pdf, 0, 0, $w, 'Ag', $body_size, 'B', false);
         $cx = $x;
