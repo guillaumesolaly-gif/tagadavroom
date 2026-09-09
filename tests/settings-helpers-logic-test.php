@@ -50,6 +50,14 @@ function get_bloginfo($key = '') {
   return $key === 'name' ? $GLOBALS['__gws_test_bloginfo_name'] : '';
 }
 
+function __($text, $domain = 'default') { return $text; }
+
+$GLOBALS['__gws_test_settings_errors'] = array();
+function add_settings_error($setting, $code, $message, $type = 'error') {
+  $GLOBALS['__gws_test_settings_errors'][] = array('setting' => $setting, 'code' => $code, 'message' => $message, 'type' => $type);
+}
+function get_settings_errors() { return $GLOBALS['__gws_test_settings_errors']; }
+
 define('ABSPATH', __DIR__ . '/');
 $repo_root = dirname(__DIR__);
 require $repo_root . '/wp-content/plugins/gws-core/includes/fields.php';
@@ -253,14 +261,50 @@ gws_test_assert(
   'Une couleur invalide soumise au formulaire est rejetée (jamais enregistrée telle quelle)'
 );
 
-// --- Présentation : enregistrée normalement, tronquée au-delà de la limite (§5) ---
+// --- Présentation : enregistrée normalement dans la limite ---
 $long_presentation = str_repeat('a', gws_core_structure_presentation_max_length() + 50);
 $sanitized_presentation = gws_core_sanitize_settings(array('presentation' => 'Une présentation raisonnable.'));
 gws_test_assert($sanitized_presentation['presentation'] === 'Une présentation raisonnable.', 'Présentation : une valeur dans la limite est enregistrée telle quelle');
-$sanitized_long = gws_core_sanitize_settings(array('presentation' => $long_presentation));
+
+// --- Présentation trop longue : REJET CIBLÉ (jamais de troncature silencieuse), valeur précédente
+// conservée, les AUTRES champs de la même soumission continuent d'être enregistrés, message
+// explicite ajouté via add_settings_error() (corrigé après recette réelle) ---
+$GLOBALS['__gws_test_options'] = array('gws_core_settings' => array(
+  'presentation' => 'Ancienne présentation déjà enregistrée.',
+  'entity_name' => 'Ancien nom',
+));
+$GLOBALS['__gws_test_settings_errors'] = array();
+$sanitized_rejected = gws_core_sanitize_settings(array(
+  'presentation' => $long_presentation,
+  'entity_name' => 'Nouveau nom valide',
+));
 gws_test_assert(
-  mb_strlen($sanitized_long['presentation']) === gws_core_structure_presentation_max_length(),
-  'Présentation : un texte trop long est tronqué exactement à la limite documentée, jamais rejeté en bloc'
+  $sanitized_rejected['presentation'] === 'Ancienne présentation déjà enregistrée.',
+  'Présentation trop longue : la valeur PRÉCÉDENTE est conservée, jamais tronquée ni vidée'
+);
+gws_test_assert(
+  $sanitized_rejected['entity_name'] === 'Nouveau nom valide',
+  'Présentation trop longue : les AUTRES champs valides de la même soumission sont malgré tout enregistrés (ici le nom)'
+);
+$errors_after_rejection = get_settings_errors();
+gws_test_assert(count($errors_after_rejection) === 1, 'Présentation trop longue : exactement un message d’erreur explicite est ajouté (add_settings_error)');
+gws_test_assert(
+  !empty($errors_after_rejection) && strpos($errors_after_rejection[0]['message'], '1500') !== false && strpos($errors_after_rejection[0]['message'], 'Présentation') !== false,
+  'Présentation trop longue : le message mentionne explicitement le champ et la limite (1500 caractères), et précise que rien n’a été enregistré pour ce champ'
+);
+
+// --- Cas limite : exactement à la limite (jamais rejeté), un caractère au-delà (rejeté) ---
+$GLOBALS['__gws_test_options'] = array();
+$GLOBALS['__gws_test_settings_errors'] = array();
+$exact_length = str_repeat('a', gws_core_structure_presentation_max_length());
+gws_test_assert(
+  gws_core_sanitize_settings(array('presentation' => $exact_length))['presentation'] === $exact_length,
+  'Présentation : un texte exactement à la limite est accepté, pas rejeté'
+);
+$one_over = str_repeat('a', gws_core_structure_presentation_max_length() + 1);
+gws_test_assert(
+  gws_core_sanitize_settings(array('presentation' => $one_over))['presentation'] === '',
+  'Présentation : un texte d’UN caractère au-delà de la limite est rejeté (aucune valeur précédente ici => champ vide conservé)'
 );
 
 // --- Contraste : noir/blanc, couleurs par défaut GWS, et quelques cas limites clair/foncé ---

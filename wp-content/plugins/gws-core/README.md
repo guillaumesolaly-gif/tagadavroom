@@ -60,6 +60,13 @@ le thème utilisé — y compris si le thème est un jour remplacé.
     fichier à modifier pour l'identité visuelle du thème lui-même) : ce sont des données de marque
     côté client, à la disposition d'un futur thème/PDF/Catalogue qui choisira lui-même comment les
     utiliser (principe : GWS fournit les tokens de marque, le consommateur décide de leur usage).
+  - **v1.45.1** (correctif après recette) : le champ « Présentation » ne tronque plus jamais
+    silencieusement un contenu trop long. Au-delà de `gws_core_structure_presentation_max_length()`
+    (1500 caractères), la valeur soumise est REJETÉE — la valeur précédemment enregistrée est
+    conservée, un message explicite s'affiche sur l'écran Réglages (`add_settings_error()` +
+    `settings_errors()`), et les AUTRES champs valides de la même soumission continuent d'être
+    enregistrés normalement. L'attribut HTML `maxlength` reste une simple garde de confort côté
+    saisie ; la garantie réelle est ce rejet côté serveur (voir `gws_core_sanitize_settings()`).
 - `includes/fields.php` — générateur minimal de champs structurés (meta box depuis un schéma),
   volontairement réduit : pas un concurrent d'ACF.
 - `includes/security.php` — helpers réutilisables pour sécuriser un formulaire public (nonce,

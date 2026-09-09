@@ -70,8 +70,10 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   GWS par défaut (`gws_core_get_primary_color()`/`gws_core_get_secondary_color()`), priorité à une
   couleur personnalisée valide, AUCUNE écriture automatique de la couleur par défaut dans
   `gws_core_settings` lors d'un enregistrement sans couleur choisie ; présentation de la structure
-  enregistrée normalement puis tronquée (jamais rejetée) au-delà de sa limite documentée
-  (`gws_core_structure_presentation_max_length()`) ; algorithme de contraste
+  enregistrée normalement dans sa limite documentée (`gws_core_structure_presentation_max_length()`)
+  et REJETÉE (jamais tronquée, jamais enregistrée en silence) au-delà, avec conservation de la
+  valeur précédente, message explicite via `add_settings_error()` et enregistrement inchangé des
+  AUTRES champs valides de la même soumission (corrigé après recette réelle) ; algorithme de contraste
   (`gws_core_contrast_color()`) sur noir/blanc, les deux couleurs GWS par défaut, et plusieurs cas
   clair/foncé ; `gws_core_structure_name()` (repli sur le nom du site WordPress) ; API consolidée
   `gws_core_structure_identity()` ; non-régression explicite d'une installation existante dont

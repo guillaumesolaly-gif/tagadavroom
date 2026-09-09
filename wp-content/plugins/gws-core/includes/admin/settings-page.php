@@ -129,6 +129,12 @@ function gws_core_render_settings_page() {
     <p>Ces informations décrivent votre structure une fois pour toutes : le site (et, à l’avenir,
       d’autres supports comme une fiche PDF ou un catalogue) les réutilisent, sans jamais en garder
       de copie séparée.</p>
+    <?php
+    // Affiche notamment le message explicite d'un champ rejeté pour dépassement de longueur (voir
+    // add_settings_error() dans gws_core_sanitize_settings(), includes/settings.php) — sans cet
+    // appel, un message ajouté par le sanitize_callback resterait invisible.
+    settings_errors('gws_core_settings');
+    ?>
     <form method="post" action="options.php">
       <?php settings_fields('gws_core_settings_group'); ?>
       <?php foreach ($groups as $group_key => $group_label) :

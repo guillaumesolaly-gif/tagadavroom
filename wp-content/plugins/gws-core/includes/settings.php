@@ -43,21 +43,28 @@ function gws_core_default_secondary_color() {
 }
 
 /**
- * Limite de longueur du champ « Présentation » (Lot 2C, §5) — SEULE source de vérité, lue par la
- * sanitation serveur (gws_core_sanitize_settings() ci-dessous) et par le rendu du formulaire
- * (attribut HTML `maxlength`, includes/admin/settings-page.php), jamais un nombre dupliqué à un
- * second endroit — même principe que gwseq_cheval_editorial_field_max_length() dans le module
- * gws-equestrian (Lot 2A).
+ * Limite de longueur du champ « Présentation » (Lot 2C, §5, ajustée après recette) — SEULE
+ * source de vérité, lue par la sanitation serveur (gws_core_sanitize_settings() ci-dessous) et
+ * par le rendu du formulaire (attribut HTML `maxlength`, includes/admin/settings-page.php),
+ * jamais un nombre dupliqué à un second endroit — même principe que
+ * gwseq_cheval_editorial_field_max_length() dans le module gws-equestrian (Lot 2A).
  *
  * CHOIX (1500 caractères, documenté comme demandé) : même philosophie que les champs éditoriaux
  * Cheval à limite fixe (texte libre plafonné, pas d'éditeur riche), mais un peu plus généreuse que
  * la « Présentation » d'un Cheval (1200 caractères, un seul sujet) puisque ce texte présente
  * l'ensemble de la structure et peut alimenter une future page éditoriale de Catalogue — « quelques
- * courts paragraphes », pas un article. Contrairement au Cheval (qui REJETTE et conserve l'ancienne
- * valeur en cas de dépassement, mécanisme propre aux meta box/save_post), ce champ vit dans l'API
- * Réglages native de WordPress (options.php) : au-delà de la limite, la valeur envoyée est
- * simplement TRONQUÉE à la sanitation plutôt que rejetée en bloc — un compromis proportionné à un
- * champ unique dans cette architecture, documenté ici comme limite connue du lot (voir le CR).
+ * courts paragraphes », pas un article.
+ *
+ * COMPORTEMENT EN CAS DE DÉPASSEMENT (corrigé après recette — jamais de troncature silencieuse,
+ * même principe de rejet ciblé que gwseq_set_cheval_editorial() côté gws-equestrian) : voir
+ * gws_core_sanitize_settings() ci-dessous. La contrainte technique évoquée dans une version
+ * précédente de ce commentaire ne s'est pas confirmée à l'implémentation — l'API Réglages native
+ * de WordPress permet ce comportement proprement, sans fragilité : le sanitize_callback d'une
+ * option peut lire `get_option()` (encore à son ancienne valeur à ce stade, `update_option()` ne
+ * l'ayant pas encore écrasée) pour retomber sur la valeur précédente d'UN SEUL champ, pendant que
+ * WordPress écrit normalement le tableau complet retourné (donc tous les AUTRES champs de la même
+ * soumission) en un seul `update_option()`, et `add_settings_error()` permet d'afficher un message
+ * explicite sur l'écran de réglages (voir includes/admin/settings-page.php, `settings_errors()`).
  */
 function gws_core_structure_presentation_max_length() {
   return apply_filters('gws_core_structure_presentation_max_length', 1500);
@@ -356,25 +363,61 @@ function gws_core_show_footer_social() {
   return gws_core_get_setting('footer_social_enabled') === '1';
 }
 
+/**
+ * Limite de longueur générique optionnelle (voir gws_core_structure_presentation_max_length()
+ * pour l'usage actuel, 'presentation') — REJET CIBLÉ, jamais de troncature silencieuse (corrigé
+ * après recette, même principe que gwseq_set_cheval_editorial() côté gws-equestrian, Lot 2A) :
+ * un champ dont le contenu sanitisé dépasse sa limite N'EST PAS enregistré — sa valeur
+ * PRÉCÉDEMMENT enregistrée est conservée à la place, et un message explicite est ajouté via
+ * add_settings_error() (affiché par includes/admin/settings-page.php via settings_errors()).
+ * Tous les AUTRES champs de la même soumission continuent d'être sanitisés et enregistrés
+ * normalement : `update_option()` (déclenché par options.php après ce callback) écrit le tableau
+ * complet retourné ici en une seule fois, champ rejeté compris — ce n'est donc jamais une
+ * soumission partiellement bloquée, seul CE champ retombe sur sa valeur antérieure.
+ *
+ * $previous_settings : les réglages actuellement enregistrés (avec valeurs par défaut), lus AVANT
+ * que options.php n'écrase l'option — get_option() reste fiable ici car sanitize_callback
+ * s'exécute pendant le filtre 'sanitize_option_{$option}', strictement avant l'update_option() qui
+ * suit dans options.php.
+ */
 function gws_core_sanitize_settings($input) {
   $input = is_array($input) ? $input : array();
+  $previous_settings = gws_core_settings();
   $clean = array();
+  $rejected = array(); // field_key => array('label' => ..., 'max_length' => ...)
+
   foreach (gws_core_settings_fields() as $key => $field) {
     $raw = $input[$key] ?? '';
     $value = gws_core_field_sanitize($field['type'] ?? 'text', $raw);
-    // Limite de longueur générique optionnelle (voir gws_core_structure_presentation_max_length()
-    // pour l'usage actuel) : tronque plutôt que rejette, cohérent avec l'API Réglages native de
-    // WordPress utilisée ici (contrairement au mécanisme de rejet des champs éditoriaux Cheval,
-    // propre à une meta box/save_post — voir le commentaire sur ce choix plus haut dans ce fichier).
+
     if (isset($field['max_length']) && is_string($value)) {
       $max_length = (int) $field['max_length'];
       $length = function_exists('mb_strlen') ? mb_strlen($value) : strlen($value);
       if ($length > $max_length) {
-        $value = function_exists('mb_substr') ? mb_substr($value, 0, $max_length) : substr($value, 0, $max_length);
+        $value = $previous_settings[$key] ?? '';
+        $rejected[$key] = array('label' => $field['label'] ?? $key, 'max_length' => $max_length);
       }
     }
+
     $clean[$key] = $value;
   }
+
+  if ($rejected && function_exists('add_settings_error')) {
+    foreach ($rejected as $key => $info) {
+      add_settings_error(
+        'gws_core_settings',
+        'gws_core_field_too_long_' . $key,
+        sprintf(
+          /* translators: 1: libellé du champ, 2: nombre maximum de caractères autorisés */
+          __('%1$s : le contenu dépasse %2$d caractères — rien n’a été enregistré pour ce champ, la valeur précédente est conservée.', 'gws-core'),
+          $info['label'],
+          $info['max_length']
+        ),
+        'error'
+      );
+    }
+  }
+
   return $clean;
 }
 
