@@ -27,6 +27,7 @@ node tests/gws-equestrian-cheval-admin-tabs-runtime-test.js
 php tests/gws-equestrian-ifce-import-test.php
 php tests/gws-equestrian-ifce-production-test.php
 php tests/gws-equestrian-ifce-shf-test.php
+php tests/gws-equestrian-cheval-pdf-test.php
 node tests/gws-equestrian-race-referentiel-autocomplete-runtime-test.js
 php tests/gws-equestrian-cheval-labels-test.php
 php tests/gws-equestrian-membre-logic-test.php
@@ -729,6 +730,20 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   réimport où le SIRE existe déjà (aucun appel SHF nécessaire) complétant quand même l'UELN manquant.
   Provenance testée dans `gws-equestrian-cheval-logic-test.php` : marqueur `derived_sire` effacé par
   une saisie manuelle qui change réellement l'UELN, préservé si la valeur resoumise est identique.
+
+- **Fiche cheval PDF — Lot "PDF Cheval & Catalogue", Lot 3A (`gws-equestrian-cheval-pdf-test.php`)**
+  : fonctions pures du moteur PDF partagé de gws-core (`gws_core_pdf_hex_to_rgb()`,
+  `gws_core_pdf_lighten_color()`, `gws_core_pdf_fit_image_box()`), sélection/tri de la Production
+  affichée (meilleur indice conservé en priorité, non-indicés retirés en premier, ordre
+  d'affichage final toujours = ordre d'origine du document), formatage d'une ligne de Production
+  (BLUP des produits jamais lu), assemblage `gwseq_build_horse_pdf_data()` (ID invalide -> null,
+  mauvais type de post -> null, garde de sexe pour la Production, branding par défaut vs
+  personnalisé de "Ma structure" sans duplication). Smoke-test de rendu réel via TCPDF actif
+  UNIQUEMENT si `vendor/` est installé sur l'environnement d'exécution (voir
+  `wp-content/plugins/gws-core/composer.json`) — jamais un échec de la suite sinon, seulement une
+  ligne d'information. La recette VISUELLE réelle (mise en page, lisibilité, branding) a été faite
+  séparément via un harnais de prototype dédié (scratchpad, non livré) produisant 3 fiches PDF
+  réelles comparées avant validation — voir le CR de ce lot.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

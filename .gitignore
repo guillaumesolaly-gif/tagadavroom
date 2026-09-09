@@ -1,0 +1,4 @@
+# Dépendances Composer vendorisées (Lot PDF Cheval & Catalogue) — jamais commitées : voir
+# wp-content/plugins/gws-core/composer.json/README.md pour la procédure d'installation
+# (`composer install --no-dev`) exécutée avant chaque packaging du ZIP livrable.
+/wp-content/plugins/gws-core/vendor/

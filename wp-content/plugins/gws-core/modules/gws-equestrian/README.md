@@ -1728,6 +1728,30 @@ automatiquement à partir du SIRE"), provenance `_gwseq_ueln_source = 'derived_s
 celle du SIRE. Vérifié sur le vrai PDF de GOLDAME D'AUBIGNY (Selle Français, SIRE `16398915R` →
 UELN `25000116398915R`).
 
+### Fiche cheval PDF — Lot "PDF Cheval & Catalogue", Lot 3A (0.47.0)
+
+**Périmètre strict de ce lot** : audit + moteur PDF partagé minimal (gws-core,
+`includes/pdf-engine.php`, voir son README) + premier renderer de fiche cheval A4 complet. Aucun
+catalogue, aucune bibliothèque de PDF externes, aucun drag & drop — hors périmètre des lots
+suivants (3B à 3E), volontairement non anticipés ici.
+
+**`includes/cheval-pdf.php`** : `gwseq_build_horse_pdf_data($horse_id)` assemble toutes les
+données (identité, commercial, éditorial, indices sportifs/génétiques, pedigree 3 générations via
+`gwseq_resolve_horse_pedigree()`, Production directe pour une jument via
+`gwseq_get_horse_direct_production()`) **exclusivement via les fonctions métier déjà existantes**
+et `gws_core_structure_identity()` pour tout le branding — aucune duplication. `gwseq_render_horse_pdf_page($pdf, $horse_id, $context)`
+est LE renderer unique (header branding, hero photo/identité, statut+prix, chips d'indices avec
+mise en évidence du meilleur, qualités/faits marquants, mini-pedigree, présentation, Production
+(jument uniquement, triée par meilleur indice, non-indicés retirés en premier si trop nombreux,
+jamais les petits-enfants ni le BLUP des produits), identifiants officiels, footer) — le même
+renderer servira au PDF individuel ET à un futur Catalogue (`$context['mode']`, réservé,
+actuellement sans effet). `gwseq_generate_horse_pdf($horse_id, $context)` orchestre le document
+complet (génération à la demande, jamais enregistré durablement).
+
+Chaque section se replie proprement si sa donnée est absente (jamais un bloc vide). Testé sur 3
+profils réels de données (jument complète + Production, cheval très indicé, cheval à données
+quasi vides) — voir le CR du lot pour les captures et le protocole de recette visuelle.
+
 ### Pedigree (Étape 5)
 
 **Deux types de parent, chacun indépendamment pour le Père et pour la Mère** : soit une fiche

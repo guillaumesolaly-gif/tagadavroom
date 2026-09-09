@@ -78,12 +78,41 @@ le thème utilisé — y compris si le thème est un jour remplacé.
 - `includes/migration.php` — cadre générique de migration explicite (sauvegarde, rollback,
   journal), inerte tant qu'aucun module n'y déclare de migration.
 - `includes/modules.php` + `config/modules.php` — chargeur de modules métier opt-in.
+- `includes/pdf-engine.php` — moteur PDF partagé (Lot "PDF Cheval & Catalogue") : document A4
+  générique (TCPDF), conversion de couleurs, ajustement d'image — aucune connaissance métier
+  (cheval, catalogue...). Un futur renderer (fiche cheval déjà en place dans `gws-equestrian`,
+  futur Catalogue) consomme ces fonctions, jamais un second moteur PDF. Voir "Dépendances
+  vendorisées (Composer)" ci-dessous.
 - `modules/` — modules métier (voir `modules/README.md`).
 
 ## Convention de nommage
 
 Fonctions et constantes du cœur du plugin : préfixe `gws_core_`. Chaque module métier a son
 propre préfixe, documenté dans `modules/README.md`.
+
+## Dépendances vendorisées (Composer)
+
+Ce plugin vendorise `tecnickcom/tcpdf` (moteur PDF, voir `includes/pdf-engine.php`) via Composer
+(`composer.json` à la racine de ce plugin). **`vendor/` n'est JAMAIS commité** (voir `.gitignore`
+à la racine du dépôt) — à installer/mettre à jour avec :
+
+```
+cd wp-content/plugins/gws-core
+composer install --no-dev --optimize-autoloader
+```
+
+**Avant tout packaging d'un ZIP livrable**, cette commande doit avoir été exécutée : le ZIP livré
+doit toujours contenir `vendor/` (un site WordPress cible n'exécute jamais `composer install`
+lui-même). Le dossier `fonts/` de TCPDF vendorisé est volontairement réduit aux 14 polices cœur
+standard PDF (Helvetica/Times/Courier, ~56 Ko) — voir le docblock de `includes/pdf-engine.php`
+pour le détail : après un `composer install` frais, ne PAS ré-embarquer les polices
+Unicode/CJK/Dejavu de TCPDF (~25 Mo, non utilisées) sans réappliquer le même trim
+(`fonts/courier*.php`, `helvetica*.php`, `times*.php`, `symbol.php`, `zapfdingbats.php`
+uniquement).
+
+Toute fonctionnalité qui dépend de `vendor/` doit se dégrader proprement si `composer install`
+n'a jamais été exécuté sur un environnement donné (voir `gws_core_pdf_available()`) — jamais un
+fatal error WordPress.
 
 ## Dépendance du thème vers ce plugin
 

@@ -5,6 +5,69 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.47.0 — Lot PDF Cheval & Catalogue, Lot 3A : audit + prototype de renderer fiche cheval
+
+**Périmètre STRICT de ce lot** (arrêt demandé après ce point, avant recette visuelle) : audit
+technique, choix de bibliothèque documenté, moteur PDF partagé minimal, premier renderer de fiche
+cheval A4 complet et fonctionnel. AUCUN catalogue, AUCUNE bibliothèque de PDF externes, AUCUN
+drag & drop, AUCUNE duplication de catalogue — tout cela reste hors périmètre des lots 3B à 3E.
+
+**Audit.** Aucune bibliothèque de génération PDF n'existait dans le dépôt avant ce lot (les seuls
+fichiers mentionnant "PDF" concernaient l'EXTRACTION depuis un PDF IFCE déjà existant — lecture,
+jamais écriture, aucun chevauchement réutilisable). Choix retenu : **TCPDF** (licence LGPL),
+vendorisé via Composer (nouveau `wp-content/plugins/gws-core/composer.json`, `vendor/` gitignoré —
+voir `.gitignore` racine et le README du plugin pour la procédure `composer install --no-dev`
+exécutée avant tout packaging). Dossier de polices vendorisé volontairement réduit aux 14 polices
+cœur standard PDF (Helvetica/Times/Courier, ~56 Ko au total, jamais embarquées dans le fichier
+généré) — les polices Unicode/CJK de TCPDF (~25 Mo) ne sont pas nécessaires, le jeu WinAnsi des
+polices cœur couvrant nativement le français (accents, œ/æ, €). `setasign/fpdi` (import de pages
+PDF externes, nécessaire au Lot 3C/3E) vérifié installable dans cet environnement pendant l'audit
+mais volontairement PAS ajouté à ce lot (pas de dépendance avant besoin réel) — `Fpdi` étend
+`TCPDF`, donc aucune réécriture du moteur ci-dessous à prévoir pour l'intégrer plus tard.
+
+**Nouveau moteur PDF partagé** (`includes/pdf-engine.php`, gws-core) : infrastructure générique
+uniquement — `gws_core_pdf_new_document()` (document A4 portrait, marges 14 mm, en-tête/pied de
+page automatiques de TCPDF désactivés, saut de page automatique désactivé), conversion de couleurs
+hexadécimales en RGB, éclaircissement de couleur (fonds légers de chips), ajustement d'image dans
+une boîte sans déformation. Aucune connaissance de "cheval" ou de "catalogue" — un futur Lot
+Catalogue réutilisera ces mêmes fonctions, jamais un second moteur (interdit explicitement par la
+demande). `gws_core_pdf_available()` permet une dégradation propre (jamais un fatal error) sur un
+environnement où `composer install` n'a pas été exécuté.
+
+**Nouveau renderer de fiche cheval** (`includes/cheval-pdf.php`, gws-equestrian) :
+- `gwseq_build_horse_pdf_data($horse_id)` — assemblage PUR de toutes les données nécessaires,
+  exclusivement via les fonctions métier déjà existantes et déjà testées (identité, commercial,
+  éditorial, indices sportifs/génétiques, `gwseq_resolve_horse_pedigree()` sur 3 générations,
+  `gwseq_get_horse_direct_production()`) et `gws_core_structure_identity()` (gws-core) pour tout le
+  branding — **aucune donnée de marque dupliquée dans Equestrian**, couleurs par défaut de Core
+  utilisées automatiquement si aucune couleur personnalisée n'est renseignée.
+- `gwseq_render_horse_pdf_page($pdf, $horse_id, $context)` — LE renderer unique (§15 de la
+  demande) : header branding (logo + nom + coordonnées), hero photo/identité, statut commercial +
+  prix, chips d'indices sportifs (meilleur indice mis en évidence) et génétiques/BLUP, qualités et
+  faits marquants, mini-pedigree 3 générations (père/mère en évidence, grands-parents atténués,
+  noms ajustés dynamiquement pour ne jamais chevaucher la ligne suivante), présentation éditoriale,
+  bloc Production (jument uniquement — jamais pour mâle/hongre, garde de sexe appliquée dès
+  l'assemblage) trié par meilleur indice sportif avec les produits non indicés retirés en premier
+  en cas de dépassement, jamais les petits-enfants ni le BLUP des produits, identifiants officiels
+  (SIRE/UELN/naisseur/propriétaire) discrets, footer structure. Chaque section absente se replie
+  proprement (§18) — vérifié explicitement sur 3 profils de données très différents (voir CR).
+- `gwseq_generate_horse_pdf($horse_id, $context)` — orchestration du PDF individuel (§16) :
+  document neuf d'une page, génération à la demande, jamais enregistré sur disque de façon
+  permanente. `$context` réservé pour le Lot Catalogue (`mode: 'standalone'|'catalogue'`),
+  sans effet observable dans ce lot.
+
+**Non-régression** : aucune donnée Cheval modifiée (fichier en LECTURE SEULE des fonctions métier
+existantes), aucun changement au workflow IFCE, aucun changement à "Ma structure" au-delà de la
+consommation de son helper déjà existant.
+
+**Tests** : nouveau `tests/gws-equestrian-cheval-pdf-test.php` — fonctions pures du moteur (couleurs,
+ajustement d'image), sélection/tri/formatage de la Production, assemblage des données (garde de
+sexe, branding par défaut vs personnalisé, ID invalide), et un smoke-test de rendu réel via TCPDF
+(actif uniquement si `vendor/` est installé sur l'environnement d'exécution — jamais un échec de la
+suite sinon). Recette VISUELLE réelle (mise en page, lisibilité, branding) faite séparément via un
+harnais de prototype dédié produisant 3 fiches PDF réelles (jument complète + Production, cheval
+très indicé, cheval à données minimales) — voir le CR du lot, livrées pour validation avant Lot 3B.
+
 ## 0.46.1 — Correctif UELN Selle Français
 
 Correction du raisonnement de l'audit UELN de 0.46.0. L'audit précédent concluait à "aucun signal

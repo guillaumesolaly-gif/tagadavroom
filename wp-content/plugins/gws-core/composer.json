@@ -1,0 +1,16 @@
+{
+    "name": "tagadavroom/gws-core",
+    "description": "Dépendances vendorisées de gws-core (moteur PDF partagé — fiche cheval, futur catalogue). Voir includes/pdf-engine.php.",
+    "type": "wordpress-plugin",
+    "license": "proprietary",
+    "require": {
+        "php": ">=7.4",
+        "tecnickcom/tcpdf": "^6.6"
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "7.4"
+        }
+    }
+}
