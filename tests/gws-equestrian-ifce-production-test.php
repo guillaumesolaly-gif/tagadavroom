@@ -30,8 +30,12 @@ function esc_url($value) { return $value; }
 function absint($value) { return abs((int) $value); }
 function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
-function selected($a, $b) { return $a == $b ? ' selected' : ''; }
-function checked($a, $b = true) { return $a == $b ? ' checked' : ''; }
+// FIDÈLE au comportement réel de selected()/checked() (WordPress core, via
+// _checked_selected_helper()) : échouent par défaut ($echo = true), comme disabled() ci-dessous —
+// convention déjà utilisée telle quelle dans includes/ifce-import-admin.php (appels sans echo()
+// explicite, en confiance dans ce comportement natif).
+function selected($a, $b = true, $echo = true) { $r = $a == $b ? ' selected' : ''; if ($echo) echo $r; return $r; }
+function checked($a, $b = true, $echo = true) { $r = $a == $b ? ' checked' : ''; if ($echo) echo $r; return $r; }
 function disabled($a, $b = true, $echo = true) { $r = $a == $b ? ' disabled' : ''; if ($echo) echo $r; return $r; }
 function wp_nonce_field($action, $field) { echo '<input type="hidden" name="' . esc_attr($field) . '" value="stub-nonce">'; }
 function wp_json_encode($data, $options = 0, $depth = 512) { return json_encode($data, $options, $depth); }
@@ -688,7 +692,11 @@ gws_test_assert(gwseq_get_horse_direct_production(400) === array(), 'GARDE DE SE
 //     y compris réimport sur une fiche existante (§21)
 // =====================================================================================
 
-gws_test_make_post(500, GWSEQ_CPT_CHEVAL, 'Teldame Existante');
+// Titre alignant EXACTEMENT le nom officiel réel du PDF (nécessaire depuis le verrou d'identité de
+// réimport, correctif recette — cette fiche n'a pas encore de _gwseq_ifce_id enregistré, cas
+// "legacy" : nom officiel + année doivent concorder pour autoriser le réimport, voir
+// gwseq_ifce_validate_reimport_identity()).
+gws_test_make_post(500, GWSEQ_CPT_CHEVAL, 'TELDAME DE LA NUTRIA');
 gwseq_set_cheval_identity(500, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
 
 $teldame_tmp = sys_get_temp_dir() . '/gwseq-teldame-reimport-test.pdf';
@@ -702,7 +710,7 @@ gws_test_assert($teldame_transient !== false && (int) $teldame_transient['reimpo
 ob_start();
 gwseq_render_ifce_import_preview($tm[1], $teldame_transient['parsed'], 500);
 $teldame_preview_html = ob_get_clean();
-gws_test_assert(strpos($teldame_preview_html, 'Teldame Existante') !== false, 'Prévisualisation réimport : le nom de la fiche existante concernée est bien affiché');
+gws_test_assert(strpos($teldame_preview_html, 'TELDAME DE LA NUTRIA') !== false, 'Prévisualisation réimport : le nom de la fiche existante concernée est bien affiché');
 gws_test_assert(strpos($teldame_preview_html, 'name="gwseq_ifce_import_production"') !== false, 'Prévisualisation : la case "Importer la Production" est bien proposée pour cette jument');
 gws_test_assert(strpos($teldame_preview_html, 'CHUMBA LS') !== false, 'Prévisualisation : au moins un produit direct détecté (Chumba LS) apparaît bien dans le tableau de Production');
 gws_test_assert(strpos($teldame_preview_html, 'QZ') !== false, 'Prévisualisation : le produit à identifiant provisoire (QZ) apparaît bien, comme tout autre produit importable');
@@ -768,14 +776,17 @@ gws_test_assert(
 );
 
 // --- Fixtures pour gwseq_ifce_resolve_parent_proposal() (Cas A/B/C/D, §12 de la demande) ---
-gws_test_make_post(810, GWSEQ_CPT_CHEVAL, 'TELDAME DE LA NUTRIA');
+// Nom distinct de "TELDAME DE LA NUTRIA"/500 (§12 ci-dessus, réutilisée avec son nom officiel réel
+// depuis le verrou d'identité de réimport) pour ne pas créer une ambiguïté artificielle entre deux
+// fixtures de test au même nom+année.
+gws_test_make_post(810, GWSEQ_CPT_CHEVAL, 'TELDAME REFERENCE PEDIGREE');
 gwseq_set_cheval_identity(810, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
 
-$teldame_branch = array('name' => 'TELDAME DE LA NUTRIA', 'race' => '', 'race_autre' => '', 'annee_naissance' => 2007);
+$teldame_branch = array('name' => 'TELDAME REFERENCE PEDIGREE', 'race' => '', 'race_autre' => '', 'annee_naissance' => 2007);
 
 // --- Cas A : candidat unique nom+année — cause exacte du bug Grandame/Teldame, désormais proposé ---
 $proposal_a = gwseq_ifce_resolve_parent_proposal('mother', $teldame_branch, 0, 2016);
-gws_test_assert($proposal_a['default_mode'] === 'external', 'Cas A : le mode par défaut reste "external" (§11-12 : jamais un rattachement automatique, même avec un candidat unique)');
+gws_test_assert($proposal_a['default_mode'] === 'gws', 'Cas A (ajusté après recette réelle) : le mode par défaut devient "gws" pour un candidat unique et fiable — présélectionné, jamais écrit avant le clic sur "Valider l\'import"');
 gws_test_assert($proposal_a['preselected_horse_id'] === 810, 'Cas A : le candidat unique (Teldame) est bien pré-sélectionné, visible avant validation (§12)');
 gws_test_assert($proposal_a['note'] === 'unique_match', 'Cas A : le code de note est bien "unique_match"');
 
@@ -857,6 +868,25 @@ $grandame_parsed = array(
 // côté serveur, seule la PROPOSITION est automatique.
 $grandame_proposal = gwseq_ifce_resolve_parent_proposal('mother', $grandame_parsed['pedigree']['mother'], 0, 2016);
 gws_test_assert($grandame_proposal['preselected_horse_id'] === 820, 'Régression Grandame/Teldame : le candidat proposé pour la Mère est bien la fiche GWS existante de Teldame');
+gws_test_assert($grandame_proposal['default_mode'] === 'gws', 'Régression Grandame/Teldame : le mode par défaut est bien "gws" (corrigé après recette réelle — un clic direct sur "Valider l\'import" ne doit plus créer un ascendant externe)');
+
+// --- Test portant RÉELLEMENT sur le radio présélectionné dans la preview rendue, pas uniquement
+// sur le résultat interne du resolver (exigence explicite après recette réelle) ---
+ob_start();
+gwseq_render_ifce_preview_parent_choice('mother', $grandame_parsed['pedigree']['mother'], 'Mère', 'gwseq_ifce_mere_mode', 'gwseq_ifce_mere_gws_id', 2016, 0);
+$grandame_mother_choice_html = ob_get_clean();
+gws_test_assert(
+  strpos($grandame_mother_choice_html, 'name="gwseq_ifce_mere_mode" value="gws" checked') !== false,
+  'Preview réelle (radio rendu) : le choix "Lier à un cheval déjà enregistré" est bien COCHÉ par défaut pour la Mère (Cas A, candidat unique Teldame)'
+);
+gws_test_assert(
+  strpos($grandame_mother_choice_html, 'name="gwseq_ifce_mere_mode" value="external" >') !== false || strpos($grandame_mother_choice_html, 'name="gwseq_ifce_mere_mode" value="external">') !== false,
+  'Preview réelle : le choix "Importer comme ascendant externe" n’est PLUS coché par défaut pour ce cas'
+);
+gws_test_assert(
+  preg_match('/<option value="' . 820 . '" selected/', $grandame_mother_choice_html) === 1,
+  'Preview réelle : le sélecteur de cheval GWS a bien TELDAME (820) présélectionnée comme option'
+);
 
 $grandame_id = wp_insert_post(array('post_type' => GWSEQ_CPT_CHEVAL, 'post_status' => 'draft', 'post_title' => 'GRANDAME D’AUBIGNY'), true);
 gwseq_ifce_map_import($grandame_id, $grandame_parsed, array('identity' => true, 'indices' => true, 'pedigree' => true), array(
@@ -966,6 +996,197 @@ $parsed_first_sire['identity']['nom'] = 'Cheval Sans SIRE Encore';
 $parsed_first_sire['identity']['sire'] = '12345678A';
 gwseq_ifce_map_import(841, $parsed_first_sire, array('identity' => true));
 gws_test_assert(gwseq_get_cheval_identity(841)['sire'] === '12345678A', 'SIRE : une première détection (aucune valeur préexistante) est bien enregistrée normalement');
+
+// =====================================================================================
+// 18. Correctif recette réelle — Production : lien fantôme GOLDAME supprimée -> TELDAME
+// =====================================================================================
+
+gws_test_make_post(850, GWSEQ_CPT_CHEVAL, 'TELDAME PHANTOM LINK');
+gwseq_set_cheval_identity(850, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+gws_test_make_post(851, GWSEQ_CPT_CHEVAL, "GOLDAME D'AUBIGNY PHANTOM");
+gwseq_set_cheval_identity(851, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+gwseq_set_cheval_production_externe(850, array(array(
+  'annee' => 2016, 'nom' => "GOLDAME D'AUBIGNY PHANTOM", 'pere' => 'UN PERE',
+  'iso' => array('valeur' => 120, 'cd' => 0.6, 'annee' => 2022), 'icc' => array(), 'idr' => array(),
+  'cheval_gws_id' => 851,
+)));
+
+// --- Produit GWS lié valide : lien généré normalement ---
+$production_valid = gwseq_get_horse_direct_production(850);
+gws_test_assert($production_valid[0]['cheval_gws_id'] === 851, 'Production : produit GWS lié valide -> cheval_gws_id conservé');
+ob_start();
+gwseq_render_cheval_production_box((object) array('ID' => 850));
+$production_html_valid = ob_get_clean();
+gws_test_assert(strpos($production_html_valid, 'action=edit') !== false, 'Production (rendu) : un produit GWS lié valide produit bien un lien d’édition');
+
+// --- Produit GWS à la corbeille : le lien reste généré (logique trash déjà prévue, respectée) ---
+$GLOBALS['__gwseq_test_posts'][851]['post_status'] = 'trash';
+$production_trash = gwseq_get_horse_direct_production(850);
+gws_test_assert($production_trash[0]['cheval_gws_id'] === 851, 'Production : produit GWS à la corbeille -> reste considéré comme lié (post toujours réel)');
+$GLOBALS['__gwseq_test_posts'][851]['post_status'] = 'publish'; // restauration pour la suite
+
+// --- Défense en profondeur (2e couche, garde de LECTURE) : même SANS que le nettoyage
+// before_delete_post n'ait été appelé, un cheval_gws_id qui ne résout plus vers aucune fiche
+// réelle n'est jamais traité comme lié. Simulé sur une fixture DISTINCTE (854/855) pour isoler
+// cette vérification de celle du nettoyage effectif ci-dessous. ---
+gws_test_make_post(854, GWSEQ_CPT_CHEVAL, 'TELDAME PHANTOM LINK DEFENSE LECTURE');
+gwseq_set_cheval_identity(854, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+gws_test_make_post(855, GWSEQ_CPT_CHEVAL, 'PRODUIT SUPPRIME SANS NETTOYAGE');
+gwseq_set_cheval_production_externe(854, array(array(
+  'annee' => 2016, 'nom' => 'PRODUIT SUPPRIME SANS NETTOYAGE', 'pere' => '', 'iso' => array(), 'icc' => array(), 'idr' => array(), 'cheval_gws_id' => 855,
+)));
+unset($GLOBALS['__gwseq_test_posts'][855]); // suppression définitive simulée SANS appeler le nettoyage avant
+$production_no_cleanup = gwseq_get_horse_direct_production(854);
+gws_test_assert($production_no_cleanup[0]['cheval_gws_id'] === 0, 'Garde de lecture (2e couche) : un cheval_gws_id qui ne résout plus vers aucune fiche réelle n’est jamais traité comme lié, même SANS nettoyage préalable en base');
+gws_test_assert($production_no_cleanup[0]['cheval_gws_id'] !== 854, 'Aucun fallback vers la jument courante (854) : la neutralisation retombe sur 0, jamais sur l’ID de la fiche en cours de lecture');
+gws_test_assert($production_no_cleanup[0]['nom'] === 'PRODUIT SUPPRIME SANS NETTOYAGE', 'Les données IFCE de la ligne (nom) sont bien préservées après disparition de la cible, même sans nettoyage');
+ob_start();
+gwseq_render_cheval_production_box((object) array('ID' => 854));
+$production_html_no_cleanup = ob_get_clean();
+gws_test_assert(strpos($production_html_no_cleanup, '<a ') === false, 'Production (rendu) : plus aucun lien cliquable — jamais un href vide qui pointerait silencieusement sur la page courante (le bug exact constaté en recette)');
+gws_test_assert(strpos($production_html_no_cleanup, esc_html('PRODUIT SUPPRIME SANS NETTOYAGE')) !== false, 'Production (rendu) : la ligne reste visible en texte non cliquable ("2016 — nom du produit")');
+
+// --- Nettoyage effectif en base (before_delete_post) : DÉCLENCHÉ AU BON MOMENT, c'est-à-dire
+// PENDANT que le post référencé existe encore (avant_delete_post se déclenche AVANT la suppression
+// réelle de la ligne, jamais après — timing WordPress natif, reproduit ici fidèlement) ---
+$goldame_snapshot_before_delete = gwseq_get_cheval_production_externe_raw(850)[0];
+gwseq_cleanup_production_links_on_delete(851); // 851 (Goldame) existe ENCORE à cet instant, comme en conditions réelles
+unset($GLOBALS['__gwseq_test_posts'][851]); // la suppression réelle du post se produit ENSUITE
+$goldame_snapshot_after_cleanup = gwseq_get_cheval_production_externe_raw(850)[0];
+gws_test_assert($goldame_snapshot_after_cleanup['cheval_gws_id'] === 0, 'Nettoyage (before_delete_post) : cheval_gws_id bien remis à 0 EN BASE, pas seulement neutralisé à la lecture');
+gws_test_assert(
+  $goldame_snapshot_after_cleanup['nom'] === $goldame_snapshot_before_delete['nom']
+  && $goldame_snapshot_after_cleanup['annee'] === $goldame_snapshot_before_delete['annee']
+  && $goldame_snapshot_after_cleanup['pere'] === $goldame_snapshot_before_delete['pere'],
+  'Nettoyage : nom/année/père de la ligne de Production restent identiques — seul cheval_gws_id est modifié'
+);
+
+$production_after_hard_delete = gwseq_get_horse_direct_production(850);
+ob_start();
+gwseq_render_cheval_production_box((object) array('ID' => 850));
+$production_html_after_delete = ob_get_clean();
+gws_test_assert($production_after_hard_delete[0]['cheval_gws_id'] === 0, 'Après suppression définitive et nettoyage : la ligne redevient un produit externe non lié');
+gws_test_assert(strpos($production_html_after_delete, '<a ') === false, 'Production (rendu) après nettoyage : plus aucun lien cliquable');
+gws_test_assert(strpos($production_html_after_delete, esc_html("GOLDAME D'AUBIGNY PHANTOM")) !== false, 'Production (rendu) après nettoyage : la ligne reste visible en texte non cliquable, comme demandé ("2016 — GOLDAME D\'AUBIGNY")');
+
+// --- Nouveau rapprochement ultérieur possible : une NOUVELLE fiche GWS portant le même nom+année
+// peut de nouveau être proposée (certain/probable), rien n'est verrouillé par l'ancien lien mort ---
+gws_test_make_post(852, GWSEQ_CPT_CHEVAL, "GOLDAME D'AUBIGNY PHANTOM");
+gwseq_set_cheval_identity(852, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016));
+gws_test_assert(
+  gwseq_ifce_find_probable_production_match("GOLDAME D'AUBIGNY PHANTOM", 2016) === 852,
+  'Réimport après disparition : un nouveau rapprochement PROBABLE reste possible vers une nouvelle fiche GWS correspondante, l’ancien lien mort ne bloque rien'
+);
+
+// --- Produit externe jamais lié (cas de base, non affecté) : aucune régression ---
+gws_test_make_post(853, GWSEQ_CPT_CHEVAL, 'TELDAME PHANTOM LINK 2');
+gwseq_set_cheval_identity(853, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+gwseq_set_cheval_production_externe(853, array(array('annee' => 2018, 'nom' => 'PRODUIT JAMAIS LIE', 'pere' => '', 'iso' => array(), 'icc' => array(), 'idr' => array(), 'cheval_gws_id' => 0)));
+$production_never_linked = gwseq_get_horse_direct_production(853);
+gws_test_assert($production_never_linked[0]['source'] === 'ifce' && $production_never_linked[0]['cheval_gws_id'] === 0, 'Produit externe jamais lié : comportement de base inchangé');
+
+// =====================================================================================
+// 19. Correctif recette réelle — verrou d'identité du réimport (gwseq_ifce_validate_reimport_identity)
+// =====================================================================================
+
+gws_test_make_post(860, GWSEQ_CPT_CHEVAL, 'CORNET OBOLENSKY LOCK'); // alias GWS
+gwseq_set_cheval_identity(860, array('_gwseq_sexe' => 'male', '_gwseq_annee_naissance' => 2005));
+gwseq_set_cheval_ifce_id(860, 'Me1Q_SYWTCa6femD__2NEg');
+update_post_meta(860, '_gwseq_ifce_nom_officiel', 'WINDOWS VH COSTERSVELD LOCK'); // nom officiel distinct de l'alias GWS
+
+function gws_test_parsed_identity($nom, $nom_officiel, $annee) {
+  return array('nom' => $nom, 'nom_officiel' => $nom_officiel, 'annee_naissance' => $annee);
+}
+
+// --- A : même ID + même nom officiel + même année -> autorisé ---
+$val_a = gwseq_ifce_validate_reimport_identity(860, gws_test_parsed_identity('WINDOWS VH COSTERSVELD LOCK', 'WINDOWS VH COSTERSVELD LOCK', 2005), 'Me1Q_SYWTCa6femD__2NEg');
+gws_test_assert($val_a['ok'] === true, 'Verrou réimport, Cas A : même ID + même nom officiel + même année -> autorisé');
+
+// --- B : ID différent -> BLOCAGE DUR, quelles que soient les autres données ---
+$val_b = gwseq_ifce_validate_reimport_identity(860, gws_test_parsed_identity('WINDOWS VH COSTERSVELD LOCK', 'WINDOWS VH COSTERSVELD LOCK', 2005), 'UN_AUTRE_ID_XXXXXXXXXX');
+gws_test_assert($val_b['ok'] === false && $val_b['reason'] === 'id_mismatch', 'Verrou réimport, Cas B : ID différent -> BLOQUÉ (id_mismatch), aucune autre vérification ne compte');
+
+// --- C : même ID mais nom officiel contradictoire -> BLOQUÉ (défense §7) ---
+$val_c = gwseq_ifce_validate_reimport_identity(860, gws_test_parsed_identity('AUTRE NOM', 'UN NOM OFFICIEL TOTALEMENT DIFFERENT', 2005), 'Me1Q_SYWTCa6femD__2NEg');
+gws_test_assert($val_c['ok'] === false && $val_c['reason'] === 'id_match_name_mismatch', 'Verrou réimport, Cas C : même ID mais nom officiel contradictoire -> BLOQUÉ');
+
+// --- D : même ID mais année contradictoire -> BLOQUÉ (défense §7) ---
+$val_d = gwseq_ifce_validate_reimport_identity(860, gws_test_parsed_identity('WINDOWS VH COSTERSVELD LOCK', 'WINDOWS VH COSTERSVELD LOCK', 1999), 'Me1Q_SYWTCa6femD__2NEg');
+gws_test_assert($val_d['ok'] === false && $val_d['reason'] === 'id_match_year_mismatch', 'Verrou réimport, Cas D : même ID mais année contradictoire -> BLOQUÉ');
+
+// --- Alias (§8) : le nom d'usage/alias GWS ("CORNET OBOLENSKY LOCK") n'intervient JAMAIS dans la
+// comparaison — seul le nom officiel IFCE compte, des deux côtés ---
+$val_alias = gwseq_ifce_validate_reimport_identity(860, gws_test_parsed_identity('CORNET OBOLENSKY LOCK', 'WINDOWS VH COSTERSVELD LOCK', 2005), 'Me1Q_SYWTCa6femD__2NEg');
+gws_test_assert($val_alias['ok'] === true, 'Verrou réimport (alias, §8) : le nom d’usage GWS diffère du nom officiel mais n’est jamais comparé -> autorisé sur la base du seul nom officiel IFCE');
+
+// --- E : legacy — aucun ID enregistré, nom officiel (à défaut, titre GWS) + année concordants -> autorisé ---
+gws_test_make_post(861, GWSEQ_CPT_CHEVAL, 'LEGACY SANS ID');
+gwseq_set_cheval_identity(861, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2010));
+$val_legacy_ok = gwseq_ifce_validate_reimport_identity(861, gws_test_parsed_identity('LEGACY SANS ID', '', 2010), 'NOUVEL_ID_JAMAIS_VU_XXXXX');
+gws_test_assert($val_legacy_ok['ok'] === true, 'Verrou réimport, Cas E (legacy) : aucun ID enregistré, nom (titre GWS à défaut de nom officiel) + année concordants -> autorisé');
+
+// --- Legacy : nom différent -> BLOQUÉ ---
+$val_legacy_name_ko = gwseq_ifce_validate_reimport_identity(861, gws_test_parsed_identity('UN AUTRE CHEVAL', '', 2010), 'ID_XXXXXXXXXXXXXXXXXXXX');
+gws_test_assert($val_legacy_name_ko['ok'] === false && $val_legacy_name_ko['reason'] === 'legacy_name_mismatch', 'Verrou réimport, Cas E (legacy) : nom différent -> BLOQUÉ');
+
+// --- Legacy : même nom mais année différente -> BLOQUÉ ---
+$val_legacy_year_ko = gwseq_ifce_validate_reimport_identity(861, gws_test_parsed_identity('LEGACY SANS ID', '', 1999), 'ID_XXXXXXXXXXXXXXXXXXXX');
+gws_test_assert($val_legacy_year_ko['ok'] === false && $val_legacy_year_ko['reason'] === 'legacy_year_mismatch', 'Verrou réimport, Cas E (legacy) : même nom mais année différente -> BLOQUÉ');
+
+// --- Legacy : année absente d'un côté -> BLOQUÉ (§10 : l'année est OBLIGATOIRE pour un legacy, jamais deviné) ---
+$val_legacy_no_year = gwseq_ifce_validate_reimport_identity(861, gws_test_parsed_identity('LEGACY SANS ID', '', ''), 'ID_XXXXXXXXXXXXXXXXXXXX');
+gws_test_assert($val_legacy_no_year['ok'] === false && $val_legacy_no_year['reason'] === 'legacy_year_missing', 'Verrou réimport, Cas E (legacy) : année absente dans le PDF -> BLOQUÉ, jamais deviné');
+
+gws_test_make_post(862, GWSEQ_CPT_CHEVAL, 'LEGACY SANS ANNEE GWS');
+gwseq_set_cheval_identity(862, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => '')); // année elle-même jamais renseignée côté GWS
+$val_legacy_no_year_gws = gwseq_ifce_validate_reimport_identity(862, gws_test_parsed_identity('LEGACY SANS ANNEE GWS', '', 2010), 'ID_XXXXXXXXXXXXXXXXXXXX');
+gws_test_assert($val_legacy_no_year_gws['ok'] === false && $val_legacy_no_year_gws['reason'] === 'legacy_year_missing', 'Verrou réimport, Cas E (legacy) : année absente côté fiche GWS -> BLOQUÉ également');
+
+// =====================================================================================
+// 20. Verrou d'identité — câblage bout en bout (upload + confirmation), aucune écriture sur échec
+// =====================================================================================
+
+gws_test_make_post(870, GWSEQ_CPT_CHEVAL, 'GRANDAME LOCK CIBLE');
+gwseq_set_cheval_identity(870, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2016, '_gwseq_sire' => 'SIRE_INITIAL'));
+$identity_before_wrong_upload = gwseq_get_cheval_identity(870);
+$meta_before_wrong_upload = $GLOBALS['__gwseq_test_meta'][870];
+
+// --- Upload du PDF réel de TELDAME (autre cheval, autre identité) pour "réimporter" 870 : doit
+// être bloqué AVANT même la création du transient de prévisualisation ---
+$wrong_tmp = sys_get_temp_dir() . '/gwseq-wrong-cheval-reimport-test.pdf';
+copy($teldame_pdf_path, $wrong_tmp);
+$wrong_upload = gwseq_process_ifce_import_upload($wrong_tmp, 870);
+gws_test_assert(!file_exists($wrong_tmp), 'Verrou réimport (upload) : le fichier temporaire est bien supprimé même en cas de blocage');
+gws_test_assert($wrong_upload['notice'] !== null && strpos($wrong_upload['notice'], 'ne correspond pas') !== false, 'Verrou réimport (upload) : message explicite renvoyé, import bloqué avant la preview');
+gws_test_assert(strpos($wrong_upload['redirect'], 'gwseq_token') === false, 'Verrou réimport (upload) : AUCUN jeton de prévisualisation créé -- l’écran de preview n’est jamais atteint');
+gws_test_assert($GLOBALS['__gwseq_test_meta'][870] === $meta_before_wrong_upload, 'Verrou réimport (upload) : STRICTEMENT AUCUNE meta modifiée sur la fiche cible (identité, SIRE compris)');
+
+// --- Résistance côté serveur entre preview et confirmation (§12) : même si un transient VALIDE
+// existe déjà (upload légitime), un changement d'identité de la fiche cible ENTRE upload et
+// confirmation doit être détecté et bloquer la confirmation elle-même ---
+gws_test_make_post(871, GWSEQ_CPT_CHEVAL, 'TELDAME DE LA NUTRIA'); // nom correspondant au vrai PDF
+gwseq_set_cheval_identity(871, array('_gwseq_sexe' => 'female', '_gwseq_annee_naissance' => 2007));
+$legit_tmp = sys_get_temp_dir() . '/gwseq-legit-reimport-test.pdf';
+copy($teldame_pdf_path, $legit_tmp);
+$legit_upload = gwseq_process_ifce_import_upload($legit_tmp, 871);
+preg_match('/gwseq_token=([a-zA-Z0-9]+)/', $legit_upload['redirect'], $tm_legit);
+gws_test_assert(!empty($tm_legit[1]), 'Verrou réimport : un import légitime (identité concordante) atteint bien la preview normalement');
+
+// L'identité de la fiche 871 change ENTRE l'upload et la confirmation (ex. corrigée manuellement,
+// ou un ID IFCE verrouillé sur un AUTRE cheval entre-temps) :
+gwseq_set_cheval_ifce_id(871, 'ID_VERROUILLE_ENTRE_TEMPS_XX');
+$meta_before_confirm_after_tamper = $GLOBALS['__gwseq_test_meta'][871];
+$confirm_after_tamper = gwseq_process_ifce_import_confirm($tm_legit[1], array('identity' => true, 'pedigree' => true));
+gws_test_assert($confirm_after_tamper['notice'] !== null, 'Résistance preview -> confirmation (§12) : un changement d’identité de la cible entre upload et confirmation bloque bien la confirmation');
+gws_test_assert($GLOBALS['__gwseq_test_meta'][871] === $meta_before_confirm_after_tamper, 'Résistance preview -> confirmation : AUCUNE meta modifiée par une confirmation bloquée a posteriori');
+
+// --- Import INITIAL (§13) : le verrou ne s'applique JAMAIS ($reimport_cheval_id = 0), workflow
+// inchangé -- déjà couvert par l'ensemble des tests d'import initial de ce fichier et de
+// gws-equestrian-ifce-import-test.php ; vérification déclarative explicite ici ---
+$initial_tmp = sys_get_temp_dir() . '/gwseq-initial-import-lock-test.pdf';
+copy($teldame_pdf_path, $initial_tmp);
+$initial_upload = gwseq_process_ifce_import_upload($initial_tmp, 0);
+gws_test_assert($initial_upload['notice'] === null, 'Verrou réimport (§13) : un import INITIAL (aucun reimport_cheval_id) n’est jamais soumis au verrou d’identité');
 
 // =====================================================================================
 // i18n

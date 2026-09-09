@@ -5,6 +5,54 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.45.1 — Correctif de recette réelle : radio présélectionné, lien fantôme Production, verrou de réimport
+
+Trois correctifs à la suite d'une recette réelle sur GRANDAME D'AUBIGNY, sans nouveau périmètre
+fonctionnel.
+
+**1. Le mauvais radio restait présélectionné (Cas A).** La recette a confirmé que le nouveau
+resolver (0.45.0) trouvait bien le candidat unique (TELDAME DE LA NUTRIA), mais le radio "Importer
+comme ascendant externe" restait coché par défaut — un clic direct sur "Valider l'import" créait
+donc quand même un ascendant externe dupliqué. `gwseq_ifce_resolve_parent_proposal()` présélectionne
+désormais « Lier à un cheval déjà enregistré » (avec le bon cheval déjà choisi dans le sélecteur)
+pour ce cas précis — l'utilisateur voit toujours cette décision avant de cliquer "Valider l'import",
+aucune écriture n'a lieu avant ce clic. Nouveau test portant sur le HTML réellement rendu (pas
+seulement le résultat interne du resolver).
+
+**2. Lien fantôme dans Production : un produit supprimé définitivement pointait vers la jument
+elle-même.** Cause exacte : `get_edit_post_link()` sur un `cheval_gws_id` ne correspondant plus à
+aucun post retourne `''` (WordPress core) ; un `href=""` est résolu par le navigateur comme un lien
+vers la PAGE COURANTE — donc, en pratique, vers la jument en cours d'édition. Corrigé sur trois
+couches indépendantes : (a) `gwseq_get_horse_direct_production()` neutralise désormais un
+`cheval_gws_id` qui ne résout plus vers une vraie fiche `gwseq_cheval` (garde de lecture) ; (b)
+nouveau `gwseq_cleanup_production_links_on_delete()`, hooké sur `before_delete_post` (même principe
+que `gwseq_cleanup_horse_parent_references_on_delete()`, cheval-pedigree.php) — remet `cheval_gws_id`
+à 0 EN BASE pour toute jument concernée, sans jamais toucher aux données IFCE de la ligne
+(nom/année/père/indices), afin qu'un futur réimport ne perpétue pas indéfiniment l'ancien
+identifiant mort ; (c) garde défensive supplémentaire dans le rendu, qui n'émet un lien que si
+`get_edit_post_link()` renvoie réellement une URL. Un produit à la CORBEILLE reste correctement
+considéré comme lié (post toujours réel) — logique de corbeille déjà en place, non touchée. Un
+nouveau rapprochement reste possible ultérieurement vers une nouvelle fiche GWS correspondante.
+
+**3. Nouveau verrou de sécurité du réimport.** Le lien « Réimporter depuis un nouveau PDF IFCE »
+d'une fiche pouvait accepter, sans aucun contrôle, le PDF de synthèse d'un tout autre cheval —
+transformant silencieusement la fiche courante avec les données d'un autre animal. Nouvelle fonction
+pure `gwseq_ifce_validate_reimport_identity()`
+(`includes/ifce-import-admin.php`) : si la fiche possède déjà un `_gwseq_ifce_id` (0.45.0), celui-ci
+fait foi — différent -> BLOCAGE DUR immédiat (aucun bouton pour forcer le remplacement), identique ->
+défense supplémentaire nom officiel + année (contre un fichier mal nommé/une corruption/un bug de
+parser). Pour une fiche legacy (importée avant 0.45.0, sans ID enregistré) : nom officiel ET année
+de naissance doivent OBLIGATOIREMENT concorder (une année absente d'un côté ou de l'autre bloque,
+jamais deviné) — si autorisé, l'ID du PDF est alors adopté comme verrou pour les prochains réimports
+(mécanisme déjà existant depuis 0.45.0, réutilisé sans modification). Le nom de référence utilise
+PRIORITAIREMENT `_gwseq_ifce_nom_officiel` (déjà existant) plutôt que le titre GWS, qui peut être un
+alias commercial (ex. CORNET OBOLENSKY / nom officiel WINDOWS VH COSTERSVELD). Contrôlé à DEUX
+points indépendants : à l'upload (avant même la création du transient de prévisualisation — la
+preview n'est jamais atteinte en cas de blocage) ET à la confirmation (re-vérifié depuis l'état ACTUEL
+de la fiche cible, jamais mis en cache depuis l'upload — protège contre un changement d'identité de
+la cible pendant la fenêtre de 15 minutes du transient). Ne s'applique jamais à un import INITIAL.
+Aucune meta n'est jamais modifiée en cas de blocage, à aucun des deux points de contrôle.
+
 ## 0.45.0 — Lot IFCE : clôture du POC, identité IFCE, correction du rapprochement pedigree
 
 **POC technique InfoChevaux — NO-GO confirmé, piste abandonnée pour la V1.** Exécuté depuis un

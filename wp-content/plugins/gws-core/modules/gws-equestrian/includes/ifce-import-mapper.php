@@ -71,16 +71,21 @@ if (!defined('ABSPATH')) exit;
  * compare JAMAIS par nom : l'identifiant déjà stocké fait foi, même si le nom actuellement détecté
  * par l'IFCE diffère — la relation GWS déjà validée reste l'autorité.
  *
- * CAS A (candidat unique, §12) : évalué SEULEMENT si aucune relation GWS n'est déjà active pour ce
- * rôle. Le résultat de gwseq_ifce_find_unique_horse_match_by_name_year() est en outre filtré par les
- * MÊMES règles métier que la saisie manuelle (gwseq_ifce_preview_parent_candidate_rejection_reason(),
- * cheval-pedigree.php — jamais dupliquées) : un homonyme incompatible en sexe/année n'est jamais
- * proposé. Le MODE PAR DÉFAUT reste volontairement 'external' (§11 : pas de patch "si nom == X alors
- * rattacher", §12 : "ne jamais choisir arbitrairement") — seul le candidat est PRÉ-SÉLECTIONNÉ dans
- * le sélecteur pour rendre la confirmation explicite un simple clic, jamais une case cochée ou un
- * mode déjà actif sans action volontaire de l'utilisateur — même philosophie de confirmation
- * explicite que le rapprochement PROBABLE de Production (§13 : "réutilise le resolver déjà
- * développé pour la Production").
+ * CAS A (candidat unique, §12, AJUSTÉ après recette réelle) : évalué SEULEMENT si aucune relation
+ * GWS n'est déjà active pour ce rôle. Le résultat de gwseq_ifce_find_unique_horse_match_by_name_year()
+ * est en outre filtré par les MÊMES règles métier que la saisie manuelle
+ * (gwseq_ifce_preview_parent_candidate_rejection_reason(), cheval-pedigree.php — jamais dupliquées) :
+ * un homonyme incompatible en sexe/année n'est jamais proposé. Le MODE PAR DÉFAUT devient désormais
+ * 'gws' (recette réelle Grandame/Teldame : un candidat unique et fiable doit arriver PRÉ-SÉLECTIONNÉ
+ * sur « Lier à un cheval déjà enregistré », le candidat déjà choisi dans le sélecteur — l'utilisateur
+ * voit cette décision dans la preview et la confirme en cliquant « Valider l'import », qui reste
+ * l'unique geste de confirmation ; AUCUNE écriture n'a lieu avant ce clic, le resolver ne fait que
+ * proposer). Ce comportement diffère intentionnellement de la version précédente de ce fichier (qui
+ * ne présélectionnait que le sélecteur, radio restée sur 'external') : la recette a montré qu'un
+ * clic direct sur "Valider l'import" sans autre action laissait alors créer un ascendant externe
+ * dupliqué malgré un candidat certain — corrigé ici. Reste néanmoins sans AUCUN effet tant que
+ * l'utilisateur n'a pas validé le formulaire : les Cas B/C ci-dessous, eux, ne présélectionnent
+ * jamais rien.
  *
  * CAS B (ambigu, plusieurs candidats) / CAS C (aucun candidat) : `preselected_horse_id` reste 0,
  * comportement déjà existant et strictement inchangé (radio 'external' par défaut, sélecteur vide).
@@ -101,7 +106,7 @@ function gwseq_ifce_resolve_parent_proposal($role, $branch, $reimport_cheval_id,
   $match_id = gwseq_ifce_find_unique_horse_match_by_name_year($nom, $annee, $exclude_ids);
 
   if ($match_id && gwseq_ifce_preview_parent_candidate_rejection_reason($role, $match_id, $child_annee_naissance) === '') {
-    return array('default_mode' => 'external', 'preselected_horse_id' => $match_id, 'note' => 'unique_match');
+    return array('default_mode' => 'gws', 'preselected_horse_id' => $match_id, 'note' => 'unique_match');
   }
 
   return array('default_mode' => 'external', 'preselected_horse_id' => 0, 'note' => '');

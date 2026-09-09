@@ -1654,10 +1654,14 @@ DUPLICATION le resolver générique nom+année déjà développé pour la Produc
 `gwseq_ifce_find_unique_horse_match_by_name_year()`, `gwseq_ifce_find_probable_production_match()`
 devenant un simple alias (un seul resolver, jamais deux implémentations parallèles) — et les mêmes
 règles de rejet sexe/année que la saisie manuelle du pedigree, jamais dupliquées :
-- **Cas A** (candidat unique) : proposé (pré-sélectionné dans le sélecteur), mode par défaut
-  « external » inchangé — jamais un rattachement automatique, confirmation explicite requise.
+- **Cas A** (candidat unique et fiable) : présélectionné sur « Lier à un cheval déjà enregistré »
+  (candidat déjà choisi dans le sélecteur) — corrigé en 0.45.1 après recette réelle (Grandame
+  d'Aubigny/Teldame de la Nutria) : la version 0.45.0 ne présélectionnait que le sélecteur, en
+  laissant le radio sur « external », ce qui créait quand même un ascendant externe dupliqué en cas
+  de clic direct sur « Valider l'import ». L'utilisateur voit toujours cette décision avant de
+  valider ; aucune écriture n'a lieu avant ce clic.
 - **Cas B** (ambigu ou homonyme d'année différente) / **Cas C** (aucun candidat) : comportement
-  historique strictement inchangé.
+  historique strictement inchangé, jamais de présélection.
 - **Cas D** (parent déjà lié, réimport) : **prioritaire sur tout le reste**, condition d'idempotence
   — le mode par défaut devient « gws » avec la relation déjà active pré-sélectionnée, jamais recalculée
   par nom. Sans cette règle, un simple réimport sans y toucher aurait silencieusement rétrogradé une
@@ -1665,6 +1669,25 @@ règles de rejet sexe/année que la saisie manuelle du pedigree, jamais dupliqu�
   au même endroit). Défense en profondeur supplémentaire dans
   `gwseq_sanitize_ifce_preview_parent_choice()` : si le champ radio était totalement absent de la
   soumission ET qu'une relation GWS est déjà active, le repli n'est plus jamais « external ».
+
+**Verrou d'identité du réimport (0.45.1)** — `gwseq_ifce_validate_reimport_identity()`
+(`includes/ifce-import-admin.php`) : empêche qu'un PDF IFCE d'un AUTRE cheval soit utilisé pour
+réimporter la fiche courante. Fiche avec `_gwseq_ifce_id` déjà enregistré : celui-ci fait foi (ID
+différent -> blocage dur, sans bouton pour forcer ; ID identique -> défense supplémentaire nom
+officiel + année). Fiche legacy (sans ID, importée avant 0.45.0) : nom officiel (priorité à
+`_gwseq_ifce_nom_officiel`, jamais l'alias/titre GWS seul) ET année de naissance doivent concorder
+— une année absente bloque, jamais deviné ; si autorisé, l'ID est adopté pour verrouiller les
+prochains réimports. Contrôlé à l'upload (avant la création de la preview) ET à la confirmation
+(état actuel de la fiche, contre un changement pendant la fenêtre du transient) — aucune meta n'est
+jamais modifiée en cas de blocage. Ne concerne jamais un import initial.
+
+**Lien fantôme dans Production, corrigé (0.45.1)** — un produit rattaché puis supprimé
+définitivement pouvait produire un lien pointant, dans le navigateur, sur la jument elle-même
+(`get_edit_post_link()` sur un ID mort renvoie `''`, résolu comme la page courante). Trois couches
+indépendantes : garde de lecture dans `gwseq_get_horse_direct_production()`, nettoyage effectif en
+base via `gwseq_cleanup_production_links_on_delete()` (hooké `before_delete_post`, même principe que
+`gwseq_cleanup_horse_parent_references_on_delete()`), garde défensive dans le rendu. Les données
+IFCE de la ligne restent toujours intactes ; un nouveau rapprochement reste possible plus tard.
 
 Cohérence confirmée avec `gwseq_ifce_production_maternity_case()` (Production → filiation, voir
 0.44.2 ci-dessous) : les deux mécanismes réutilisent désormais la même famille d'outils

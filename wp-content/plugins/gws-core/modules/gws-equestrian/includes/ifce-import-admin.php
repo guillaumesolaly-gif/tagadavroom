@@ -327,6 +327,101 @@ function gwseq_ifce_validate_uploaded_pdf($file, &$error) {
   return $tmp_name;
 }
 
+/**
+ * Verrou d'identité du RÉIMPORT (correctif recette — sécurité critique, §5-13 de la demande) :
+ * décide si un PDF IFCE nouvellement analysé PEUT être utilisé pour réimporter la fiche
+ * $reimport_cheval_id — fonction PURE, aucune écriture, aucun accès `$_POST`/HTML. Sans écran
+ * intermédiaire visible avant la preview, un utilisateur qui sélectionne PAR ERREUR le PDF d'un
+ * autre cheval sur le lien "Réimporter depuis un nouveau PDF IFCE" d'une fiche précise verrait sinon
+ * cette fiche transformée avec les données d'un autre animal — cette fonction bloque ce cas AVANT
+ * toute écriture (voir gwseq_process_ifce_import_upload() ci-dessous, appelée juste après le
+ * parsing, avant même la création du transient de prévisualisation).
+ *
+ * Ne s'applique JAMAIS à un import INITIAL (§13 : $reimport_cheval_id = 0, aucune identité GWS
+ * existante à protéger) — seul l'appelant décide de l'invoquer, cette fonction elle-même ne
+ * distingue pas ce cas, elle est simplement jamais appelée quand $reimport_cheval_id est nul.
+ *
+ * Retourne toujours `{ok: bool, reason: string}` — `reason` un code stable, jamais un texte déjà
+ * traduit (voir gwseq_ifce_reimport_identity_error_message() pour la traduction, réutilisée aux
+ * deux points de contrôle — upload ET confirmation, §12) :
+ *
+ * A/B — Fiche possédant déjà un `_gwseq_ifce_id` enregistré (gwseq_get_cheval_ifce_id(),
+ *   cheval-fields.php) : c'est l'identité opaque déjà verrouillée qui fait foi.
+ *   - Différent de l'ID du nouveau PDF -> 'id_mismatch' (BLOCAGE DUR, §6 : aucune autre
+ *     vérification n'a d'importance, jamais de bouton pour forcer le remplacement).
+ *   - Identique -> défense supplémentaire (§7, contre un fichier mal nommé/une corruption/un bug
+ *     de parser) : nom officiel + année doivent ÉGALEMENT concorder avec la fiche existante,
+ *     sinon 'id_match_name_mismatch'/'id_match_year_mismatch' (également un blocage — un ID
+ *     identique ne suffit pas seul si le reste est incohérent).
+ *
+ * E — Fiche SANS `_gwseq_ifce_id` (migration progressive des chevaux importés avant 0.45.0, §9) :
+ *   le réimport n'est autorisé QUE si nom officiel ET année de naissance concordent TOUS LES DEUX
+ *   avec la fiche existante (§10 : l'année est OBLIGATOIRE ici, jamais un nom seul) —
+ *   'legacy_year_missing' si l'année manque d'un côté ou de l'autre (jamais deviné),
+ *   'legacy_year_mismatch'/'legacy_name_mismatch' sinon. Si les deux concordent, le réimport est
+ *   autorisé ET gwseq_ifce_map_import() (déjà existant depuis 0.45.0, jamais modifié pour ce
+ *   correctif) adoptera automatiquement le nouvel ID comme verrou pour les prochains réimports —
+ *   cette fonction ne l'écrit jamais elle-même (fonction de décision pure).
+ *
+ * NOM DE RÉFÉRENCE (§8, alias commerciaux) : ni le nom détecté ni le nom existant ne sont comparés
+ * via le seul titre GWS affiché — `_gwseq_ifce_nom_officiel` (déjà existant, cheval-fields.php) est
+ * utilisé en PRIORITÉ des deux côtés quand disponible (nouveau PDF : `$parsed_identity['nom_officiel']`
+ * si renseigné, sinon `$parsed_identity['nom']` — même convention que le parseur existant, qui ne
+ * renseigne `nom_officiel` que si un alias a réellement été détecté ; fiche existante :
+ * `_gwseq_ifce_nom_officiel` si déjà enregistrée, sinon le titre GWS lui-même — cas normal d'une
+ * fiche jamais importée avec alias, où le titre EST déjà le nom officiel). La comparaison réutilise
+ * gwseq_ifce_normalize_horse_name_for_match() (includes/ifce-production-store.php, déjà développée
+ * pour le rapprochement Production/pedigree — jamais une seconde logique de normalisation).
+ */
+function gwseq_ifce_validate_reimport_identity($reimport_cheval_id, $parsed_identity, $new_ifce_id) {
+  $reimport_cheval_id = (int) $reimport_cheval_id;
+  $new_ifce_id = trim((string) $new_ifce_id);
+  $parsed_identity = is_array($parsed_identity) ? $parsed_identity : array();
+  $new_name = ($parsed_identity['nom_officiel'] ?? '') !== '' ? $parsed_identity['nom_officiel'] : ($parsed_identity['nom'] ?? '');
+  $new_year = $parsed_identity['annee_naissance'] ?? '';
+
+  $existing_ifce_id = gwseq_get_cheval_ifce_id($reimport_cheval_id);
+  $existing_nom_officiel = (string) get_post_meta($reimport_cheval_id, '_gwseq_ifce_nom_officiel', true);
+  $existing_name = $existing_nom_officiel !== '' ? $existing_nom_officiel : get_the_title($reimport_cheval_id);
+  $existing_year = gwseq_get_cheval_identity($reimport_cheval_id)['annee_naissance'];
+
+  if ($existing_ifce_id !== '') {
+    if ($new_ifce_id === '' || $new_ifce_id !== $existing_ifce_id) {
+      return array('ok' => false, 'reason' => 'id_mismatch');
+    }
+    if (gwseq_ifce_normalize_horse_name_for_match($new_name) !== gwseq_ifce_normalize_horse_name_for_match($existing_name)) {
+      return array('ok' => false, 'reason' => 'id_match_name_mismatch');
+    }
+    if ($new_year !== '' && $existing_year !== '' && (string) $new_year !== (string) $existing_year) {
+      return array('ok' => false, 'reason' => 'id_match_year_mismatch');
+    }
+    return array('ok' => true, 'reason' => '');
+  }
+
+  // Legacy (aucun ID enregistré) : nom ET année obligatoires et concordants (§9-10).
+  if ($new_year === '' || $existing_year === '') {
+    return array('ok' => false, 'reason' => 'legacy_year_missing');
+  }
+  if ((string) $new_year !== (string) $existing_year) {
+    return array('ok' => false, 'reason' => 'legacy_year_mismatch');
+  }
+  if (gwseq_ifce_normalize_horse_name_for_match($new_name) !== gwseq_ifce_normalize_horse_name_for_match($existing_name)) {
+    return array('ok' => false, 'reason' => 'legacy_name_mismatch');
+  }
+  return array('ok' => true, 'reason' => '');
+}
+
+/**
+ * Message explicite associé à un code de rejet de gwseq_ifce_validate_reimport_identity() —
+ * réutilisé aux DEUX points de contrôle (upload et confirmation, §12), jamais un texte dupliqué.
+ * Volontairement le MÊME message générique pour tous les cas de blocage (§6 : jamais de détail
+ * permettant de deviner l'identité IFCE d'un autre cheval par tâtonnement) — la distinction du code
+ * reste disponible côté serveur/logs pour un futur diagnostic, jamais affichée à l'utilisateur.
+ */
+function gwseq_ifce_reimport_identity_error_message($reason) {
+  return __('Ce PDF IFCE ne correspond pas au cheval actuellement édité. Aucune donnée n’a été modifiée.', 'gws-core');
+}
+
 /* -------------------------------------------------------------------------------------------
  * Traitement des deux étapes.
  * ----------------------------------------------------------------------------------------- */
@@ -378,6 +473,21 @@ function gwseq_process_ifce_import_upload($validated_pdf_path, $reimport_cheval_
   $parsed['ifce_id'] = gwseq_ifce_extract_id_from_pdf_filename($original_filename);
 
   $reimport_cheval_id = gwseq_sanitize_ifce_reimport_cheval_id($reimport_cheval_id);
+
+  // Verrou d'identité du réimport (correctif recette, §5/§11/§13) : contrôlé ICI, AVANT toute
+  // création de transient — donc avant que la preview elle-même ne soit jamais atteinte, et a
+  // fortiori avant toute écriture. Ne s'applique jamais à un import initial ($reimport_cheval_id
+  // nul juste au-dessus). Le fichier temporaire est déjà supprimé (voir plus haut) qu'il s'agisse
+  // d'un succès ou de cet échec — aucun résidu dans les deux cas.
+  if ($reimport_cheval_id) {
+    $identity_check = gwseq_ifce_validate_reimport_identity($reimport_cheval_id, $parsed['identity'], $parsed['ifce_id']);
+    if (!$identity_check['ok']) {
+      return array(
+        'redirect' => gwseq_ifce_import_page_url(array('gwseq_reimport_cheval_id' => $reimport_cheval_id)),
+        'notice' => gwseq_ifce_reimport_identity_error_message($identity_check['reason']),
+      );
+    }
+  }
 
   $token = wp_generate_password(32, false, false);
   gwseq_set_ifce_import_transient($token, $parsed, $reimport_cheval_id);
@@ -439,6 +549,24 @@ function gwseq_process_ifce_import_confirm($token, $sections, $parent_choices = 
   // transient, revalidée ici (gwseq_sanitize_ifce_reimport_cheval_id(), même contrôle qu'à l'upload :
   // existence réelle, type de contenu, droit d'édition de l'utilisateur courant).
   $reimport_cheval_id = gwseq_sanitize_ifce_reimport_cheval_id($data['reimport_cheval_id'] ?? 0);
+
+  // Second contrôle du verrou d'identité (correctif recette, §12) : revalidé ICI, à partir de
+  // l'état ACTUEL de la fiche (jamais mis en cache depuis l'upload — entre upload et confirmation,
+  // la fenêtre du transient dure 15 minutes, pendant laquelle la fiche cible a pu être modifiée par
+  // ailleurs). $parsed vient du transient serveur, jamais d'un champ POST/hidden resoumis par le
+  // client (voir le docblock de fichier : "un utilisateur ne peut jamais faire écrire une donnée
+  // qu'il n'a pas d'abord vue sur l'écran de prévisualisation") — mais la fiche CIBLE, elle, a pu
+  // changer depuis. Échec ici -> transient supprimé, AUCUNE écriture, exactement comme à l'upload.
+  if ($reimport_cheval_id) {
+    $identity_check = gwseq_ifce_validate_reimport_identity($reimport_cheval_id, $parsed['identity'], $parsed['ifce_id'] ?? '');
+    if (!$identity_check['ok']) {
+      gwseq_delete_ifce_import_transient($token);
+      return array(
+        'redirect' => gwseq_ifce_import_page_url(array('gwseq_reimport_cheval_id' => $reimport_cheval_id)),
+        'notice' => gwseq_ifce_reimport_identity_error_message($identity_check['reason']),
+      );
+    }
+  }
 
   if ($reimport_cheval_id) {
     $post_id = $reimport_cheval_id;
@@ -673,7 +801,7 @@ function gwseq_render_ifce_preview_parent_choice($role, $branch, $label, $mode_k
     <?php elseif ($proposal['note'] === 'unique_match') : ?>
       <p class="description"><?php echo esc_html(sprintf(
         /* translators: %s: nom de la fiche Cheval candidate, %d: année de naissance */
-        __('Candidat détecté par nom et année : %1$s (né(e) en %2$s). Sélectionnez « Lier à un cheval déjà enregistré » ci-dessous pour confirmer — jamais automatique.', 'gws-core'),
+        __('Candidat détecté par nom et année : %1$s (né(e) en %2$s) — présélectionné ci-dessous sur « Lier à un cheval déjà enregistré ». Vérifiez puis validez, ou choisissez une autre option.', 'gws-core'),
         get_the_title($preselected_id),
         gwseq_get_cheval_identity($preselected_id)['annee_naissance']
       )); ?></p>

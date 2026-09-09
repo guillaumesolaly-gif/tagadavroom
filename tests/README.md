@@ -642,7 +642,8 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   resolver générique `gwseq_ifce_find_unique_horse_match_by_name_year()` vérifié équivalent à
   l'ancien `gwseq_ifce_find_probable_production_match()` (devenu un simple alias) et exclusion
   explicite testée ; `gwseq_ifce_resolve_parent_proposal()` sur les 4 cas (A candidat unique
-  pré-sélectionné mais mode par défaut "external" inchangé ; B ambigu/homonyme d'année différente ->
+  pré-sélectionné avec mode par défaut "gws" — corrigé en 0.45.1 après recette réelle, voir plus bas ;
+  B ambigu/homonyme d'année différente ->
   aucun choix ; C aucun candidat ; D parent déjà lié -> mode "gws" par défaut, prioritaire même si le
   nom détecté diffère), normalisation apostrophe/casse réutilisée, absence d'année jamais un
   rapprochement arbitraire, protection contre un faux positif de sexe incompatible (réutilise
@@ -660,6 +661,26 @@ tous deux à des assertions basées uniquement sur du texte source ou sur les he
   SIRE/UELN au réimport dans `gwseq_ifce_map_import()` (absence de détection n'efface jamais une
   valeur existante, valeur détectée différente d'une valeur existante jamais écrasée, première
   détection enregistrée normalement).
+  **Correctif de recette réelle 0.45.1 (même fichier)** : test portant sur le HTML RÉELLEMENT
+  rendu (pas seulement le résultat interne du resolver) confirmant que le radio "Lier à un cheval
+  déjà enregistré" est bien coché par défaut avec Teldame présélectionnée pour le cas Grandame.
+  Lien fantôme Production : produit GWS lié valide (lien généré), à la corbeille (reste lié, logique
+  de corbeille respectée), supprimé définitivement SANS nettoyage préalable (garde de lecture seule
+  neutralise déjà le lien, aucun fallback vers la jument courante, données IFCE préservées, aucun
+  `<a>` dans le rendu) puis AVEC le nettoyage `gwseq_cleanup_production_links_on_delete()` déclenché
+  au bon moment (le post référencé existe encore, timing `before_delete_post` fidèlement reproduit) —
+  `cheval_gws_id` remis à 0 en base, nom/année/père inchangés, nouveau rapprochement ultérieur vérifié
+  possible vers une nouvelle fiche GWS homonyme, produit externe jamais lié non affecté. Verrou
+  d'identité de réimport `gwseq_ifce_validate_reimport_identity()` : ID existant identique + nom
+  officiel + année cohérents -> autorisé ; ID différent -> bloqué (`id_mismatch`) quelles que soient
+  les autres données ; ID identique mais nom officiel ou année contradictoire -> bloqué ; alias
+  commercial GWS jamais utilisé pour la comparaison (seul `_gwseq_ifce_nom_officiel` compte) ; legacy
+  sans ID — nom (titre GWS à défaut) + année concordants -> autorisé, nom différent ou année
+  différente ou année absente (des deux côtés testés séparément) -> bloqué ; câblage bout en bout via
+  `gwseq_process_ifce_import_upload()`/`gwseq_process_ifce_import_confirm()` : PDF d'un autre cheval
+  bloqué avant même la création du transient de prévisualisation avec strictement aucune meta
+  modifiée, résistance d'une confirmation à un changement d'identité de la cible survenu entre
+  upload et confirmation (aucune écriture), import initial jamais soumis au verrou.
 
 ## Ce qui n'est PAS couvert ici (à vérifier dans un vrai WordPress)
 

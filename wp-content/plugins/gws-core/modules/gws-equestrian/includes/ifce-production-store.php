@@ -219,6 +219,65 @@ function gwseq_set_cheval_production_externe($cheval_id, $incoming_entries) {
 }
 
 /**
+ * Nettoyage des rattachements Production pointant vers un cheval SUPPRIMÉ DÉFINITIVEMENT (correctif
+ * recette — cause exacte du "lien fantôme" : GOLDAME D'AUBIGNY, rattachée à la Production de
+ * TELDAME DE LA NUTRIA, puis supprimée définitivement ; sans ce nettoyage, `cheval_gws_id` restait
+ * l'ancien identifiant de Goldame en base — `get_edit_post_link()` (WordPress core) sur un ID qui ne
+ * correspond plus à aucun post retourne '' (post introuvable), et un `href=""` est résolu par le
+ * navigateur comme un lien vers la PAGE COURANTE — c'est-à-dire, en pratique, l'écran d'édition de
+ * Teldame elle-même : le lien "fantôme" pointait ainsi silencieusement sur la jument, jamais sur
+ * Goldame. Corrigé à la source ICI (jamais uniquement par une garde dans le rendu, voir aussi la
+ * garde de lecture de gwseq_get_horse_direct_production() ci-dessus et la garde défensive du rendu
+ * ci-dessous — les trois couches sont indépendantes et se renforcent).
+ *
+ * Même principe que gwseq_cleanup_horse_parent_references_on_delete() (cheval-pedigree.php) : hooké
+ * UNIQUEMENT sur `before_delete_post` (suppression DÉFINITIVE, `wp_delete_post()`), JAMAIS
+ * `wp_trash_post()` — un produit mis à la corbeille reste un post bien réel, son rattachement reste
+ * donc intact (logique de corbeille déjà en place, non touchée ici).
+ *
+ * Ne peut pas réutiliser `gwseq_get_horse_offspring()` (relation de FILIATION GWS, meta_query
+ * indexée) : `cheval_gws_id` vit à l'intérieur d'un JSON `_gwseq_production_externe`, jamais
+ * interrogeable par `meta_query`. D'où un parcours de toutes les juments — limité aux fiches
+ * `_gwseq_sexe = female` (seules concernées par la Production, §1), et acceptable en performance
+ * car déclenché uniquement sur un événement rare (suppression définitive d'un cheval), jamais sur un
+ * chemin de lecture fréquent.
+ *
+ * Neutralise UNIQUEMENT `cheval_gws_id` (remis à 0) pour l'entrée concernée — les données IFCE de
+ * la ligne (nom, année, père, indices) restent intactes, jamais supprimées : la ligne redevient un
+ * simple produit externe non lié (§ "conserver les données IFCE de la ligne de Production"), qu'un
+ * futur réimport pourra de nouveau proposer de rattacher si une nouvelle fiche GWS correspondante
+ * existe (gwseq_ifce_find_certain/probable_production_match(), inchangés).
+ */
+function gwseq_cleanup_production_links_on_delete($deleted_post_id) {
+  if (get_post_type($deleted_post_id) !== GWSEQ_CPT_CHEVAL) return;
+  $deleted_post_id = (int) $deleted_post_id;
+  if (!$deleted_post_id) return;
+
+  $juments = get_posts(array(
+    'post_type' => GWSEQ_CPT_CHEVAL,
+    'post_status' => array('publish', 'draft', 'pending', 'private', 'trash'),
+    'numberposts' => -1,
+    'meta_query' => array(array('key' => '_gwseq_sexe', 'value' => 'female')),
+  ));
+
+  foreach ($juments as $jument) {
+    $entries = gwseq_get_cheval_production_externe_raw($jument->ID);
+    $changed = false;
+    foreach ($entries as &$entry) {
+      if ((int) $entry['cheval_gws_id'] === $deleted_post_id) {
+        $entry['cheval_gws_id'] = 0;
+        $changed = true;
+      }
+    }
+    unset($entry);
+    if ($changed) {
+      update_post_meta($jument->ID, '_gwseq_production_externe', wp_json_encode($entries, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+  }
+}
+add_action('before_delete_post', 'gwseq_cleanup_production_links_on_delete');
+
+/**
  * Lecture avec garde de sexe (§5) : jamais de suppression de donnée, mais une Production déjà
  * enregistrée pour une fiche qui n'est PLUS une femelle (sexe corrigé après coup) redevient
  * simplement invisible tant qu'elle ne l'est pas de nouveau — jamais un état intermédiaire à
@@ -416,6 +475,15 @@ function gwseq_get_horse_direct_production($cheval_id) {
 
   foreach (gwseq_get_cheval_production_externe($cheval_id) as $entry) {
     $linked_id = (int) $entry['cheval_gws_id'];
+    // Garde de lecture (correctif recette — cause exacte du "lien fantôme" GOLDAME/TELDAME) :
+    // un `cheval_gws_id` qui ne correspond PLUS à une vraie fiche gwseq_cheval (post supprimé
+    // DÉFINITIVEMENT) n'est jamais traité comme un rattachement actif, même si la valeur stockée
+    // n'a pas encore été nettoyée (voir gwseq_cleanup_production_links_on_delete() ci-dessous,
+    // qui nettoie normalement cette valeur AU MOMENT de la suppression — cette vérification est une
+    // seconde ligne de défense, jamais la seule garantie). Un post en CORBEILLE reste un vrai post
+    // (get_post_type() y répond normalement) : le rattachement reste donc actif, conformément à la
+    // logique de corbeille déjà en place ailleurs dans ce module (pedigree, filiation).
+    if ($linked_id && get_post_type($linked_id) !== GWSEQ_CPT_CHEVAL) $linked_id = 0;
     if ($linked_id && isset($linked_gws_ids[$linked_id])) continue; // déjà représenté via la filiation GWS (1)
 
     if ($linked_id) {
@@ -525,8 +593,13 @@ function gwseq_render_cheval_production_box($post) {
       if ($summary !== '') $indices[] = strtoupper($key) . ' ' . $summary;
     }
     echo '<li>';
-    if ($entry['cheval_gws_id']) {
-      echo '<a href="' . esc_url(get_edit_post_link($entry['cheval_gws_id'])) . '">' . esc_html($label) . '</a>';
+    // Garde défensive supplémentaire (troisième couche, correctif recette) : n'émet un lien QUE si
+    // get_edit_post_link() renvoie réellement une URL — jamais un href="" (qui pointerait, dans un
+    // navigateur, sur la page courante, donc silencieusement sur la jument elle-même) pour un
+    // cheval_gws_id qui ne résoudrait plus vers rien malgré les deux gardes en amont.
+    $edit_link = $entry['cheval_gws_id'] ? get_edit_post_link($entry['cheval_gws_id']) : '';
+    if ($edit_link) {
+      echo '<a href="' . esc_url($edit_link) . '">' . esc_html($label) . '</a>';
     } else {
       echo esc_html($label);
     }
