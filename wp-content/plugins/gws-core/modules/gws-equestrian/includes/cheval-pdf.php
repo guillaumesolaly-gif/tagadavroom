@@ -1084,7 +1084,7 @@ function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extr
   // miniatures côte à côte occupent ENSEMBLE toute la largeur de la grande photo (ratio ~4:3 dérivé
   // de cette largeur). Avec UNE seule photo secondaire : jamais étirée pleine largeur ni centrée —
   // une vignette de taille raisonnable (~45-50 % de la largeur de la photo principale, ratio ~4:3),
-  // alignée à DROITE ; le blanc laissé à gauche est volontaire (effet éditorial, pas un trou).
+  // alignée à GAUCHE ; le blanc laissé à droite est volontaire (effet éditorial, pas un trou).
   // L'image est toujours rendue en `cover` (ratio conservé, recadrage centré, jamais de
   // déformation).
   $thumb_gap = 3;
@@ -1120,9 +1120,9 @@ function gwseq_etalon_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extr
   if ($draw && $photo) {
     gwseq_horse_pdf_draw_photo_box($pdf, $x, $y, $pw, $main_photo_h, $photo, false);
     if ($photos) {
-      // Une seule vignette : alignée à droite (jamais centrée, jamais pleine largeur) — voir
+      // Une seule vignette : alignée à gauche (jamais centrée, jamais pleine largeur) — voir
       // commentaire ci-dessus. Deux ou trois : côte à côte depuis la gauche, comme avant.
-      $tx = (count($photos) === 1) ? ($x + $pw - $thumb_w) : $x;
+      $tx = $x;
       $ty = $y + $main_photo_h + $thumb_gap;
       foreach ($photos as $path) {
         gwseq_horse_pdf_draw_photo_box($pdf, $tx, $ty, $thumb_w, $thumb_h, $path, true);
