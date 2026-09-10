@@ -25,6 +25,21 @@ const GWSEQ_PDF_HEADER_BANNER_H = 20;
 const GWSEQ_PDF_FOOTER_BANNER_H = 28;
 const GWSEQ_PDF_CONTENT_MARGIN = 14;
 
+/**
+ * Encre partagée par les 3 templates pour le nom du cheval et les titres de section (passe
+ * graphique globale — design system PDF, arbitrage client : "le nom du cheval et les titres
+ * doivent rester dans une encre neutre sombre ou une couleur dérivée de Ma structure, mais pas
+ * dans une couleur arbitraire commune à tous les clients"). Choix retenu : une encre NEUTRE
+ * (composantes quasi égales, aucune teinte dominante) plutôt qu'une dérivation de la couleur de
+ * marque — un nom/titre reste net et lisible quelle que soit la couleur choisie par le client,
+ * jamais soumis au même risque de pâleur qu'un accent coloré (voir gws_core_pdf_accent_color(),
+ * réservée elle aux indices/prix/étoiles/accroche). Business-agnostique et purement graphique :
+ * partagée entre les 3 jeux de fonctions dupliqués (gwseq_etalon_, gwseq_pouliniere_,
+ * gwseq_sport_vente_) au même titre que GWSEQ_PDF_HEADER_BANNER_H ci-dessus, jamais une brique de
+ * composition métier.
+ */
+const GWSEQ_PDF_INK_DISPLAY = array(26, 26, 24);
+
 /* -------------------------------------------------------------------------------------------
  * Assemblage des données — séparé du dessin (testable indépendamment de TCPDF, voir tests).
  * ----------------------------------------------------------------------------------------- */
@@ -380,14 +395,22 @@ function gwseq_etalon_text($pdf, $x, $y, $w, $text, $size = 10, $style = '', $dr
   return $h;
 }
 
-function gwseq_etalon_section($pdf, $x, $y, $w, $title, $rgb, $draw) {
-  $h = gwseq_etalon_text($pdf, $x, $y, $w, $title, 10.5, 'B', $draw, array(35, 45, 40), 'times');
-  if ($draw) {
+/**
+ * $rule (passe graphique globale — design system PDF, arbitrage client "le filet doit être réservé
+ * aux grandes ruptures de lecture ; les autres sections doivent être distinguées par la
+ * typographie et l'espacement") : faux par défaut — seul PEDIGREE (rupture structurelle évidente
+ * de la fiche, unique arbre généalogique) le passe à vrai ; toute autre section (Présentation,
+ * Conseil de croisement, Identification, Production, Résultats, Potentiel, Origines...) reste
+ * distinguée par la taille/graisse/police du titre et l'espacement seuls, jamais par un filet.
+ */
+function gwseq_etalon_section($pdf, $x, $y, $w, $title, $rgb, $draw, $rule = false) {
+  $h = gwseq_etalon_text($pdf, $x, $y, $w, $title, 10.5, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times');
+  if ($draw && $rule) {
     $pdf->SetDrawColor($rgb[0], $rgb[1], $rgb[2]);
     $pdf->SetLineWidth(0.2);
     $pdf->Line($x, $y + $h + 0.6, $x + $w, $y + $h + 0.6);
   }
-  return $h + 2;
+  return $h + ($rule ? 2.4 : 1.6);
 }
 
 function gwseq_etalon_footer($pdf, $data, $draw = true) {
@@ -446,7 +469,12 @@ function gwseq_etalon_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
   if (!$lines) return 0;
   // Passe graphique V4 : teinte à peine perceptible, aucun angle arrondi (jamais l'air d'une carte
   // d'interface), padding resserré — un point d'accroche éditorial, pas un encart.
-  $tint = gws_core_pdf_lighten_color(sprintf('#%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2]), 0.94);
+  $hex = sprintf('#%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2]);
+  $tint = gws_core_pdf_lighten_color($hex, 0.94);
+  // Étiquette "À RETENIR" en couleur de marque ACCENT-SAFE (design system PDF, §accent sur blanc) :
+  // le fond ici est presque blanc (teinte 0.94), donc le même risque de pâleur qu'un accent sur
+  // blanc pur — jamais la couleur brute telle quelle.
+  $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($hex));
   $pad = 2.6;
   $tw = $w - (2 * $pad);
   $label_h = gwseq_etalon_text($pdf, 0, 0, $tw, 'À RETENIR', 7, 'B', false);
@@ -456,7 +484,7 @@ function gwseq_etalon_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
   if ($draw) {
     $pdf->SetFillColor($tint[0], $tint[1], $tint[2]);
     $pdf->Rect($x, $y, $w, $box_h, 'F');
-    gwseq_etalon_text($pdf, $x + $pad, $y + $pad, $tw, 'À RETENIR', 7, 'B', true, $rgb);
+    gwseq_etalon_text($pdf, $x + $pad, $y + $pad, $tw, 'À RETENIR', 7, 'B', true, $accent_rgb);
     gwseq_etalon_text($pdf, $x + $pad, $y + $pad + $label_h + 1, $tw, $body, 9.5, 'I', true, array(40, 42, 38), 'times');
   }
   return $box_h;
@@ -477,7 +505,11 @@ function gwseq_etalon_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
 function gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, $draw) {
   $iy = $y;
   $gaps = 0;
-  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
+  // Indices en couleur de marque ACCENT-SAFE (design system PDF, §accent sur blanc) : la couleur
+  // brute reste l'aplat de "Ma structure" (bandeau, puces) ; en TEXTE sur fond blanc elle est
+  // assombrie si besoin pour rester lisible — voir gws_core_pdf_accent_color() (gws-core).
+  $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['primary_color']));
+  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times') + 2.5 + $extra_gap;
   $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
@@ -499,7 +531,7 @@ function gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
+  if ($indices) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $accent_rgb) + 2.2 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
   if ($qualites !== '') { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, $qualites, $compact ? 10 : 10.5, 'BI', $draw, array(70, 68, 60)) + 1.5 + $extra_gap; $gaps++; }
 
@@ -591,7 +623,7 @@ function gwseq_etalon_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) {
   }
   if (!$parents) return 0;
   $top = $y;
-  $y += gwseq_etalon_section($pdf, $x, $y, $w, 'PEDIGREE', $rgb, $draw);
+  $y += gwseq_etalon_section($pdf, $x, $y, $w, 'PEDIGREE', $rgb, $draw, true);
   // Passe graphique V4 (point 4) : le sujet (déjà nommé dans le hero juste au-dessus) ne consomme
   // plus qu'une colonne minimale, au profit des parents (hiérarchie encore plus nette) et des
   // grands-parents (parfaitement lisibles, jamais le maillon faible du pedigree).
@@ -605,10 +637,10 @@ function gwseq_etalon_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) {
     // Réduction locale modérée, puis retour à la ligne sans compression horizontale.
     $pdf->SetFont('times', 'B', $size);
     if ($pdf->GetStringWidth($name) > $widths[$col]) $size -= 0.5;
-    $nh = gwseq_etalon_text($pdf, 0, 0, $widths[$col], $name, $size, 'B', false, array(35, 45, 40), 'times');
+    $nh = gwseq_etalon_text($pdf, 0, 0, $widths[$col], $name, $size, 'B', false, GWSEQ_PDF_INK_DISPLAY, 'times');
     $bh = empty($label['breed']) ? 0 : gwseq_etalon_text($pdf, 0, 0, $widths[$col], $label['breed'], 8.5, '', false);
     if ($paint) {
-      gwseq_etalon_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2, $widths[$col], $name, $size, 'B', true, array(35, 45, 40), 'times');
+      gwseq_etalon_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2, $widths[$col], $name, $size, 'B', true, GWSEQ_PDF_INK_DISPLAY, 'times');
       if ($bh) gwseq_etalon_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2 + $nh, $widths[$col], $label['breed'], 8.5, '', true, array(90, 95, 90));
     }
     return $nh + $bh;
@@ -669,6 +701,8 @@ function gwseq_render_horse_pdf_template_etalon($pdf, $data) {
   try {
     $rgb = gws_core_pdf_hex_to_rgb($data['structure']['primary_color']);
     $ink = gws_core_pdf_hex_to_rgb($data['structure']['primary_color_contrast']);
+    // Étoiles/texte accent en couleur ACCENT-SAFE (design system PDF) — voir gwseq_etalon_hero_identity().
+    $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['primary_color']));
     $x = 14;
     $w = $pdf->getPageWidth() - 28;
     $limit = $pdf->getPageHeight() - gwseq_etalon_footer($pdf, $data, false) - 4;
@@ -814,16 +848,16 @@ function gwseq_render_horse_pdf_template_etalon($pdf, $data) {
         $line_h = gwseq_etalon_text($pdf, 0, 0, $w, 'Ag', $body_size, 'B', false);
         $cx = $x;
         if ($has_osteo) {
-          $cx += gwseq_horse_pdf_draw_star_rating($pdf, $cx, $y + ($line_h - 3.4) / 2, $data['statut_osteo'], $rgb, 3.4) + 3;
+          $cx += gwseq_horse_pdf_draw_star_rating($pdf, $cx, $y + ($line_h - 3.4) / 2, $data['statut_osteo'], $accent_rgb, 3.4) + 3;
           $pdf->SetFont('helvetica', 'B', $body_size);
-          $pdf->SetTextColor($rgb[0], $rgb[1], $rgb[2]);
+          $pdf->SetTextColor($accent_rgb[0], $accent_rgb[1], $accent_rgb[2]);
           $pdf->SetXY($cx, $y);
           $pdf->Cell($pdf->GetStringWidth('OSTÉO-ARTICULAIRE') + 1, $line_h, 'OSTÉO-ARTICULAIRE', 0, 0, 'L');
           $cx += $pdf->GetStringWidth('OSTÉO-ARTICULAIRE') + 1;
         }
         if ($wffs_val !== '') {
           $wffs_text = ($has_osteo ? '   ·   ' : '') . 'WFFS ' . $wffs_val;
-          gwseq_etalon_text($pdf, $cx, $y, $w - ($cx - $x), $wffs_text, $body_size, $has_osteo ? '' : 'B', true, $has_osteo ? array(45, 49, 47) : $rgb);
+          gwseq_etalon_text($pdf, $cx, $y, $w - ($cx - $x), $wffs_text, $body_size, $has_osteo ? '' : 'B', true, $has_osteo ? array(45, 49, 47) : $accent_rgb);
         }
         $y += $line_h + 1.8;
       }
@@ -857,14 +891,15 @@ function gwseq_pouliniere_text($pdf, $x, $y, $w, $text, $size = 10, $style = '',
   return $h;
 }
 
-function gwseq_pouliniere_section($pdf, $x, $y, $w, $title, $rgb, $draw) {
-  $h = gwseq_pouliniere_text($pdf, $x, $y, $w, $title, 10.5, 'B', $draw, array(35, 45, 40), 'times');
-  if ($draw) {
+/** $rule : voir gwseq_etalon_section() — même règle, dupliquée à dessein (§ architecture du fichier). */
+function gwseq_pouliniere_section($pdf, $x, $y, $w, $title, $rgb, $draw, $rule = false) {
+  $h = gwseq_pouliniere_text($pdf, $x, $y, $w, $title, 10.5, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times');
+  if ($draw && $rule) {
     $pdf->SetDrawColor($rgb[0], $rgb[1], $rgb[2]);
     $pdf->SetLineWidth(0.2);
     $pdf->Line($x, $y + $h + 0.6, $x + $w, $y + $h + 0.6);
   }
-  return $h + 2;
+  return $h + ($rule ? 2.4 : 1.6);
 }
 
 function gwseq_pouliniere_footer($pdf, $data, $draw = true) {
@@ -916,7 +951,10 @@ function gwseq_pouliniere_header($pdf, $data, $continued = false) {
 
 function gwseq_pouliniere_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
   if (!$lines) return 0;
-  $tint = gws_core_pdf_lighten_color(sprintf('#%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2]), 0.94);
+  $hex = sprintf('#%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2]);
+  $tint = gws_core_pdf_lighten_color($hex, 0.94);
+  // Étiquette accent-safe : voir gwseq_etalon_callout() — même règle, dupliquée à dessein.
+  $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($hex));
   $pad = 2.6;
   $tw = $w - (2 * $pad);
   $label_h = gwseq_pouliniere_text($pdf, 0, 0, $tw, 'À RETENIR', 7, 'B', false);
@@ -926,7 +964,7 @@ function gwseq_pouliniere_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
   if ($draw) {
     $pdf->SetFillColor($tint[0], $tint[1], $tint[2]);
     $pdf->Rect($x, $y, $w, $box_h, 'F');
-    gwseq_pouliniere_text($pdf, $x + $pad, $y + $pad, $tw, 'À RETENIR', 7, 'B', true, $rgb);
+    gwseq_pouliniere_text($pdf, $x + $pad, $y + $pad, $tw, 'À RETENIR', 7, 'B', true, $accent_rgb);
     gwseq_pouliniere_text($pdf, $x + $pad, $y + $pad + $label_h + 1, $tw, $body, 9.5, 'I', true, array(40, 42, 38), 'times');
   }
   return $box_h;
@@ -942,7 +980,9 @@ function gwseq_pouliniere_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
 function gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, $draw) {
   $iy = $y;
   $gaps = 0;
-  $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
+  // Accent-safe : voir gwseq_etalon_hero_identity() — même règle, dupliquée à dessein.
+  $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['primary_color']));
+  $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times') + 2.5 + $extra_gap;
   $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
@@ -963,7 +1003,7 @@ function gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compac
       if ($statut_label !== '') $cx += gwseq_horse_pdf_draw_chip($pdf, $cx, $iy, mb_strtoupper($statut_label), $rgb, gws_core_pdf_hex_to_rgb($data['structure']['primary_color_contrast']), 8.5, true) + 4;
       if ($price !== '') {
         $pdf->SetFont('helvetica', 'B', 15);
-        $pdf->SetTextColor($rgb[0], $rgb[1], $rgb[2]);
+        $pdf->SetTextColor($accent_rgb[0], $accent_rgb[1], $accent_rgb[2]);
         $pdf->SetXY($cx, $iy - ($statut_label !== '' ? 0.6 : 0));
         $pdf->Cell($iw - ($cx - $ix), 7, $price, 0, 0, 'L');
       }
@@ -979,7 +1019,7 @@ function gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compac
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
+  if ($indices) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $accent_rgb) + 2.2 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
   if ($qualites !== '') { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, $qualites, $compact ? 10 : 10.5, 'BI', $draw, array(70, 68, 60)) + 1.5 + $extra_gap; $gaps++; }
 
@@ -1059,7 +1099,7 @@ function gwseq_pouliniere_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) {
   }
   if (!$parents) return 0;
   $top = $y;
-  $y += gwseq_pouliniere_section($pdf, $x, $y, $w, 'PEDIGREE', $rgb, $draw);
+  $y += gwseq_pouliniere_section($pdf, $x, $y, $w, 'PEDIGREE', $rgb, $draw, true);
   $widths = array($w * 0.13, $w * 0.34, $w * 0.44);
   $xs = array($x, $x + $w * 0.17, $x + $w * 0.57);
   $node = function ($label, $col, $cy, $paint) use ($pdf, $widths, $xs, $compact) {
@@ -1069,10 +1109,10 @@ function gwseq_pouliniere_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) {
     $name = mb_strtoupper($label['name']);
     $pdf->SetFont('times', 'B', $size);
     if ($pdf->GetStringWidth($name) > $widths[$col]) $size -= 0.5;
-    $nh = gwseq_pouliniere_text($pdf, 0, 0, $widths[$col], $name, $size, 'B', false, array(35, 45, 40), 'times');
+    $nh = gwseq_pouliniere_text($pdf, 0, 0, $widths[$col], $name, $size, 'B', false, GWSEQ_PDF_INK_DISPLAY, 'times');
     $bh = empty($label['breed']) ? 0 : gwseq_pouliniere_text($pdf, 0, 0, $widths[$col], $label['breed'], 8.5, '', false);
     if ($paint) {
-      gwseq_pouliniere_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2, $widths[$col], $name, $size, 'B', true, array(35, 45, 40), 'times');
+      gwseq_pouliniere_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2, $widths[$col], $name, $size, 'B', true, GWSEQ_PDF_INK_DISPLAY, 'times');
       if ($bh) gwseq_pouliniere_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2 + $nh, $widths[$col], $label['breed'], 8.5, '', true, array(90, 95, 90));
     }
     return $nh + $bh;
@@ -1341,14 +1381,15 @@ function gwseq_sport_vente_text($pdf, $x, $y, $w, $text, $size = 10, $style = ''
   return $h;
 }
 
-function gwseq_sport_vente_section($pdf, $x, $y, $w, $title, $rgb, $draw) {
-  $h = gwseq_sport_vente_text($pdf, $x, $y, $w, $title, 10.5, 'B', $draw, array(35, 45, 40), 'times');
-  if ($draw) {
+/** $rule : voir gwseq_etalon_section() — même règle, dupliquée à dessein (§ architecture du fichier). */
+function gwseq_sport_vente_section($pdf, $x, $y, $w, $title, $rgb, $draw, $rule = false) {
+  $h = gwseq_sport_vente_text($pdf, $x, $y, $w, $title, 10.5, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times');
+  if ($draw && $rule) {
     $pdf->SetDrawColor($rgb[0], $rgb[1], $rgb[2]);
     $pdf->SetLineWidth(0.2);
     $pdf->Line($x, $y + $h + 0.6, $x + $w, $y + $h + 0.6);
   }
-  return $h + 2;
+  return $h + ($rule ? 2.4 : 1.6);
 }
 
 function gwseq_sport_vente_footer($pdf, $data, $draw = true) {
@@ -1400,7 +1441,10 @@ function gwseq_sport_vente_header($pdf, $data, $continued = false) {
 
 function gwseq_sport_vente_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
   if (!$lines) return 0;
-  $tint = gws_core_pdf_lighten_color(sprintf('#%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2]), 0.94);
+  $hex = sprintf('#%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2]);
+  $tint = gws_core_pdf_lighten_color($hex, 0.94);
+  // Étiquette accent-safe : voir gwseq_etalon_callout() — même règle, dupliquée à dessein.
+  $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($hex));
   $pad = 2.6;
   $tw = $w - (2 * $pad);
   $label_h = gwseq_sport_vente_text($pdf, 0, 0, $tw, 'À RETENIR', 7, 'B', false);
@@ -1410,7 +1454,7 @@ function gwseq_sport_vente_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
   if ($draw) {
     $pdf->SetFillColor($tint[0], $tint[1], $tint[2]);
     $pdf->Rect($x, $y, $w, $box_h, 'F');
-    gwseq_sport_vente_text($pdf, $x + $pad, $y + $pad, $tw, 'À RETENIR', 7, 'B', true, $rgb);
+    gwseq_sport_vente_text($pdf, $x + $pad, $y + $pad, $tw, 'À RETENIR', 7, 'B', true, $accent_rgb);
     gwseq_sport_vente_text($pdf, $x + $pad, $y + $pad + $label_h + 1, $tw, $body, 9.5, 'I', true, array(40, 42, 38), 'times');
   }
   return $box_h;
@@ -1422,10 +1466,14 @@ function gwseq_sport_vente_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
  * accroche commerciale courte (jamais un bloc titré) juste sous l'identité, avant le statut/prix ;
  * le naisseur est conservé (contrairement à la Poulinière) mais après le statut/prix.
  */
-function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secondary_rgb, $compact, $extra_gap, $draw) {
+function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, $draw) {
   $iy = $y;
   $gaps = 0;
-  $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
+  // Accent-safe : voir gwseq_etalon_hero_identity() — même règle, dupliquée à dessein. La secondaire
+  // a son propre calcul (l'accroche est la seule zone du gabarit à utiliser cette couleur).
+  $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['primary_color']));
+  $accent_secondary_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['secondary_color']));
+  $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times') + 2.5 + $extra_gap;
   $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
@@ -1436,7 +1484,7 @@ function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secon
   // Accroche commerciale (arbitrage client) : courte phrase éditoriale de vente, jamais un bloc
   // titré — un simple paragraphe stylé qui disparaît sans laisser de trou si non renseigné.
   $accroche = trim((string) ($data['editorial']['accroche_commerciale'] ?? ''));
-  if ($accroche !== '') { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, $accroche, 10.5, 'I', $draw, $secondary_rgb, 'times') + 2 + $extra_gap; $gaps++; }
+  if ($accroche !== '') { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, $accroche, 10.5, 'I', $draw, $accent_secondary_rgb, 'times') + 2 + $extra_gap; $gaps++; }
 
   // Statut commercial + prix : jamais inventés (même garde que la Poulinière) ; le naisseur
   // (conservé, arbitrage client) vient après, discret, jamais au même niveau visuel.
@@ -1449,7 +1497,7 @@ function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secon
       if ($statut_label !== '') $cx += gwseq_horse_pdf_draw_chip($pdf, $cx, $iy, mb_strtoupper($statut_label), $rgb, gws_core_pdf_hex_to_rgb($data['structure']['primary_color_contrast']), 8.5, true) + 4;
       if ($price !== '') {
         $pdf->SetFont('helvetica', 'B', 15);
-        $pdf->SetTextColor($rgb[0], $rgb[1], $rgb[2]);
+        $pdf->SetTextColor($accent_rgb[0], $accent_rgb[1], $accent_rgb[2]);
         $pdf->SetXY($cx, $iy - ($statut_label !== '' ? 0.6 : 0));
         $pdf->Cell($iw - ($cx - $ix), 7, $price, 0, 0, 'L');
       }
@@ -1467,7 +1515,7 @@ function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secon
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
+  if ($indices) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $accent_rgb) + 2.2 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
   if ($qualites !== '') { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, $qualites, $compact ? 10 : 10.5, 'BI', $draw, array(70, 68, 60)) + 1.5 + $extra_gap; $gaps++; }
 
@@ -1477,7 +1525,7 @@ function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secon
   return array('h' => $iy - $y, 'gaps' => $gaps);
 }
 
-function gwseq_sport_vente_hero($pdf, $data, $x, $y, $w, $rgb, $secondary_rgb, $compact, $draw, $extra_photo_h = 0) {
+function gwseq_sport_vente_hero($pdf, $data, $x, $y, $w, $rgb, $compact, $draw, $extra_photo_h = 0) {
   $paths = array_values(array_unique(array_filter(array_merge(array($data['photo_path'] ?? ''), (array) ($data['gallery_paths'] ?? array())), function ($p) {
     return is_string($p) && $p !== '' && is_readable($p) && @getimagesize($p);
   })));
@@ -1487,7 +1535,7 @@ function gwseq_sport_vente_hero($pdf, $data, $x, $y, $w, $rgb, $secondary_rgb, $
   $ix = $photo ? $x + $pw + 8 : $x;
   $iw = $w - ($ix - $x);
 
-  $measure = gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secondary_rgb, $compact, 0, false);
+  $measure = gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, 0, false);
   $identity_h = $measure['h'];
 
   // Galerie : mêmes règles que les masters Étalon/Poulinière (0/1/2/3 photo(s) secondaire(s)) —
@@ -1514,7 +1562,7 @@ function gwseq_sport_vente_hero($pdf, $data, $x, $y, $w, $rgb, $secondary_rgb, $
     : 0;
 
   if ($draw) {
-    gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secondary_rgb, $compact, $extra_gap, true);
+    gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, true);
   }
   if ($draw && $photo) {
     gwseq_horse_pdf_draw_photo_box($pdf, $x, $y, $pw, $main_photo_h, $photo, false);
@@ -1549,7 +1597,7 @@ function gwseq_sport_vente_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) 
   }
   if (!$parents) return 0;
   $top = $y;
-  $y += gwseq_sport_vente_section($pdf, $x, $y, $w, 'PEDIGREE', $rgb, $draw);
+  $y += gwseq_sport_vente_section($pdf, $x, $y, $w, 'PEDIGREE', $rgb, $draw, true);
   $widths = array($w * 0.13, $w * 0.34, $w * 0.44);
   $xs = array($x, $x + $w * 0.17, $x + $w * 0.57);
   $node = function ($label, $col, $cy, $paint) use ($pdf, $widths, $xs, $compact) {
@@ -1559,10 +1607,10 @@ function gwseq_sport_vente_tree($pdf, $data, $x, $y, $w, $rgb, $compact, $draw) 
     $name = mb_strtoupper($label['name']);
     $pdf->SetFont('times', 'B', $size);
     if ($pdf->GetStringWidth($name) > $widths[$col]) $size -= 0.5;
-    $nh = gwseq_sport_vente_text($pdf, 0, 0, $widths[$col], $name, $size, 'B', false, array(35, 45, 40), 'times');
+    $nh = gwseq_sport_vente_text($pdf, 0, 0, $widths[$col], $name, $size, 'B', false, GWSEQ_PDF_INK_DISPLAY, 'times');
     $bh = empty($label['breed']) ? 0 : gwseq_sport_vente_text($pdf, 0, 0, $widths[$col], $label['breed'], 8.5, '', false);
     if ($paint) {
-      gwseq_sport_vente_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2, $widths[$col], $name, $size, 'B', true, array(35, 45, 40), 'times');
+      gwseq_sport_vente_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2, $widths[$col], $name, $size, 'B', true, GWSEQ_PDF_INK_DISPLAY, 'times');
       if ($bh) gwseq_sport_vente_text($pdf, $xs[$col], $cy - ($nh + $bh) / 2 + $nh, $widths[$col], $label['breed'], 8.5, '', true, array(90, 95, 90));
     }
     return $nh + $bh;
@@ -1637,8 +1685,9 @@ function gwseq_render_horse_pdf_template_sport_vente($pdf, $data) {
   $pdf->setCellHeightRatio(1.2);
   try {
     $rgb = gws_core_pdf_hex_to_rgb($data['structure']['primary_color']);
-    $secondary_rgb = gws_core_pdf_hex_to_rgb($data['structure']['secondary_color']);
     $ink = gws_core_pdf_hex_to_rgb($data['structure']['primary_color_contrast']);
+    // Étoiles accent-safe (état ostéo-articulaire) : voir gwseq_etalon_hero_identity().
+    $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['primary_color']));
     $x = 14;
     $w = $pdf->getPageWidth() - 28;
     $limit = $pdf->getPageHeight() - gwseq_sport_vente_footer($pdf, $data, false) - 4;
@@ -1671,9 +1720,9 @@ function gwseq_render_horse_pdf_template_sport_vente($pdf, $data) {
     foreach (array(false, true) as $compact) {
       $body_size = $compact ? 9.5 : 10;
       $gap = $compact ? 3 : 4;
-      $hero_h = gwseq_sport_vente_hero($pdf, $data, $x, 24, $w, $rgb, $secondary_rgb, $compact, false);
+      $hero_h = gwseq_sport_vente_hero($pdf, $data, $x, 24, $w, $rgb, $compact, false);
       $tree_h = gwseq_sport_vente_tree($pdf, $data, $x, 0, $w, $rgb, $compact, false);
-      $osteo_h = gwseq_sport_vente_osteo_line($pdf, 0, 0, $w, $osteo, $rgb, false);
+      $osteo_h = gwseq_sport_vente_osteo_line($pdf, 0, 0, $w, $osteo, $accent_rgb, false);
       $ch = $conditions !== '' ? $block_h('CONDITIONS DE VENTE', $conditions, $w - 8, $body_size) + 8 : 0;
       $total = 24 + $hero_h + $gap;
       if ($tree_h > 0) $total += $tree_h + $gap;
@@ -1689,7 +1738,7 @@ function gwseq_render_horse_pdf_template_sport_vente($pdf, $data) {
       $slack = $limit - $total;
       if ($slack > 8) {
         $extra_photo_h = min($slack - 4, 55);
-        $boosted_hero_h = gwseq_sport_vente_hero($pdf, $data, $x, 24, $w, $rgb, $secondary_rgb, $compact, false, $extra_photo_h);
+        $boosted_hero_h = gwseq_sport_vente_hero($pdf, $data, $x, 24, $w, $rgb, $compact, false, $extra_photo_h);
         if ($boosted_hero_h > $hero_h) {
           $hero_h = $boosted_hero_h;
           $gap += 1.5;
@@ -1711,7 +1760,7 @@ function gwseq_render_horse_pdf_template_sport_vente($pdf, $data) {
       if ($y + $h > $limit) $new_page();
     };
     $room($hero_h);
-    $y += gwseq_sport_vente_hero($pdf, $data, $x, $y, $w, $rgb, $secondary_rgb, $compact, true, $extra_photo_h) + $gap;
+    $y += gwseq_sport_vente_hero($pdf, $data, $x, $y, $w, $rgb, $compact, true, $extra_photo_h) + $gap;
     if ($tree_h > 0) {
       $room($tree_h);
       $y += gwseq_sport_vente_tree($pdf, $data, $x, $y, $w, $rgb, $compact, true) + $gap;
@@ -1765,7 +1814,7 @@ function gwseq_render_horse_pdf_template_sport_vente($pdf, $data) {
     foreach ($sequential as $block) $flow($block[0], $block[1]);
     if ($osteo_h > 0) {
       $room($osteo_h);
-      $y += gwseq_sport_vente_osteo_line($pdf, $x, $y, $w, $osteo, $rgb, true) + $gap;
+      $y += gwseq_sport_vente_osteo_line($pdf, $x, $y, $w, $osteo, $accent_rgb, true) + $gap;
     }
     if ($conditions !== '') $flow('CONDITIONS DE VENTE', $conditions, true);
     gwseq_sport_vente_footer($pdf, $data);

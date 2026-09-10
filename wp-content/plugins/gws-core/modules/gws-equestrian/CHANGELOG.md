@@ -5,6 +5,39 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.50.0 — Design system PDF global (langage graphique unifié, 3 templates)
+
+Dernière passe graphique demandée par le client sur les trois masters PDF (Étalon/Poulinière/
+Sport-Vente), désormais tous figés — **aucune donnée ni règle métier modifiée**, aucune structure
+ni pedigree touché. Système appliqué identiquement aux trois jeux de fonctions dupliqués
+(`gwseq_etalon_*`/`gwseq_pouliniere_*`/`gwseq_sport_vente_*`), avec deux ajustements demandés par le
+client avant implémentation :
+
+- **Encre neutre pour le nom/les titres** (au lieu d'une couleur fixe indépendante de la couleur de
+  marque du client) : nouvelle constante partagée `GWSEQ_PDF_INK_DISPLAY` (`cheval-pdf.php`),
+  composantes quasi égales (aucune teinte dominante) — utilisée pour le nom du cheval, les titres de
+  section et les noms de pedigree dans les trois templates. Remplace deux couleurs jusqu'ici codées
+  en dur (`rgb(30,53,45)` pour le nom, `rgb(35,45,40)` pour les titres/le pedigree), qui restaient
+  les mêmes quelle que soit la couleur choisie par le client.
+- **Filet réservé aux grandes ruptures de lecture** : les fonctions `gwseq_*_section()` acceptent
+  désormais un paramètre `$rule` (faux par défaut) — seul PEDIGREE (rupture structurelle évidente,
+  unique arbre généalogique de la fiche) dessine encore un filet sous son titre. Présentation,
+  Conseil de croisement, Identification, Production, Résultats, Potentiel, Conditions... restent
+  distingués par la seule typographie/l'espacement, comme demandé.
+- **Couleur de marque « accent-safe »** : nouvelle fonction générique `gws_core_pdf_accent_color()`
+  (`gws-core/includes/pdf-engine.php`) — la couleur principale de « Ma structure » telle quelle en
+  TEXTE sur fond blanc/très clair si son contraste WCAG atteint déjà 4.5:1, sinon la même teinte
+  assombrie par paliers (HSL, seule la luminosité change) jusqu'à ce seuil, jamais un repli vers une
+  couleur sans rapport avec la marque du client. Appliquée aux indices, au prix, à l'étiquette
+  « À RETENIR », aux étoiles de notation (Reproduction/État ostéo-articulaire) et à l'accroche
+  commerciale Sport-Vente — jamais aux aplats pleins (bandeau, puces), qui restent la couleur de
+  marque exacte avec `gws_core_contrast_color()` pour l'encre posée dessus (aplat et accent-sur-blanc
+  restent deux usages distincts, jamais interchangeables).
+
+Suite de tests complète (28 fichiers PHP + 4 JS) rejouée sans régression ; les 7 fixtures de recette
+(Étalon minimal/maximal, Poulinière riche/pauvre, Sport-Vente jeune/confirmé/pauvre) tiennent
+toujours sur 1 page.
+
 ## 0.49.1 — Correctifs de recette réelle (Lot 3B)
 
 Recette effectuée par le client avec de vraies données (fiche Jamerose de Félines). Correctifs :

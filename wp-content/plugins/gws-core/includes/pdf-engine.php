@@ -172,6 +172,99 @@ function gws_core_pdf_lighten_color($hex_color, $amount = 0.85) {
 }
 
 /**
+ * Conversions RGB [0-255] <-> HSL [teinte 0-360, saturation/luminosité 0-1] — algorithme standard,
+ * utilisées UNIQUEMENT par gws_core_pdf_accent_color() ci-dessous pour assombrir une couleur en ne
+ * touchant qu'à sa luminosité (jamais sa teinte ni sa saturation, pour rester reconnaissable comme
+ * "la" couleur de marque).
+ */
+function gws_core_pdf_rgb_to_hsl($r, $g, $b) {
+  $r /= 255; $g /= 255; $b /= 255;
+  $max = max($r, $g, $b);
+  $min = min($r, $g, $b);
+  $l = ($max + $min) / 2;
+  if ($max === $min) {
+    $h = 0;
+    $s = 0;
+  } else {
+    $d = $max - $min;
+    $s = $l > 0.5 ? $d / (2 - $max - $min) : $d / ($max + $min);
+    if ($max === $r) {
+      $h = ($g - $b) / $d + ($g < $b ? 6 : 0);
+    } elseif ($max === $g) {
+      $h = ($b - $r) / $d + 2;
+    } else {
+      $h = ($r - $g) / $d + 4;
+    }
+    $h /= 6;
+  }
+  return array($h * 360, $s, $l);
+}
+
+function gws_core_pdf_hsl_to_rgb($h, $s, $l) {
+  $h = fmod($h, 360);
+  if ($h < 0) $h += 360;
+  $h /= 360;
+  if ((float) $s === 0.0) {
+    $r = $g = $b = $l;
+  } else {
+    $q = $l < 0.5 ? $l * (1 + $s) : $l + $s - $l * $s;
+    $p = 2 * $l - $q;
+    $hue_to_rgb = function ($p, $q, $t) {
+      if ($t < 0) $t += 1;
+      if ($t > 1) $t -= 1;
+      if ($t < 1 / 6) return $p + ($q - $p) * 6 * $t;
+      if ($t < 1 / 2) return $q;
+      if ($t < 2 / 3) return $p + ($q - $p) * (2 / 3 - $t) * 6;
+      return $p;
+    };
+    $r = $hue_to_rgb($p, $q, $h + 1 / 3);
+    $g = $hue_to_rgb($p, $q, $h);
+    $b = $hue_to_rgb($p, $q, $h - 1 / 3);
+  }
+  return array((int) round($r * 255), (int) round($g * 255), (int) round($b * 255));
+}
+
+/**
+ * Couleur de marque "accent-safe" (passe graphique globale — design system PDF, §"accent foncé sur
+ * fond blanc") : la couleur principale de « Ma structure » telle quelle si son contraste WCAG sur
+ * fond BLANC atteint déjà 4.5:1, sinon la MÊME teinte assombrie par paliers (seule la luminosité
+ * HSL change, jamais la teinte ni la saturation) jusqu'à atteindre ce seuil — jamais un repli vers
+ * une couleur sans rapport avec la marque du client. Réservée aux usages "texte/accent sur blanc ou
+ * fond très clair" (indices, prix, étoiles de notation, accroche commerciale) : un APLAT plein
+ * (bandeau, puce) doit continuer à utiliser la couleur de marque exacte, avec
+ * gws_core_contrast_color() (includes/settings.php) pour l'encre à poser dessus — ce sont deux
+ * usages différents, jamais interchangeables.
+ */
+function gws_core_pdf_accent_color($hex_color) {
+  $hex = ltrim((string) $hex_color, '#');
+  if (!preg_match('/^[0-9a-fA-F]{6}$/', $hex)) return '#000000';
+
+  $relative_luminance = function ($r, $g, $b) {
+    $channel = function ($c255) {
+      $c = $c255 / 255;
+      return $c <= 0.03928 ? $c / 12.92 : pow(($c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * $channel($r) + 0.7152 * $channel($g) + 0.0722 * $channel($b);
+  };
+  $contrast_with_white = function ($r, $g, $b) use ($relative_luminance) {
+    return 1.05 / ($relative_luminance($r, $g, $b) + 0.05);
+  };
+
+  list($r, $g, $b) = gws_core_pdf_hex_to_rgb('#' . $hex);
+  if ($contrast_with_white($r, $g, $b) >= 4.5) return '#' . strtolower($hex);
+
+  list($h, $s, $l) = gws_core_pdf_rgb_to_hsl($r, $g, $b);
+  // Paliers de 4 % de luminosité en moins, jamais sous 8 % (au-delà, la teinte devient
+  // méconnaissable) — 23 paliers au maximum, largement suffisant en pratique pour atteindre 4.5:1.
+  for ($step = 0; $step < 23 && $l > 0.08; $step++) {
+    $l = max(0.08, $l - 0.04);
+    list($r, $g, $b) = gws_core_pdf_hsl_to_rgb($h, $s, $l);
+    if ($contrast_with_white($r, $g, $b) >= 4.5) break;
+  }
+  return sprintf('#%02x%02x%02x', $r, $g, $b);
+}
+
+/**
  * Dimensions (largeur, hauteur en mm) d'une image existante sur disque, mises à l'échelle pour
  * tenir dans une boîte $max_w x $max_h SANS déformation (ratio conservé, §19 "recadrage
  * raisonnable" — ceci ne recadre pas, seul un ajustement proportionnel ; un recadrage éventuel
