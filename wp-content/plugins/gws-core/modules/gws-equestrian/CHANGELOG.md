@@ -5,6 +5,38 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.50.1 — Pagination adaptative (correctif recette réelle Kado)
+
+Recette réelle : la fiche Kado de Félines passait sur 2 pages parce que le bloc CONDITIONS DE MONTE
+(une seule ligne) était envoyé page 2 — pourtant le mode compact déjà existant ne manquait que
+quelques millimètres. Correctif appliqué identiquement aux trois templates
+(`gwseq_etalon_*`/`gwseq_pouliniere_*`/`gwseq_sport_vente_*`), **sans réduire la taille du nom, des
+indices, des qualités ni des titres de section, sans supprimer ni tronquer aucun contenu** :
+
+- Avant de créer une page 2, chaque renderer essaie désormais, en mode compact UNIQUEMENT (jamais en
+  aéré — voir ci-dessous), jusqu'à 5 niveaux de compression croissants (`$squeeze`) dans l'ordre
+  demandé : 1) espacements verticaux non essentiels, 2) hauteur des miniatures secondaires,
+  3) respiration verticale du pedigree (jamais sa lisibilité — tailles de police inchangées),
+  4) marges avant/après Présentation/Conseil/Reproduction, 5) interlignage du corps, en tout dernier
+  recours.
+- **Aucun changement pour une fiche qui tenait déjà** : les deux premières tentatives (aéré, puis
+  compact "de base") restent l'exact code déjà validé, même condition de budget, sans marge —
+  seules les tentatives supplémentaires ($squeeze >= 1, systématiquement en mode compact) utilisent
+  une marge de sécurité de 3 mm. Un premier essai avait exploré aussi un mode "aéré compressé" avant
+  le compact "de base" ; retiré après avoir constaté, sur la Poulinière riche, qu'il pouvait faire
+  gagner une compression légère au prix de polices plus grandes ailleurs sur la page (risque de
+  retour à la ligne du nom, moins de lignes de Production affichées) — jamais souhaitable.
+- Bug annexe corrigé au passage (Étalon) : l'estimation de hauteur du bloc REPRODUCTION utilisée
+  pour le budget ne correspondait pas à sa mise en page réelle (composition typographique dédiée,
+  §point 6) — remplacée par une mesure exacte, mêmes appels que le dessin réel.
+- Une page 2 reste possible si le contenu est réellement trop volumineux, même au maximum de
+  compression (pagination `$flow()` déjà validée, inchangée).
+
+Suite de tests complète (28 PHP + 4 JS) rejouée sans régression ; les 7 fixtures de recette déjà
+validées (Étalon minimal/maximal, Poulinière riche/pauvre, Sport-Vente jeune/confirmé/pauvre)
+produisent un rendu strictement identique à avant ce correctif (vérifié visuellement) ; la fiche
+Kado de Félines (cas de régression signalé par le client) tient désormais sur 1 page.
+
 ## 0.50.0 — Design system PDF global (langage graphique unifié, 3 templates)
 
 Dernière passe graphique demandée par le client sur les trois masters PDF (Étalon/Poulinière/
