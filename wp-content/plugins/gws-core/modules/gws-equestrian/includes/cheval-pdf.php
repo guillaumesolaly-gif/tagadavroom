@@ -197,6 +197,35 @@ function gwseq_horse_pdf_fit_text_to_height($pdf, $text, $w, $max_h) {
  * ----------------------------------------------------------------------------------------- */
 
 /**
+ * Version affichable d'une URL de site web (footer, correctif de recette réelle) : sans protocole,
+ * jamais de slash final — l'URL COMPLÈTE d'origine (telle qu'enregistrée dans « Ma structure »)
+ * reste utilisée partout ailleurs où un vrai lien/QR est nécessaire, jamais cette version tronquée.
+ */
+function gwseq_horse_pdf_display_url($url) {
+  $url = trim((string) $url);
+  if ($url === '') return '';
+  $url = preg_replace('#^[a-z][a-z0-9+.-]*://#i', '', $url);
+  return rtrim($url, '/');
+}
+
+/**
+ * Petite plaque de fond claire dédiée derrière le logo (correctif de recette réelle) : uniquement
+ * quand la couleur principale de « Ma structure » est elle-même claire (même calcul de contraste
+ * WCAG que le texte du bandeau, gws_core_contrast_color() de gws-core) — un logo qui ne ressortirait
+ * pas sur un fond clair reçoit un petit fond blanc derrière lui, jamais une recoloration arbitraire
+ * du logo lui-même (le fichier image n'est jamais modifié).
+ */
+function gwseq_horse_pdf_draw_logo_backing($pdf, $x, $y, $w, $h) {
+  $pad = 2;
+  $pdf->SetFillColor(255, 255, 255);
+  if (method_exists($pdf, 'RoundedRect')) {
+    $pdf->RoundedRect($x - $pad, $y - $pad, $w + (2 * $pad), $h + (2 * $pad), 1.2, '1111', 'F');
+  } else {
+    $pdf->Rect($x - $pad, $y - $pad, $w + (2 * $pad), $h + (2 * $pad), 'F');
+  }
+}
+
+/**
  * Une case photo unique — image manquante/illisible -> fond clair sobre, jamais une icône criarde
  * (§19 du Lot 3A, inchangé). $cover=true simule un recadrage centré (miniatures, §9) ; $cover=false
  * ajuste sans jamais déformer ni recadrer agressivement (grande photo, §9).
@@ -368,7 +397,7 @@ function gwseq_etalon_footer($pdf, $data, $draw = true) {
   $url = (string) ($data['public_url'] ?? '');
   $has_qr = filter_var($url, FILTER_VALIDATE_URL) && in_array(strtolower(parse_url($url, PHP_URL_SCHEME) ?? ''), array('http', 'https'), true);
   $w = $pdf->getPageWidth() - 28 - ($has_qr ? 25 : 0);
-  $coords = implode('  ·  ', array_filter(array($s['phone_display'] ?? '', $s['public_email'] ?? '', $s['website_url'] ?? '')));
+  $coords = implode('  ·  ', array_filter(array($s['phone_display'] ?? '', $s['public_email'] ?? '', gwseq_horse_pdf_display_url($s['website_url'] ?? ''))));
   $name_h = gwseq_etalon_text($pdf, 14, 0, $w, $s['name'], 9, 'B', false);
   $coords_h = $coords === '' ? 0 : gwseq_etalon_text($pdf, 14, 0, $w, $coords, 8, '', false);
   $h = max($has_qr ? 22 : 15, $name_h + $coords_h + 6);
@@ -393,7 +422,13 @@ function gwseq_etalon_header($pdf, $data, $continued = false) {
   $pdf->Rect(0, 0, $pdf->getPageWidth(), 20, 'F');
   $path = !empty($s['logo_id']) ? get_attached_file($s['logo_id']) : '';
   $box = $path ? gws_core_pdf_fit_image_box($path, 95, 13) : null;
-  if ($box) $pdf->Image($path, 14, (20 - $box['h']) / 2, $box['w'], $box['h']);
+  if ($box) {
+    $logo_y = (20 - $box['h']) / 2;
+    if (function_exists('gws_core_contrast_color') && gws_core_contrast_color($s['primary_color']) === '#000000') {
+      gwseq_horse_pdf_draw_logo_backing($pdf, 14, $logo_y, $box['w'], $box['h']);
+    }
+    $pdf->Image($path, 14, $logo_y, $box['w'], $box['h']);
+  }
   else {
     $h = gwseq_etalon_text($pdf, 14, 0, 132, $s['name'], 13, 'B', false, $ink, 'times');
     if ($h > 17) throw new LengthException('Nom de structure trop long pour le bandeau Étalon.');
@@ -442,7 +477,7 @@ function gwseq_etalon_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
 function gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, $draw) {
   $iy = $y;
   $gaps = 0;
-  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 22 : 24, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
+  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
   $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
@@ -464,9 +499,9 @@ function gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 10.5 : 11, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
+  if ($indices) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
-  if ($qualites !== '') { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, $qualites, 9, 'I', $draw, array(120, 124, 114)) + 1.5 + $extra_gap; $gaps++; }
+  if ($qualites !== '') { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, $qualites, $compact ? 10 : 10.5, 'BI', $draw, array(70, 68, 60)) + 1.5 + $extra_gap; $gaps++; }
 
   $faits = array_slice(array_filter((array) ($data['faits_marquants'] ?? array()), 'strlen'), 0, 3);
   if ($faits) { $iy += gwseq_etalon_callout($pdf, $ix, $iy + 2.5 + $extra_gap, $iw, $faits, $rgb, $draw) + 2 + $extra_gap; $gaps++; }
@@ -839,7 +874,7 @@ function gwseq_pouliniere_footer($pdf, $data, $draw = true) {
   $url = (string) ($data['public_url'] ?? '');
   $has_qr = filter_var($url, FILTER_VALIDATE_URL) && in_array(strtolower(parse_url($url, PHP_URL_SCHEME) ?? ''), array('http', 'https'), true);
   $w = $pdf->getPageWidth() - 28 - ($has_qr ? 25 : 0);
-  $coords = implode('  ·  ', array_filter(array($s['phone_display'] ?? '', $s['public_email'] ?? '', $s['website_url'] ?? '')));
+  $coords = implode('  ·  ', array_filter(array($s['phone_display'] ?? '', $s['public_email'] ?? '', gwseq_horse_pdf_display_url($s['website_url'] ?? ''))));
   $name_h = gwseq_pouliniere_text($pdf, 14, 0, $w, $s['name'], 9, 'B', false);
   $coords_h = $coords === '' ? 0 : gwseq_pouliniere_text($pdf, 14, 0, $w, $coords, 8, '', false);
   $h = max($has_qr ? 22 : 15, $name_h + $coords_h + 6);
@@ -864,7 +899,13 @@ function gwseq_pouliniere_header($pdf, $data, $continued = false) {
   $pdf->Rect(0, 0, $pdf->getPageWidth(), 20, 'F');
   $path = !empty($s['logo_id']) ? get_attached_file($s['logo_id']) : '';
   $box = $path ? gws_core_pdf_fit_image_box($path, 95, 13) : null;
-  if ($box) $pdf->Image($path, 14, (20 - $box['h']) / 2, $box['w'], $box['h']);
+  if ($box) {
+    $logo_y = (20 - $box['h']) / 2;
+    if (function_exists('gws_core_contrast_color') && gws_core_contrast_color($s['primary_color']) === '#000000') {
+      gwseq_horse_pdf_draw_logo_backing($pdf, 14, $logo_y, $box['w'], $box['h']);
+    }
+    $pdf->Image($path, 14, $logo_y, $box['w'], $box['h']);
+  }
   else {
     $h = gwseq_pouliniere_text($pdf, 14, 0, 132, $s['name'], 13, 'B', false, $ink, 'times');
     if ($h > 17) throw new LengthException('Nom de structure trop long pour le bandeau Poulinière.');
@@ -901,7 +942,7 @@ function gwseq_pouliniere_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
 function gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $extra_gap, $draw) {
   $iy = $y;
   $gaps = 0;
-  $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 22 : 24, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
+  $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
   $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
@@ -919,15 +960,15 @@ function gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compac
   if ($statut_label !== '' || $price !== '') {
     if ($draw) {
       $cx = $ix;
-      if ($statut_label !== '') $cx += gwseq_horse_pdf_draw_chip($pdf, $cx, $iy, mb_strtoupper($statut_label), $rgb, array(255, 255, 255), 8.5, true) + 4;
+      if ($statut_label !== '') $cx += gwseq_horse_pdf_draw_chip($pdf, $cx, $iy, mb_strtoupper($statut_label), $rgb, gws_core_pdf_hex_to_rgb($data['structure']['primary_color_contrast']), 8.5, true) + 4;
       if ($price !== '') {
-        $pdf->SetFont('helvetica', 'B', 14);
+        $pdf->SetFont('helvetica', 'B', 15);
         $pdf->SetTextColor($rgb[0], $rgb[1], $rgb[2]);
         $pdf->SetXY($cx, $iy - ($statut_label !== '' ? 0.6 : 0));
         $pdf->Cell($iw - ($cx - $ix), 7, $price, 0, 0, 'L');
       }
     }
-    $iy += 8.5 + $extra_gap;
+    $iy += 9 + $extra_gap;
     $gaps++;
   }
 
@@ -938,9 +979,9 @@ function gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compac
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 10.5 : 11, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
+  if ($indices) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
-  if ($qualites !== '') { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, $qualites, 9, 'I', $draw, array(120, 124, 114)) + 1.5 + $extra_gap; $gaps++; }
+  if ($qualites !== '') { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, $qualites, $compact ? 10 : 10.5, 'BI', $draw, array(70, 68, 60)) + 1.5 + $extra_gap; $gaps++; }
 
   $faits = array_slice(array_filter((array) ($data['faits_marquants'] ?? array()), 'strlen'), 0, 3);
   if ($faits) { $iy += gwseq_pouliniere_callout($pdf, $ix, $iy + 2.5 + $extra_gap, $iw, $faits, $rgb, $draw) + 2 + $extra_gap; $gaps++; }
@@ -1317,7 +1358,7 @@ function gwseq_sport_vente_footer($pdf, $data, $draw = true) {
   $url = (string) ($data['public_url'] ?? '');
   $has_qr = filter_var($url, FILTER_VALIDATE_URL) && in_array(strtolower(parse_url($url, PHP_URL_SCHEME) ?? ''), array('http', 'https'), true);
   $w = $pdf->getPageWidth() - 28 - ($has_qr ? 25 : 0);
-  $coords = implode('  ·  ', array_filter(array($s['phone_display'] ?? '', $s['public_email'] ?? '', $s['website_url'] ?? '')));
+  $coords = implode('  ·  ', array_filter(array($s['phone_display'] ?? '', $s['public_email'] ?? '', gwseq_horse_pdf_display_url($s['website_url'] ?? ''))));
   $name_h = gwseq_sport_vente_text($pdf, 14, 0, $w, $s['name'], 9, 'B', false);
   $coords_h = $coords === '' ? 0 : gwseq_sport_vente_text($pdf, 14, 0, $w, $coords, 8, '', false);
   $h = max($has_qr ? 22 : 15, $name_h + $coords_h + 6);
@@ -1342,7 +1383,13 @@ function gwseq_sport_vente_header($pdf, $data, $continued = false) {
   $pdf->Rect(0, 0, $pdf->getPageWidth(), 20, 'F');
   $path = !empty($s['logo_id']) ? get_attached_file($s['logo_id']) : '';
   $box = $path ? gws_core_pdf_fit_image_box($path, 95, 13) : null;
-  if ($box) $pdf->Image($path, 14, (20 - $box['h']) / 2, $box['w'], $box['h']);
+  if ($box) {
+    $logo_y = (20 - $box['h']) / 2;
+    if (function_exists('gws_core_contrast_color') && gws_core_contrast_color($s['primary_color']) === '#000000') {
+      gwseq_horse_pdf_draw_logo_backing($pdf, 14, $logo_y, $box['w'], $box['h']);
+    }
+    $pdf->Image($path, 14, $logo_y, $box['w'], $box['h']);
+  }
   else {
     $h = gwseq_sport_vente_text($pdf, 14, 0, 132, $s['name'], 13, 'B', false, $ink, 'times');
     if ($h > 17) throw new LengthException('Nom de structure trop long pour le bandeau Sport/Vente.');
@@ -1378,7 +1425,7 @@ function gwseq_sport_vente_callout($pdf, $x, $y, $w, $lines, $rgb, $draw) {
 function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secondary_rgb, $compact, $extra_gap, $draw) {
   $iy = $y;
   $gaps = 0;
-  $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 22 : 24, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
+  $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, array(30, 53, 45), 'times') + 2.5 + $extra_gap;
   $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
@@ -1399,15 +1446,15 @@ function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secon
   if ($statut_label !== '' || $price !== '') {
     if ($draw) {
       $cx = $ix;
-      if ($statut_label !== '') $cx += gwseq_horse_pdf_draw_chip($pdf, $cx, $iy, mb_strtoupper($statut_label), $rgb, array(255, 255, 255), 8.5, true) + 4;
+      if ($statut_label !== '') $cx += gwseq_horse_pdf_draw_chip($pdf, $cx, $iy, mb_strtoupper($statut_label), $rgb, gws_core_pdf_hex_to_rgb($data['structure']['primary_color_contrast']), 8.5, true) + 4;
       if ($price !== '') {
-        $pdf->SetFont('helvetica', 'B', 14);
+        $pdf->SetFont('helvetica', 'B', 15);
         $pdf->SetTextColor($rgb[0], $rgb[1], $rgb[2]);
         $pdf->SetXY($cx, $iy - ($statut_label !== '' ? 0.6 : 0));
         $pdf->Cell($iw - ($cx - $ix), 7, $price, 0, 0, 'L');
       }
     }
-    $iy += 8.5 + $extra_gap;
+    $iy += 9 + $extra_gap;
     $gaps++;
   }
 
@@ -1420,9 +1467,9 @@ function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $secon
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 10.5 : 11, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
+  if ($indices) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $rgb) + 2.2 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
-  if ($qualites !== '') { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, $qualites, 9, 'I', $draw, array(120, 124, 114)) + 1.5 + $extra_gap; $gaps++; }
+  if ($qualites !== '') { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, $qualites, $compact ? 10 : 10.5, 'BI', $draw, array(70, 68, 60)) + 1.5 + $extra_gap; $gaps++; }
 
   $faits = array_slice(array_filter((array) ($data['faits_marquants'] ?? array()), 'strlen'), 0, 3);
   if ($faits) { $iy += gwseq_sport_vente_callout($pdf, $ix, $iy + 2.5 + $extra_gap, $iw, $faits, $rgb, $draw) + 2 + $extra_gap; $gaps++; }

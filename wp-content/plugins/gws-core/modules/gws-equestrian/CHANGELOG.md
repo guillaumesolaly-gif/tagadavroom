@@ -5,6 +5,28 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.49.1 — Correctifs de recette réelle (Lot 3B)
+
+Recette effectuée par le client avec de vraies données (fiche Jamerose de Félines). Correctifs :
+
+- **Nom de fichier téléchargé** ("admin-post.php.pdf" au lieu de "fiche-{slug}.pdf") : bug réel.
+  `TCPDF::Output('I'|'D')` envoie plusieurs `Content-Type` successifs (astuce "force download"
+  historique) qu'un navigateur peut mal interpréter et ignorer le `Content-Disposition` qui suit,
+  retombant sur le nom déduit de l'URL. `gwseq_stream_horse_pdf()` (`cheval-pdf-export.php`)
+  récupère désormais le PDF en chaîne (`Output('', 'S')`, TCPDF n'envoie alors aucun en-tête) et
+  pose elle-même un unique `Content-Type`/`Content-Disposition` propre (RFC 6266, accents gérés).
+- **Contraste automatique élargi** : le bandeau statut commercial (« À VENDRE »…) du hero
+  Poulinière/Sport-Vente utilisait un texte blanc CODÉ EN DUR sur la couleur principale — même
+  calcul de contraste automatique que le header/footer (`primary_color_contrast`) désormais
+  appliqué. Un logo qui ne ressortirait pas sur une couleur principale claire reçoit un petit fond
+  blanc dédié (`gwseq_horse_pdf_draw_logo_backing()`), jamais une recoloration du logo lui-même.
+- **Site web du footer** : affiché sans protocole (`www.exemple.fr`), l'URL complète restant
+  utilisée pour tout lien/QR réel (`gwseq_horse_pdf_display_url()`).
+- **Qualités** : taille et poids augmentés (gras italique, plus proche des indices en importance
+  visuelle tout en restant nettement en dessous), toujours en mots, jamais de pictogramme.
+- **Hiérarchie** : nom du cheval, statut/prix et indices légèrement agrandis pour asseoir la
+  hiérarchie visuelle voulue. Structure générale, pedigree, photos, QR et contenu métier inchangés.
+
 ## 0.49.0 — Lot PDF Cheval & Catalogue : masters Poulinière/Sport-Vente figés + Lot 3B (export BO)
 
 **Masters Poulinière et Sport-Vente finalisés et figés** (`includes/cheval-pdf.php`), en recette

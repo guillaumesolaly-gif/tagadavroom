@@ -32,10 +32,18 @@
  *
  * AUCUN OCTET PARASITE AVANT LE PDF : `gwseq_prepare_horse_pdf_export()` valide TOUT (cheval
  * existant, bibliothèque PDF disponible, rendu réussi) avant que `gwseq_stream_horse_pdf()` n'envoie
- * le premier en-tête — jamais de fichier partiel envoyé au navigateur. TCPDF::Output() pose déjà
- * lui-même les en-têtes Content-Type/Content-Disposition corrects selon le mode ('I' inline / 'D'
- * attachment) ; ce fichier ne les répète jamais en double, il se contente de vider tout buffering de
- * sortie déjà ouvert avant l'appel (seule source réaliste d'un flux corrompu dans ce contexte).
+ * le premier en-tête — jamais de fichier partiel envoyé au navigateur.
+ *
+ * CORRECTIF DE RECETTE RÉELLE (nom de fichier "admin-post.php.pdf" au lieu de
+ * "fiche-{slug}.pdf") : `TCPDF::Output()` pose SES PROPRES en-têtes ('I'/'D') via une astuce
+ * "force download" historique qui envoie PLUSIEURS `Content-Type` successifs
+ * (`application/force-download` PUIS `application/octet-stream` PUIS `application/pdf`, entre
+ * autres) — un navigateur/proxy peut alors ignorer le `Content-Disposition` qui suit et retomber
+ * sur le nom déduit de l'URL (`admin-post.php` + extension devinée). `gwseq_stream_horse_pdf()`
+ * n'utilise donc JAMAIS `Output($name, 'I'|'D')` : elle récupère le PDF comme chaîne
+ * (`Output('', 'S')`, TCPDF n'envoie alors aucun en-tête lui-même) et pose elle-même UN SEUL
+ * `Content-Type`/`Content-Disposition` propre, avec le nom de fichier correctement encodé
+ * (`rawurlencode` + `filename*=UTF-8''...`, RFC 6266, pour les accents).
  */
 
 if (!defined('ABSPATH')) exit;
@@ -68,10 +76,14 @@ function gwseq_sanitize_horse_pdf_disposition($raw) {
 }
 
 /**
- * Mode TCPDF (Output()) correspondant à la disposition HTTP demandée.
+ * Valeur du en-tête Content-Disposition — extraite à part (jamais mêlée à l'appel header() lui-même)
+ * pour rester testable unitairement. Nom de fichier encodé deux fois (RFC 6266) : `filename=` en
+ * repli ASCII pour les très vieux clients, `filename*=UTF-8''...` pour un nom accentué affiché
+ * correctement partout ailleurs.
  */
-function gwseq_horse_pdf_output_mode($disposition) {
-  return gwseq_sanitize_horse_pdf_disposition($disposition) === 'attachment' ? 'D' : 'I';
+function gwseq_horse_pdf_content_disposition($disposition, $filename) {
+  $disposition = gwseq_sanitize_horse_pdf_disposition($disposition);
+  return $disposition . '; filename="' . rawurlencode($filename) . '"; filename*=UTF-8\'\'' . rawurlencode($filename);
 }
 
 /* -------------------------------------------------------------------------------------------
@@ -112,9 +124,18 @@ function gwseq_prepare_horse_pdf_export($horse_id) {
  * la dernière chose exécutée pour cette requête.
  */
 function gwseq_stream_horse_pdf($pdf, $horse_id, $disposition) {
+  $disposition = gwseq_sanitize_horse_pdf_disposition($disposition);
+  $filename = gwseq_horse_pdf_filename($horse_id);
+  // Chaîne uniquement — TCPDF n'envoie alors AUCUN en-tête lui-même (voir docblock du fichier) :
+  // les en-têtes ci-dessous sont les SEULS émis pour cette réponse.
+  $content = $pdf->Output('', 'S');
+
   while (ob_get_level() > 0) ob_end_clean(); // aucun octet WordPress parasite avant le PDF
   if (function_exists('nocache_headers')) nocache_headers();
-  $pdf->Output(gwseq_horse_pdf_filename($horse_id), gwseq_horse_pdf_output_mode($disposition));
+  header('Content-Type: application/pdf');
+  header('Content-Disposition: ' . gwseq_horse_pdf_content_disposition($disposition, $filename));
+  header('Content-Length: ' . strlen($content));
+  echo $content;
 }
 
 /* -------------------------------------------------------------------------------------------

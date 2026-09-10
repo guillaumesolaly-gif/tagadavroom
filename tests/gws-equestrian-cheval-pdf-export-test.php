@@ -101,7 +101,9 @@ function gws_core_pdf_available() { return $GLOBALS['__gwseq_test_pdf_available'
 
 class Gws_Test_Fake_Pdf {
   public $output_calls = array();
-  public function Output($name, $dest) { $this->output_calls[] = array('name' => $name, 'dest' => $dest); }
+  public $content;
+  public function __construct($content = '%PDF-FAKE-CONTENT%') { $this->content = $content; }
+  public function Output($name, $dest) { $this->output_calls[] = array('name' => $name, 'dest' => $dest); return $this->content; }
 }
 // 'ok' | null | 'throw' — piloté par le test, jamais un vrai rendu TCPDF ici.
 $GLOBALS['__gwseq_test_generate_result'] = 'ok';
@@ -146,9 +148,20 @@ gws_test_assert(gwseq_sanitize_horse_pdf_disposition('inline') === 'inline', 'Di
 gws_test_assert(gwseq_sanitize_horse_pdf_disposition('') === 'inline', 'Disposition : valeur absente -> repli "inline"');
 gws_test_assert(gwseq_sanitize_horse_pdf_disposition('<script>x</script>') === 'inline', 'Disposition : toute valeur hors whitelist -> repli "inline", jamais propagée telle quelle');
 
-gws_test_assert(gwseq_horse_pdf_output_mode('attachment') === 'D', 'Mode TCPDF : "attachment" -> \'D\' (Output() de TCPDF)');
-gws_test_assert(gwseq_horse_pdf_output_mode('inline') === 'I', 'Mode TCPDF : "inline" -> \'I\'');
-gws_test_assert(gwseq_horse_pdf_output_mode('valeur-inconnue') === 'I', 'Mode TCPDF : valeur inconnue -> \'I\' (même repli que la disposition elle-même)');
+// --- Content-Disposition (correctif de recette réelle "admin-post.php.pdf") : valeur posée
+// nous-mêmes, jamais reconstruite à la volée dans l'appel header() lui-même (testable ici) ---
+gws_test_assert(
+  gwseq_horse_pdf_content_disposition('attachment', 'fiche-jamerose-de-felines.pdf') === 'attachment; filename="fiche-jamerose-de-felines.pdf"; filename*=UTF-8\'\'fiche-jamerose-de-felines.pdf',
+  'Content-Disposition : "attachment" + nom de fichier correctement encodé (RFC 6266)'
+);
+gws_test_assert(
+  strpos(gwseq_horse_pdf_content_disposition('inline', 'x.pdf'), 'inline;') === 0,
+  'Content-Disposition : "inline" pour la prévisualisation'
+);
+gws_test_assert(
+  strpos(gwseq_horse_pdf_content_disposition('valeur-inconnue', 'x.pdf'), 'inline;') === 0,
+  'Content-Disposition : disposition hors whitelist -> repli "inline", jamais propagée telle quelle'
+);
 
 // =====================================================================================
 // 3. URL nonce-protégée — même principe que gwseq_horse_private_share_action_url()
@@ -209,17 +222,25 @@ gws_test_reset_pdf_export_state();
 //    anti-cache posés ; ne termine jamais elle-même le script (voir docblock du fichier)
 // =====================================================================================
 
-$fake_pdf = new Gws_Test_Fake_Pdf();
+// Correctif de recette réelle : Output() est appelé en mode 'S' (chaîne) UNIQUEMENT — jamais
+// 'I'/'D', qui laisseraient TCPDF poser ses propres en-têtes (cause du nom de fichier
+// "admin-post.php.pdf" observé en recette, voir docblock du fichier). gwseq_stream_horse_pdf()
+// videant elle-même tout buffering de sortie actif (y compris celui de ce test), le contenu
+// finalement echo-té ne peut pas être capturé ici sans fausser ce comportement volontaire — même
+// limite déjà acceptée par le smoke-test réel (gws-equestrian-cheval-pdf-test.php), qui n'utilise
+// lui non plus jamais les modes 'I'/'D' d'Output().
+$fake_pdf = new Gws_Test_Fake_Pdf('%PDF-FAKE-CONTENT%');
 $before_nocache = $GLOBALS['__gwseq_test_nocache_headers_called'];
+// header() est un no-op inoffensif ici (script CLI, pas une vraie réponse HTTP) mais émet un
+// avertissement PHP "headers already sent" attendu, puisque ce script a déjà produit ses propres
+// lignes "OK -" en sortie standard — non représentatif d'un vrai environnement WordPress,
+// volontairement neutralisé pour ne pas polluer la sortie de ce test.
+$previous_error_reporting = error_reporting(error_reporting() & ~E_WARNING);
 gwseq_stream_horse_pdf($fake_pdf, 60, 'attachment');
+error_reporting($previous_error_reporting);
 gws_test_assert($GLOBALS['__gwseq_test_nocache_headers_called'] === $before_nocache + 1, 'Émission : nocache_headers() appelé (fiche toujours régénérée à la demande, jamais mise en cache)');
 gws_test_assert(count($fake_pdf->output_calls) === 1, 'Émission : Output() appelé exactement une fois');
-gws_test_assert($fake_pdf->output_calls[0]['name'] === 'fiche-jamerose-de-felines.pdf', 'Émission : nom de fichier transmis à Output() cohérent avec gwseq_horse_pdf_filename()');
-gws_test_assert($fake_pdf->output_calls[0]['dest'] === 'D', 'Émission : mode \'D\' (attachment) transmis à Output()');
-
-$fake_pdf_inline = new Gws_Test_Fake_Pdf();
-gwseq_stream_horse_pdf($fake_pdf_inline, 60, 'inline');
-gws_test_assert($fake_pdf_inline->output_calls[0]['dest'] === 'I', 'Émission : mode \'I\' (inline) transmis à Output() pour la prévisualisation');
+gws_test_assert($fake_pdf->output_calls[0] === array('name' => '', 'dest' => 'S'), 'Émission : Output(\'\', \'S\') uniquement — jamais \'I\'/\'D\' (TCPDF n\'envoie alors aucun en-tête lui-même)');
 
 // =====================================================================================
 // 7. Handler admin_post (§6/§9) — rejets AVANT toute préparation/émission (nonce, capacité) ;
