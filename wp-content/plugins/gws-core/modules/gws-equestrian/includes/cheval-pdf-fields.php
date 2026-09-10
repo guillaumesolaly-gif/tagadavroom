@@ -227,6 +227,31 @@ function gwseq_render_cheval_pdf_fields_box($post) {
     <input type="text" class="widefat" id="gwseq-cheval-wffs" name="_gwseq_wffs" maxlength="<?php echo (int) GWSEQ_CHEVAL_WFFS_MAX_LENGTH; ?>" value="<?php echo esc_attr($wffs); ?>" placeholder="N/N">
     <span class="description"><?php esc_html_e('Texte libre (ex. "N/N", "Non porteur", "Porteur") — affiché sur la fiche Étalon uniquement.', 'gws-core'); ?></span>
   </p>
+  <hr>
+  <?php gwseq_render_cheval_pdf_export_actions($post); ?>
+  <?php
+}
+
+/**
+ * Zone « Prévisualiser / Télécharger » (Lot 3B, arbitrage client §10) : deux boutons distincts,
+ * même service sous-jacent (includes/cheval-pdf-export.php) — seule la disposition HTTP change.
+ * Fiche jamais encore enregistrée (auto-brouillon) -> aucun bouton, un cheval sans ID stable n'a pas
+ * encore de nom de fichier ni de sens à exporter. Bibliothèque PDF absente (§4, ne jamais cacher
+ * silencieusement) -> message explicite à la place des boutons, jamais un bouton qui échouerait.
+ */
+function gwseq_render_cheval_pdf_export_actions($post) {
+  if (empty($post->ID) || ($post->post_status ?? '') === 'auto-draft') return;
+  if (!gws_core_pdf_available()) {
+    echo '<p class="description">' . esc_html__('La génération PDF n’est pas disponible sur cet environnement.', 'gws-core') . '</p>';
+    return;
+  }
+  ?>
+  <p>
+    <a class="button" style="width:100%;text-align:center;box-sizing:border-box;" target="_blank" rel="noopener" href="<?php echo esc_url(gwseq_horse_pdf_export_url('inline', $post->ID)); ?>"><?php esc_html_e('Prévisualiser le PDF', 'gws-core'); ?></a>
+  </p>
+  <p>
+    <a class="button button-primary" style="width:100%;text-align:center;box-sizing:border-box;" href="<?php echo esc_url(gwseq_horse_pdf_export_url('attachment', $post->ID)); ?>"><?php esc_html_e('Télécharger le PDF', 'gws-core'); ?></a>
+  </p>
   <?php
 }
 

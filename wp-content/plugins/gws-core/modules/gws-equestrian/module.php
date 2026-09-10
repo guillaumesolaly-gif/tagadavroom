@@ -86,3 +86,4 @@ require_once __DIR__ . '/includes/cheval-selection-admin.php';
 require_once __DIR__ . '/includes/cheval-selection-front.php';
 require_once __DIR__ . '/includes/cheval-pdf-fields.php';
 require_once __DIR__ . '/includes/cheval-pdf.php';
+require_once __DIR__ . '/includes/cheval-pdf-export.php';
