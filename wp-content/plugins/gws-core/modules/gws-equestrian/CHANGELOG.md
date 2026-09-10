@@ -5,6 +5,40 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.49.0 — Lot PDF Cheval & Catalogue : masters Poulinière/Sport-Vente figés + Lot 3B (export BO)
+
+**Masters Poulinière et Sport-Vente finalisés et figés** (`includes/cheval-pdf.php`), en recette
+visuelle itérative avec le client depuis le master Étalon (0.48.0) désormais également figé — les
+trois templates (`gwseq_etalon_*`/`gwseq_pouliniere_*`/`gwseq_sport_vente_*`) sont chacun un jeu de
+fonctions dupliqué et autonome (même langage graphique, jamais partagé entre eux) : plus aucun des
+trois ne doit être modifié hors bug découvert en recette réelle.
+
+- **Poulinière** : pedigree à 6 ascendants (sujet → 2 parents → 4 grands-parents), même profondeur
+  que l'Étalon. Bloc Production « majeur » : affiche autant de produits que l'espace le permet sur
+  1 page (priorité aux produits indexés puis aux meilleurs indices, non-indexés retirés en premier,
+  ordre d'affichage = ordre d'origine), débordement en « + N autres produits » au compte exact — un
+  minimum d'espace lui est réservé dans le budget de mise en page pour ne jamais être écrasé par le
+  reste du contenu. Statut commercial + prix dans le hero (jamais inventés), jamais le naisseur.
+- **Sport-Vente** : même pedigree à 6 ascendants. Hero avec accroche commerciale
+  (`accroche_commerciale`, simple phrase stylée, jamais un bloc titré), statut/prix, naisseur
+  discret. Blocs éditoriaux Origines/Présentation/Résultats/Potentiel, chacun indépendamment
+  optionnel. État ostéo-articulaire (notation à 5 étoiles déjà existante, jamais une donnée créée
+  en plus) valorisé en simple ligne discrète, jamais un titre de section. Conditions de vente en
+  bandeau commercial de fermeture, uniquement si renseignées.
+
+**Lot 3B — génération/téléchargement PDF réel depuis le BO** (nouveau `includes/cheval-pdf-export.php`) :
+relie enfin le renderer à un point d'entrée réel. Boîte « Fiche PDF » existante
+(`includes/cheval-pdf-fields.php`) : deux boutons, « Prévisualiser le PDF » (inline, nouvel onglet)
+et « Télécharger le PDF » (attachment), masqués avec message explicite si la bibliothèque PDF est
+indisponible sur l'environnement, absents tant que la fiche n'a jamais été enregistrée. Service
+réutilisable par un futur Catalogue (`gwseq_prepare_horse_pdf_export()`/`gwseq_stream_horse_pdf()`,
+sans aucune vérification de capacité) ; déclencheur BO séparé
+(`admin_post_gwseq_horse_pdf_export`), même convention de sécurité que le reste du module (nonce
+scopé au cheval, `current_user_can('edit_post', ...)`, `wp_die(..., 403)`). Nom de fichier
+`fiche-{slug}.pdf`, repli `fiche-cheval-{id}.pdf`. Aucun stockage permanent : le PDF est toujours
+régénéré à la demande depuis les données actuelles du cheval, jamais un attachment WordPress créé.
+Catalogue et bibliothèque PDF externe (FPDI) restent hors périmètre (Lots 3C à 3E).
+
 ## 0.48.0 — Lot PDF Cheval & Catalogue, Lot 3A bis : refonte visuelle + 3 templates métier
 
 **Périmètre STRICT de ce lot** (arrêt demandé après ce point, avant recette visuelle) : refonte

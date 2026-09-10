@@ -1793,6 +1793,27 @@ données quasi vides), puis sur 4 profils de stress-test au Lot 3A bis (Étalon 
 Sport/Vente à données minimales) — voir le CR de chaque lot pour les captures et le protocole de
 recette visuelle.
 
+### Masters Poulinière/Sport-Vente figés + export BO (0.49.0)
+
+Les trois templates métier de `includes/cheval-pdf.php` sont désormais tous figés (recette
+visuelle client validée, un jeu de fonctions dupliqué et autonome par template — voir le docblock
+de chacun) : pedigree à 6 ascendants (sujet → 2 parents → 4 grands-parents) sur les trois ; bloc
+Production « majeur » de la Poulinière (priorité aux produits indexés, "+ N autres produits" au
+compte exact, jamais forcé sur 2 pages) ; hero Sport-Vente avec accroche commerciale et blocs
+Origines/Présentation/Résultats/Potentiel indépendamment optionnels. Détail complet dans
+`CHANGELOG.md` (0.49.0).
+
+**Export PDF réel depuis le BO — Lot 3B** (nouveau `includes/cheval-pdf-export.php`) : la boîte
+"Fiche PDF" de l'écran Cheval propose désormais deux boutons, "Prévisualiser le PDF" (aperçu inline
+dans un nouvel onglet) et "Télécharger le PDF" (téléchargement forcé) — mêmes données, seule la
+disposition HTTP change. Déclenché via `admin_post_gwseq_horse_pdf_export` (nonce scopé au cheval,
+`current_user_can('edit_post', ...)`, même convention que le partage privé/l'import IFCE) ; le
+service (`gwseq_prepare_horse_pdf_export()`/`gwseq_stream_horse_pdf()`) ne vérifie lui-même aucune
+capacité et reste réutilisable tel quel par un futur Catalogue. Aucun stockage permanent : le PDF
+est toujours régénéré à la demande à partir des données actuelles du cheval, jamais un attachment
+WordPress créé pour ce besoin. Catalogue et bibliothèque PDF externe (FPDI) restent hors périmètre
+(Lots 3C à 3E).
+
 ### Pedigree (Étape 5)
 
 **Deux types de parent, chacun indépendamment pour le Père et pour la Mère** : soit une fiche
