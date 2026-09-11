@@ -5,6 +5,31 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.51.2 — Bloc identité hero resserré davantage (correctif recette réelle)
+
+Le premier resserrement (0.51.1) restait insuffisant : le problème n'était plus seulement la valeur
+des marges mais la composition du bloc identité (colonne de droite du hero) — cinq lignes encore
+lues comme des blocs séparés plutôt que comme un même ensemble éditorial. Nouveau resserrement,
+CIBLÉ UNIQUEMENT sur les 4 espacements internes de ce bloc (`gwseq_etalon_hero_identity()` et les
+deux équivalents Poulinière/Sport-Vente, `includes/cheval-pdf.php`) — jamais les tailles de police
+(déjà validées), la galerie, À retenir, le pedigree ou les sections suivantes :
+
+- Nom → identité : 1,2 → 0,5 mm (espacement très faible).
+- Identité → naisseur (Étalon/Sport-Vente) / identité → zone commerciale (Poulinière) : 0,8 → 0,5 mm
+  (espacement très faible).
+- Naisseur → indices : 1,2 → 0,8 mm (respiration moyenne, nettement inférieure à l'ancienne valeur —
+  seul écart volontairement un peu plus marqué que les trois autres, pour garder une légère
+  respiration avant les indices).
+- Indices → qualités : 1,2 → 0,5 mm (espacement très faible).
+
+Toutes ces lignes restent alignées sur le même axe gauche (position `$ix`, déjà partagée par
+construction — aucun changement structurel nécessaire). Aucun cadre ni bloc visuel supplémentaire
+ajouté.
+
+Suite de tests complète (29 PHP + 4 JS) verte ; les 7 fixtures de recette et Kado tiennent toujours
+sur 1 page, vérifié visuellement — le bloc nom/identité/naisseur/indices/qualités se lit désormais
+comme un ensemble éditorial compact et volontairement composé.
+
 ## 0.51.1 — Hero/galerie plus compacts (correctif recette réelle)
 
 Le rendu (pagination adaptative + Ostéo/Stud-books/WFFS déplacés) est validé, mais le hero restait

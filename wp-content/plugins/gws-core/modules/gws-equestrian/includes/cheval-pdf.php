@@ -525,18 +525,18 @@ function gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $
   // brute reste l'aplat de "Ma structure" (bandeau, puces) ; en TEXTE sur fond blanc elle est
   // assombrie si besoin pour rester lisible — voir gws_core_pdf_accent_color() (gws-core).
   $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['primary_color']));
-  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times') + 1.2 * $g1 + $extra_gap;
+  $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times') + 0.5 * $g1 + $extra_gap;
   $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
   if (($id['taille_cm'] ?? '') !== '') $parts[] = number_format((float) $id['taille_cm'] / 100, 2, ',', '') . ' m';
   $parts = array_filter($parts, function ($v) { return (string) $v !== ''; });
-  if ($parts) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 0.8 * $g1 + $extra_gap; $gaps++; }
+  if ($parts) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 0.5 * $g1 + $extra_gap; $gaps++; }
   // Naisseur discret (passe graphique V4) : plus petit, gris atténué — jamais au même niveau que
   // l'identité elle-même. Espacement resserré (correctif recette réelle, §hero compact) : le nom,
   // l'identité, le naisseur, les indices et les qualités doivent se lire comme UN SEUL ensemble
   // vertical, jamais cinq blocs espacés.
-  if (!empty($id['eleveur'])) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, 'Naisseur : ' . $id['eleveur'], 8.3, '', $draw, array(128, 124, 116)) + 1.2 * $g1 + $extra_gap; $gaps++; }
+  if (!empty($id['eleveur'])) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, 'Naisseur : ' . $id['eleveur'], 8.3, '', $draw, array(128, 124, 116)) + 0.8 * $g1 + $extra_gap; $gaps++; }
 
   // Indices et qualités : plus de titres "PERFORMANCES"/"QUALITÉS" ni de filets techniques (passe
   // graphique) — hiérarchie typographique seule : indices en gras dans la couleur de structure,
@@ -549,7 +549,7 @@ function gwseq_etalon_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compact, $
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $accent_rgb) + 1.2 * $g1 + $extra_gap; $gaps++; }
+  if ($indices) { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $accent_rgb) + 0.5 * $g1 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
   if ($qualites !== '') { $iy += gwseq_etalon_text($pdf, $ix, $iy, $iw, $qualites, $compact ? 10 : 10.5, 'BI', $draw, array(70, 68, 60)) + 1.5 * $g1 + $extra_gap; $gaps++; }
 
@@ -1056,14 +1056,14 @@ function gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compac
   $g1 = $squeeze >= 1 ? 0.72 : 1;
   // Accent-safe : voir gwseq_etalon_hero_identity() — même règle, dupliquée à dessein.
   $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['primary_color']));
-  $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times') + 1.2 * $g1 + $extra_gap;
+  $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times') + 0.5 * $g1 + $extra_gap;
   $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
   if (($id['taille_cm'] ?? '') !== '') $parts[] = number_format((float) $id['taille_cm'] / 100, 2, ',', '') . ' m';
   $parts = array_filter($parts, function ($v) { return (string) $v !== ''; });
   // Espacement resserré (correctif recette réelle, §hero compact) : voir gwseq_etalon_hero_identity().
-  if ($parts) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 0.8 * $g1 + $extra_gap; $gaps++; }
+  if ($parts) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 0.5 * $g1 + $extra_gap; $gaps++; }
 
   // Zone commerciale (arbitrage client) : jamais le naisseur sur la fiche Poulinière ; statut
   // commercial affiché seulement si != "not_offered" et son libellé existe ; prix affiché seulement
@@ -1094,7 +1094,7 @@ function gwseq_pouliniere_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compac
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $accent_rgb) + 1.2 * $g1 + $extra_gap; $gaps++; }
+  if ($indices) { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $accent_rgb) + 0.5 * $g1 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
   if ($qualites !== '') { $iy += gwseq_pouliniere_text($pdf, $ix, $iy, $iw, $qualites, $compact ? 10 : 10.5, 'BI', $draw, array(70, 68, 60)) + 1.5 * $g1 + $extra_gap; $gaps++; }
 
@@ -1563,14 +1563,14 @@ function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compa
   // a son propre calcul (l'accroche est la seule zone du gabarit à utiliser cette couleur).
   $accent_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['primary_color']));
   $accent_secondary_rgb = gws_core_pdf_hex_to_rgb(gws_core_pdf_accent_color($data['structure']['secondary_color']));
-  $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times') + 1.2 * $g1 + $extra_gap;
+  $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, mb_strtoupper($data['name']), $compact ? 23 : 25, 'B', $draw, GWSEQ_PDF_INK_DISPLAY, 'times') + 0.5 * $g1 + $extra_gap;
   $gaps++;
   $id = $data['identity'];
   $parts = array($data['sexe_label'] ?? '', $id['annee_naissance'] ?? '', $data['race_label'] ?? '', $data['robe_label'] ?? '');
   if (($id['taille_cm'] ?? '') !== '') $parts[] = number_format((float) $id['taille_cm'] / 100, 2, ',', '') . ' m';
   $parts = array_filter($parts, function ($v) { return (string) $v !== ''; });
   // Espacement resserré (correctif recette réelle, §hero compact) : voir gwseq_etalon_hero_identity().
-  if ($parts) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 0.8 * $g1 + $extra_gap; $gaps++; }
+  if ($parts) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, implode(' · ', $parts), 9.5, '', $draw) + 0.5 * $g1 + $extra_gap; $gaps++; }
 
   // Accroche commerciale (arbitrage client) : courte phrase éditoriale de vente, jamais un bloc
   // titré — un simple paragraphe stylé qui disparaît sans laisser de trou si non renseigné.
@@ -1597,7 +1597,7 @@ function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compa
     $gaps++;
   }
 
-  if (!empty($id['eleveur'])) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, 'Naisseur : ' . $id['eleveur'], 8.3, '', $draw, array(128, 124, 116)) + 1.2 * $g1 + $extra_gap; $gaps++; }
+  if (!empty($id['eleveur'])) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, 'Naisseur : ' . $id['eleveur'], 8.3, '', $draw, array(128, 124, 116)) + 0.8 * $g1 + $extra_gap; $gaps++; }
 
   $indices = array();
   foreach ((array) ($data['sport_indices'] ?? array()) as $key => $item) {
@@ -1606,7 +1606,7 @@ function gwseq_sport_vente_hero_identity($pdf, $data, $ix, $y, $iw, $rgb, $compa
   foreach ((array) ($data['genetic_indices'] ?? array()) as $key => $item) {
     if (($item['valeur'] ?? '') !== '') $indices[] = strtoupper($key) . "\u{00A0}" . gwseq_cheval_genetic_indice_label($item['valeur'], '');
   }
-  if ($indices) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $accent_rgb) + 1.2 * $g1 + $extra_gap; $gaps++; }
+  if ($indices) { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, implode('   ·   ', $indices), $compact ? 11 : 12, 'B', $draw, $accent_rgb) + 0.5 * $g1 + $extra_gap; $gaps++; }
   $qualites = implode('   ·   ', array_slice(array_filter((array) ($data['qualites'] ?? array()), 'strlen'), 0, 5));
   if ($qualites !== '') { $iy += gwseq_sport_vente_text($pdf, $ix, $iy, $iw, $qualites, $compact ? 10 : 10.5, 'BI', $draw, array(70, 68, 60)) + 1.5 * $g1 + $extra_gap; $gaps++; }
 
