@@ -5,6 +5,30 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.51.1 — Hero/galerie plus compacts (correctif recette réelle)
+
+Le rendu (pagination adaptative + Ostéo/Stud-books/WFFS déplacés) est validé, mais le hero restait
+trop étiré verticalement. Correctif ciblé UNIQUEMENT sur les espacements internes du hero et de la
+galerie (`gwseq_etalon_hero_identity()`/`_hero()` et les deux équivalents Poulinière/Sport-Vente,
+`includes/cheval-pdf.php`) — jamais les tailles de police, couleurs, pedigree, À retenir,
+Présentation/Conseil, Reproduction, Conditions ou footer/QR :
+
+- Espace nom → identité : 2,5 → 1,2 mm (base, avant tout niveau de compression adaptative).
+- Espace identité → naisseur (Étalon/Sport-Vente) / identité → zone commerciale (Poulinière) :
+  1,5 → 0,8 mm.
+- Espace naisseur → indices : 2,5 → 1,2 mm.
+- Espace indices → qualités : 2,2 → 1,2 mm.
+- Écart photo principale ↔ photos secondaires (`$thumb_gap`, horizontal et vertical) : 3 → 1,5 mm —
+  les vignettes se lisent désormais comme visuellement rattachées à la photo principale.
+
+Nom/identité/naisseur/indices/qualités se lisent maintenant comme un même ensemble vertical
+compact, sans perdre la respiration du reste de la page (Présentation/Conseil/Reproduction/
+Conditions inchangés). Le mécanisme de compression adaptative (0.50.1) reste intact et continue de
+s'appliquer par-dessus ces nouvelles bases resserrées pour les cas extrêmes.
+
+Suite de tests complète (29 PHP + 4 JS) verte ; les 7 fixtures de recette déjà validées et Kado
+tiennent toujours sur 1 page, vérifié visuellement (aucun chevauchement, densité cohérente).
+
 ## 0.51.0 — Correctifs BO recette réelle (Ostéo/Stud-books/WFFS, coquille Kado)
 
 Suite de la recette réelle : la fiche Kado corrigée (0.50.1) est validée (« tient désormais
