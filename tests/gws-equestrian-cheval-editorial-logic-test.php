@@ -38,6 +38,8 @@ function esc_attr($value) { return htmlspecialchars((string) $value, ENT_QUOTES)
 function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function esc_textarea($value) { return htmlspecialchars((string) $value, ENT_QUOTES); }
 function wp_nonce_field($action, $field) { echo '<input type="hidden" name="' . esc_attr($field) . '" value="stub-nonce">'; }
+function selected($a, $b = true, $echo = true) { $r = $a == $b ? ' selected' : ''; if ($echo) echo $r; return $r; }
+function checked($a, $b = true, $echo = true) { $r = $a == $b ? ' checked' : ''; if ($echo) echo $r; return $r; }
 
 $GLOBALS['__gwseq_test_domains_used'] = array();
 function __($text, $domain = 'default') { $GLOBALS['__gwseq_test_domains_used'][] = $domain; return $text; }
@@ -97,6 +99,8 @@ $repo_root = dirname(__DIR__);
 $module_dir = $repo_root . '/wp-content/plugins/gws-core/modules/gws-equestrian/';
 require $repo_root . '/wp-content/plugins/gws-core/includes/fields.php';
 require $module_dir . 'includes/cheval-fields.php';
+require $module_dir . 'includes/race-referentiel.php';
+require $module_dir . 'includes/cheval-pdf-fields.php';
 require $module_dir . 'includes/cheval-editorial.php';
 
 $cheval_editorial_source = file_get_contents($module_dir . 'includes/cheval-editorial.php');
@@ -111,9 +115,10 @@ $pedigree_resolver_code_only = gws_test_strip_php_comments($pedigree_resolver_so
 // =====================================================================================
 
 $all_fields = gwseq_cheval_editorial_field_map();
-// 9 depuis le Lot 2A (retrait de "points_forts", devenu "Qualités" — liste structurée, voir plus
-// bas) : 8 champs de présentation texte libre + Ostéo-articulaire.
-gws_test_assert(count($all_fields) === 9, 'Modèle : les 9 champs éditoriaux TEXTE LIBRE attendus (8 de présentation + Ostéo-articulaire) sont bien déclarés — "points_forts" n’y figure plus depuis le Lot 2A');
+// 8 depuis le correctif recette réelle (retrait de "osteo_articulaire", remplacé par la note en
+// étoiles) — auparavant 9 depuis le Lot 2A (retrait de "points_forts", devenu "Qualités" — liste
+// structurée, voir plus bas).
+gws_test_assert(count($all_fields) === 8, 'Modèle : les 8 champs éditoriaux TEXTE LIBRE attendus sont bien déclarés — ni "points_forts" (Lot 2A) ni "osteo_articulaire" (correctif recette réelle) n’y figurent plus');
 gws_test_assert(!array_key_exists('points_forts', $all_fields), 'Modèle : "points_forts" a bien été retiré de gwseq_cheval_editorial_field_map() (Lot 2A — devenu "Qualités", liste structurée)');
 
 // --- Chaque champ peut être enregistré seul, les autres restant vides ---
@@ -202,11 +207,13 @@ gwseq_set_cheval_editorial(21, array('_gwseq_origines_commentaire' => 'Un commen
 gws_test_assert(!array_key_exists('_gwseq_pere_mode', $GLOBALS['__gwseq_test_meta'][21] ?? array()), 'Origines éditoriales : enregistrer ce commentaire ne crée ni ne modifie jamais la relation "père" du pedigree structuré');
 
 // =====================================================================================
-// Ostéo-articulaire (§8 de la demande) — texte libre uniquement, jamais un dossier vétérinaire
+// Ostéo-articulaire — l'ancien champ texte libre (§8 du Lot initial) est RETIRÉ (correctif recette
+// réelle) : remplacé par la note structurée en étoiles, rendue dans includes/cheval-pdf-fields.php
+// et affichée depuis includes/cheval-editorial.php (voir plus bas, "Rendu admin"). Jamais un
+// dossier vétérinaire structuré, ni ici ni dans son remplaçant.
 // =====================================================================================
 
-gwseq_set_cheval_editorial(22, array('_gwseq_osteo_articulaire' => 'RAS aux dernières observations.'));
-gws_test_assert(gwseq_get_cheval_editorial(22)['osteo_articulaire'] === 'RAS aux dernières observations.', 'Ostéo-articulaire : enregistré et lu correctement, texte libre conservé');
+gws_test_assert(!array_key_exists('osteo_articulaire', gwseq_cheval_editorial_field_map()), 'Ostéo-articulaire : l’ancien champ texte libre "osteo_articulaire" a bien été retiré de gwseq_cheval_editorial_field_map() (correctif recette réelle — remplacé par la note structurée en étoiles)');
 
 // Vérification portant sur le MODÈLE DE DONNÉES (la seule chose qui compte ici) : aucun de ces
 // concepts de dossier vétérinaire structuré n'existe comme champ/meta déclaré — mentionner ces
@@ -218,9 +225,9 @@ foreach (array('veterinaire', 'traitement', 'ordonnance', 'radio', 'historique_s
   $matching_keys = array_filter($editorial_meta_keys, function ($meta_key) use ($forbidden_concept) {
     return strpos($meta_key, $forbidden_concept) !== false;
   });
-  gws_test_assert(empty($matching_keys), "Ostéo-articulaire : aucun champ structuré de dossier vétérinaire (\"$forbidden_concept\") n’existe dans le modèle de données — texte libre uniquement, conformément au périmètre volontairement restreint");
+  gws_test_assert(empty($matching_keys), "Modèle de données : aucun champ structuré de dossier vétérinaire (\"$forbidden_concept\") n’existe — texte libre uniquement, conformément au périmètre volontairement restreint");
 }
-gws_test_assert(count($editorial_meta_keys) === 9, 'Ostéo-articulaire : le modèle de données éditorial texte libre compte exactement 9 champs déclarés (Accroche commerciale incluse, "points_forts" retiré au Lot 2A), aucun ajout non demandé (dossier vétérinaire, etc.)');
+gws_test_assert(count($editorial_meta_keys) === 8, 'Modèle de données : le modèle éditorial texte libre compte exactement 8 champs déclarés (Accroche commerciale incluse, "points_forts" retiré au Lot 2A, "osteo_articulaire" retiré au correctif recette réelle), aucun ajout non demandé (dossier vétérinaire, etc.)');
 
 // =====================================================================================
 // Persistance et compatibilité (§13 de la demande)
@@ -474,7 +481,7 @@ $post_stub = (object) array('ID' => 12);
 $GLOBALS['__gwseq_test_meta_boxes'] = array();
 gwseq_add_cheval_editorial_meta_boxes();
 gws_test_assert(in_array('gwseq-cheval-presentation', $GLOBALS['__gwseq_test_meta_boxes'], true), 'Meta box "Présentation" : bien enregistrée');
-gws_test_assert(in_array('gwseq-cheval-infos-complementaires', $GLOBALS['__gwseq_test_meta_boxes'], true), 'Meta box "Informations complémentaires" : bien enregistrée séparément (§9 : organisation par blocs)');
+gws_test_assert(!in_array('gwseq-cheval-infos-complementaires', $GLOBALS['__gwseq_test_meta_boxes'], true), 'Meta box "Informations complémentaires" : retirée (correctif recette réelle) — ne contenait plus que l’ancien champ Ostéo-articulaire texte libre, lui-même retiré');
 
 ob_start();
 gwseq_render_cheval_presentation_box($post_stub);
@@ -483,7 +490,17 @@ foreach (array('_gwseq_accroche_commerciale', '_gwseq_presentation', '_gwseq_pot
   gws_test_assert(strpos($presentation_box_html, 'name="' . $meta_key . '"') !== false, "Rendu admin : le champ $meta_key est réellement rendu dans la meta box Présentation");
 }
 gws_test_assert(strpos($presentation_box_html, 'name="_gwseq_points_forts"') === false, 'Rendu admin : "_gwseq_points_forts" (ancien champ texte libre) n’est plus jamais rendu — remplacé par "Qualités" (Lot 2A)');
-gws_test_assert(strpos($presentation_box_html, 'name="_gwseq_osteo_articulaire"') === false, 'Rendu admin : Ostéo-articulaire n’est PAS rendu dans la meta box Présentation (rendu séparément, voir §9)');
+gws_test_assert(strpos($presentation_box_html, 'name="_gwseq_osteo_articulaire"') === false, 'Rendu admin : l’ancien champ texte libre "Ostéo-articulaire" n’est plus jamais rendu nulle part (correctif recette réelle)');
+
+// --- Correctif recette réelle : Statut ostéo-articulaire (étoiles)/Stud-books/WFFS déplacés
+// depuis la boîte « Fiche PDF » et rendus ICI, dans la boîte Présentation ---
+gws_test_assert(strpos($presentation_box_html, 'name="_gwseq_statut_osteo_articulaire"') !== false, 'Rendu admin : le statut ostéo-articulaire (notation en étoiles) est bien rendu dans la meta box Présentation');
+gws_test_assert(substr_count($presentation_box_html, 'name="_gwseq_statut_osteo_articulaire"') === 6, 'Rendu admin : 6 boutons radio (5 étoiles + "Non renseigné"), aucune option de note supprimée');
+gws_test_assert(strpos($presentation_box_html, 'value="0"') !== false, 'Rendu admin : une valeur vide ("Non renseigné", 0) reste bien possible pour le statut ostéo-articulaire');
+gws_test_assert(strpos($presentation_box_html, 'name="_gwseq_studbooks_approbation[]"') !== false, 'Rendu admin : les stud-books d’approbation sont bien rendus dans la meta box Présentation');
+gws_test_assert(strpos($presentation_box_html, 'type="checkbox"') !== false, 'Rendu admin : les stud-books se sélectionnent désormais via des cases à cocher (jamais un <select multiple> nécessitant Ctrl/Cmd)');
+gws_test_assert(strpos($presentation_box_html, '<select') === false || strpos($presentation_box_html, 'multiple') === false, 'Rendu admin : aucun <select multiple> natif ne subsiste pour les stud-books');
+gws_test_assert(strpos($presentation_box_html, 'name="_gwseq_wffs"') !== false, 'Rendu admin : le WFFS est bien rendu dans la meta box Présentation');
 
 // --- Lot 2A : maxlength HTML natif présent sur les six champs à limite fixe, avec la valeur
 // exacte de gwseq_cheval_editorial_field_max_length() — jamais un nombre différent codé ailleurs ---
@@ -508,11 +525,6 @@ gws_test_assert(strpos($presentation_box_html, 'gwseq-text-list__add') !== false
 gws_test_assert(strpos($presentation_box_html, 'gwseq-text-list__move-up') !== false && strpos($presentation_box_html, 'gwseq-text-list__move-down') !== false, 'Rendu admin : des contrôles de réordonnancement (haut/bas) sont bien présents');
 gws_test_assert(strpos($presentation_box_html, 'gwseq-text-list__remove') !== false, 'Rendu admin : un bouton de suppression est bien présent par ligne');
 gws_test_assert(substr_count($presentation_box_html, 'class="gwseq-text-list__template"') === 2, 'Rendu admin : un gabarit <template> pour l’ajout côté JS, une fois par liste structurée (Qualités + Faits marquants)');
-
-ob_start();
-gwseq_render_cheval_infos_complementaires_box($post_stub);
-$infos_box_html = ob_get_clean();
-gws_test_assert(strpos($infos_box_html, 'name="_gwseq_osteo_articulaire"') !== false, 'Rendu admin : Ostéo-articulaire est bien rendu dans la meta box "Informations complémentaires"');
 
 // --- Escaping : un contenu avec balise n'est jamais rendu tel quel dans le HTML du formulaire,
 // ni pour un champ texte libre, ni pour un élément d'une liste structurée (Lot 2A) ---

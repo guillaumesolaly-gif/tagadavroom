@@ -8,26 +8,46 @@
  * forcer un type explicite, y compris à contre-sens du sexe (ex. présenter un hongre de sport avec
  * le template Étalon serait absurde métier mais reste TECHNIQUEMENT permis — aucune validation
  * croisée sexe/template n'est imposée ici, cohérent avec le reste du module qui ne bloque jamais
- * une combinaison de champs indépendants).
+ * une combinaison de champs indépendants). Reste le SEUL champ rendu par la boîte « Fiche PDF » —
+ * voir la note ci-dessous.
  *
- * STATUT OSTÉO-ARTICULAIRE — AUDIT PRÉALABLE (§13) : `_gwseq_osteo_articulaire` (texte libre,
- * `includes/cheval-editorial.php`) existe DÉJÀ mais est un COMMENTAIRE narratif ("Information
- * synthétique destinée à la fiche commerciale"), pas une note chiffrée. La demande veut ICI une
- * note structurée 1-5 affichée en étoiles sur le PDF (`★★★☆☆`) — donnée de nature différente
- * (entier borné vs texte libre), jamais la même chose : nouvelle meta `_gwseq_statut_osteo_articulaire`,
- * le champ texte existant reste totalement inchangé, aucun champ renommé ni migré. Les deux
- * champs coexistent dans le BO sans ambiguïté (libellés distincts).
+ * DÉPLACEMENT ADMIN (correctif recette réelle, après le Lot 3A bis) : Statut ostéo-articulaire,
+ * Stud-book(s) d'approbation et WFFS sont désormais rendus ET enregistrés depuis l'onglet
+ * Présentation (`gwseq_render_cheval_presentation_box()`/`gwseq_save_cheval_editorial_meta()`,
+ * `includes/cheval-editorial.php`) — jugés plus à leur place à côté du reste de la présentation
+ * commerciale du cheval que dans la boîte technique « Fiche PDF » (colonne latérale, Lot 3A bis).
+ * Les FONCTIONS de lecture/écriture/sanitation (`gwseq_get/set_cheval_statut_osteo_articulaire()`,
+ * `gwseq_cheval_studbook_approbation_options()`, `gwseq_get/set_cheval_studbooks_approbation()`,
+ * `gwseq_get/set_cheval_wffs()`) restent ICI, seule source de vérité côté données (même noms de
+ * meta, aucune migration) — `cheval-editorial.php` les appelle, ne les redéfinit jamais. Le
+ * renderer PDF (`includes/cheval-pdf.php`) lit ces données via `gwseq_build_horse_pdf_data()`,
+ * inchangé par ce déplacement (mêmes clés de meta, seul l'écran d'édition change).
+ *
+ * STATUT OSTÉO-ARTICULAIRE — AUDIT PRÉALABLE (§13, historique) : `_gwseq_osteo_articulaire` (texte
+ * libre, `includes/cheval-editorial.php`) existait DÉJÀ mais est un COMMENTAIRE narratif
+ * ("Information synthétique destinée à la fiche commerciale"), pas une note chiffrée — donnée de
+ * nature différente (entier borné vs texte libre), jamais la même chose : `_gwseq_statut_osteo_articulaire`
+ * introduite alors comme meta strictement NOUVELLE et DISTINCTE. Correctif recette réelle
+ * (au-delà du déplacement ci-dessus) : l'ancien champ texte libre `_gwseq_osteo_articulaire` est
+ * RETIRÉ de l'interface (plus jamais affiché ni enregistrable), la note structurée 1-5 devenant la
+ * SEULE façon de renseigner ce statut — même principe déjà appliqué par ce module lors du
+ * remplacement de « Points forts » par « Qualités » (Lot 2A, voir le docblock de
+ * `includes/cheval-editorial.php`) : la meta `_gwseq_osteo_articulaire` elle-même N'EST PAS migrée
+ * ni supprimée en base (toute valeur déjà enregistrée y reste intégralement, simplement orpheline
+ * de toute interface), jamais lue par le renderer PDF (qui a toujours ignoré ce champ texte).
  *
  * STUD-BOOKS D'APPROBATION (§13) : réutilise le référentiel races/stud-books déjà existant
  * (`includes/race-referentiel.php`, `gwseq_race_referentiel_entries()`) — jamais une seconde liste
  * de codes dupliquée. Seules les entrées `type === 'race'` sont proposées (une "appellation" comme
  * OC/ONC/OE n'est pas un stud-book d'approbation). Valeur stockée : tableau de codes canoniques
  * (`_gwseq_studbooks_approbation`), chaque code validé contre ce référentiel à l'écriture — jamais
- * une chaîne libre qui pourrait diverger du référentiel.
+ * une chaîne libre qui pourrait diverger du référentiel. Rendu en cases à cocher (correctif recette
+ * réelle, voir `includes/cheval-editorial.php`) plutôt qu'un `<select multiple>` natif — jamais de
+ * Ctrl/Cmd requis pour une sélection multiple.
  *
  * WFFS (§13) : texte libre volontairement SANS nomenclature imposée ("N/N", "Non porteur",
- * "Porteur"... au choix de l'utilisateur) — même philosophie que "Ostéo-articulaire" existant :
- * une donnée affichable simplement, jamais un champ structuré médical.
+ * "Porteur"... au choix de l'utilisateur) — même philosophie que l'ancien "Ostéo-articulaire" texte
+ * libre ci-dessus : une donnée affichable simplement, jamais un champ structuré médical.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -190,9 +210,6 @@ add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, 'gwseq_add_cheval_pdf_fields_me
 function gwseq_render_cheval_pdf_fields_box($post) {
   wp_nonce_field(GWSEQ_CHEVAL_NONCE_ACTION, GWSEQ_CHEVAL_NONCE_FIELD);
   $template = gwseq_get_cheval_pdf_template($post->ID);
-  $statut_osteo = gwseq_get_cheval_statut_osteo_articulaire($post->ID);
-  $studbooks = gwseq_get_cheval_studbooks_approbation($post->ID);
-  $wffs = gwseq_get_cheval_wffs($post->ID);
   ?>
   <p>
     <label for="gwseq-cheval-pdf-template"><strong><?php esc_html_e('Type de fiche PDF', 'gws-core'); ?></strong></label><br>
@@ -203,30 +220,7 @@ function gwseq_render_cheval_pdf_fields_box($post) {
     </select>
     <span class="description"><?php esc_html_e('"Automatique" choisit selon le sexe (Mâle → Étalon, Femelle → Poulinière, Hongre → Sport / Vente) — vous pouvez toujours forcer un type précis.', 'gws-core'); ?></span>
   </p>
-  <p>
-    <label for="gwseq-cheval-statut-osteo"><strong><?php esc_html_e('Statut ostéo-articulaire (note)', 'gws-core'); ?></strong></label><br>
-    <select class="widefat" id="gwseq-cheval-statut-osteo" name="_gwseq_statut_osteo_articulaire">
-      <option value="0"<?php selected($statut_osteo, 0); ?>><?php esc_html_e('— Non renseigné —', 'gws-core'); ?></option>
-      <?php for ($i = 1; $i <= 5; $i++) : ?>
-        <option value="<?php echo (int) $i; ?>"<?php selected($statut_osteo, $i); ?>><?php echo esc_html(str_repeat('★', $i) . str_repeat('☆', 5 - $i)); ?></option>
-      <?php endfor; ?>
-    </select>
-    <span class="description"><?php esc_html_e('Note affichée en étoiles sur la fiche Étalon — distinct du commentaire "Ostéo-articulaire" (Informations complémentaires), qui reste inchangé.', 'gws-core'); ?></span>
-  </p>
-  <p>
-    <label for="gwseq-cheval-studbooks"><strong><?php esc_html_e('Stud-book(s) d’approbation', 'gws-core'); ?></strong></label><br>
-    <select class="widefat" id="gwseq-cheval-studbooks" name="_gwseq_studbooks_approbation[]" multiple size="8">
-      <?php foreach (gwseq_cheval_studbook_approbation_options() as $code => $label) : ?>
-        <option value="<?php echo esc_attr($code); ?>"<?php selected(in_array($code, $studbooks, true)); ?>><?php echo esc_html($code . ' — ' . $label); ?></option>
-      <?php endforeach; ?>
-    </select>
-    <span class="description"><?php esc_html_e('Ctrl/Cmd + clic pour sélectionner plusieurs stud-books. Affichés sur la fiche Étalon uniquement.', 'gws-core'); ?></span>
-  </p>
-  <p>
-    <label for="gwseq-cheval-wffs"><strong><?php esc_html_e('WFFS', 'gws-core'); ?></strong></label><br>
-    <input type="text" class="widefat" id="gwseq-cheval-wffs" name="_gwseq_wffs" maxlength="<?php echo (int) GWSEQ_CHEVAL_WFFS_MAX_LENGTH; ?>" value="<?php echo esc_attr($wffs); ?>" placeholder="N/N">
-    <span class="description"><?php esc_html_e('Texte libre (ex. "N/N", "Non porteur", "Porteur") — affiché sur la fiche Étalon uniquement.', 'gws-core'); ?></span>
-  </p>
+  <p class="description"><?php esc_html_e('Statut ostéo-articulaire, stud-books d’approbation et WFFS se renseignent désormais dans l’onglet Présentation.', 'gws-core'); ?></p>
   <hr>
   <?php gwseq_render_cheval_pdf_export_actions($post); ?>
   <?php
@@ -261,11 +255,12 @@ function gwseq_save_cheval_pdf_fields_meta($post_id) {
   if (function_exists('wp_is_post_revision') && wp_is_post_revision($post_id)) return;
   if (!current_user_can('edit_post', $post_id)) return;
 
-  // Champs de CETTE boîte uniquement — jamais un accès à $_POST au-delà (même discipline que
-  // gwseq_save_cheval_meta()/gwseq_save_cheval_editorial_meta(), hooks indépendants).
+  // Champ de CETTE boîte uniquement — jamais un accès à $_POST au-delà (même discipline que
+  // gwseq_save_cheval_meta()/gwseq_save_cheval_editorial_meta(), hooks indépendants). Statut
+  // ostéo-articulaire/stud-books/WFFS sont désormais rendus ET enregistrés depuis l'onglet
+  // Présentation (voir gwseq_save_cheval_editorial_meta(), includes/cheval-editorial.php) —
+  // seules les FONCTIONS de lecture/écriture (gwseq_get/set_cheval_statut_osteo_articulaire()...)
+  // restent ici, ce fichier reste leur unique source de vérité côté données.
   if (isset($_POST['_gwseq_pdf_template'])) gwseq_set_cheval_pdf_template($post_id, $_POST['_gwseq_pdf_template']);
-  if (isset($_POST['_gwseq_statut_osteo_articulaire'])) gwseq_set_cheval_statut_osteo_articulaire($post_id, wp_unslash($_POST['_gwseq_statut_osteo_articulaire']));
-  gwseq_set_cheval_studbooks_approbation($post_id, $_POST['_gwseq_studbooks_approbation'] ?? array());
-  if (isset($_POST['_gwseq_wffs'])) gwseq_set_cheval_wffs($post_id, $_POST['_gwseq_wffs']);
 }
 add_action('save_post_' . GWSEQ_CPT_CHEVAL, 'gwseq_save_cheval_pdf_fields_meta');

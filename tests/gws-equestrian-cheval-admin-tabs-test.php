@@ -99,8 +99,8 @@ gws_test_assert(
   'Onglet Médias (correctif intégration Photo principale) : contient uniquement la boîte Médias — "postimagediv" n’est plus piloté par le mécanisme générique de visibilité, il est RÉELLEMENT déplacé dans le DOM par le script et hérite de la visibilité de cette boîte en en devenant descendant'
 );
 gws_test_assert(
-  $tabs_by_id['presentation']['boxes'] === array('gwseq-cheval-presentation', 'gwseq-cheval-infos-complementaires'),
-  'Onglet Présentation : contient les deux boîtes éditoriales, y compris "Informations complémentaires" (Ostéo-articulaire)'
+  $tabs_by_id['presentation']['boxes'] === array('gwseq-cheval-presentation'),
+  'Onglet Présentation : contient la boîte éditoriale "Présentation" — "Informations complémentaires" a été retirée (correctif recette réelle, ne contenait plus que l’ancien champ Ostéo-articulaire texte libre)'
 );
 
 // --- "postimagediv" n'apparaît dans AUCUNE configuration d'onglet (correctif intégration Photo

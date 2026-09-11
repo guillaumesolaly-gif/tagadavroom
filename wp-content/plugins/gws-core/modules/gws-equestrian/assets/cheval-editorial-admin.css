@@ -53,3 +53,69 @@
   color: #d63638;
   font-weight: 600;
 }
+
+/**
+ * Correctif recette réelle — Statut ostéo-articulaire (notation en étoiles) et Stud-books
+ * d'approbation, déplacés depuis la boîte « Fiche PDF » jusqu'ici (voir cheval-editorial.php).
+ */
+
+.gwseq-star-rating {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.gwseq-star-rating__stars {
+  display: inline-flex;
+  flex-direction: row-reverse; /* radios déclarés 5->1 dans le HTML, affichés 1->5 à l'écran */
+}
+
+.gwseq-star-rating__stars input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.gwseq-star-rating__stars label {
+  cursor: pointer;
+  font-size: 26px;
+  line-height: 1;
+  padding: 0 1px;
+  color: #d0d0d0;
+}
+
+.gwseq-star-rating__stars input:checked ~ label,
+.gwseq-star-rating__stars label:hover,
+.gwseq-star-rating__stars label:hover ~ label {
+  color: #f2b01e;
+}
+
+.gwseq-star-rating__stars input:focus-visible ~ label {
+  outline: 2px solid #2271b1;
+  outline-offset: 1px;
+}
+
+.gwseq-star-rating__clear {
+  font-size: 13px;
+  color: #646970;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gwseq-checkbox-list {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #c3c4c7;
+  background: #fff;
+  padding: 8px 10px;
+  margin: 0;
+}
+
+.gwseq-checkbox-list label {
+  display: block;
+  padding: 2px 0;
+}

@@ -390,8 +390,7 @@ function buildRealisticChevalEditScreen(options) {
   photoPrincipaleSlot.id = 'gwseq-cheval-media-photo-principale-slot';
   media.children[1].appendChild(photoPrincipaleSlot); // media.children[1] = son .inside (voir makeBox)
   const presentation = makeBox('gwseq-cheval-presentation');
-  const infosComplementaires = makeBox('gwseq-cheval-infos-complementaires');
-  [identite, commercialisation, pedigree, indices, media, presentation, infosComplementaires]
+  [identite, commercialisation, pedigree, indices, media, presentation]
     .forEach((b) => normalSortables.appendChild(b));
   postboxContainer2.appendChild(normalSortables);
 
@@ -406,7 +405,7 @@ function buildRealisticChevalEditScreen(options) {
     sideSortables,
     publishButton,
     boxes: {
-      identite, commercialisation, pedigree, indices, media, presentation, infosComplementaires,
+      identite, commercialisation, pedigree, indices, media, presentation,
       production, pedigreePreview, postimagediv, globalIdDev, ordre, photoPrincipaleSlot,
     },
   };
@@ -421,7 +420,7 @@ const MAIN_TABS_CONFIG = [
   // piloté par le mécanisme générique de visibilité par onglet, mais réellement déplacé dans le
   // DOM par le script jusqu'à l'intérieur même de "gwseq-cheval-media" (voir photoPrincipaleSlot).
   { id: 'medias', label: 'Médias', boxes: ['gwseq-cheval-media'] },
-  { id: 'presentation', label: 'Présentation', boxes: ['gwseq-cheval-presentation', 'gwseq-cheval-infos-complementaires'] },
+  { id: 'presentation', label: 'Présentation', boxes: ['gwseq-cheval-presentation'] },
 ];
 
 function runScript(rootElement, tabsConfig, extraConfig) {

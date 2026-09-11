@@ -5,6 +5,49 @@ Historique propre à ce module, distinct de la version du plugin `gws-core` qui 
 (fin de la dernière étape du plan de développement validé). Chaque étape ci-dessous a été livrée
 puis recettée en conditions réelles avant validation de la suivante.
 
+## 0.51.0 — Correctifs BO recette réelle (Ostéo/Stud-books/WFFS, coquille Kado)
+
+Suite de la recette réelle : la fiche Kado corrigée (0.50.1) est validée (« tient désormais
+correctement sur une seule page, sans dégradation visuelle notable »). Correctifs demandés à la
+suite :
+
+- **Coquille pedigree Kado** : « CONTHAROGOS » → « CONTHARGOS » — erreur de saisie dans la fixture
+  de recette (jamais une transformation du renderer, qui se contente de `mb_strtoupper()` sur le
+  nom exactement tel qu'enregistré). Corrigée dans le script de recette et dans le test de
+  non-régression pagination ci-dessous, qui vérifie désormais explicitement l'absence de cette
+  coquille historique.
+- **Test de non-régression pagination permanent** (`tests/gws-equestrian-cheval-pdf-pagination-test.php`,
+  nouveau) : reconstruit fidèlement le cas Kado (photo + galerie générées à la volée via GD, aucun
+  fichier binaire commité) et vérifie qu'une fiche de cette densité tient sur UNE SEULE page, avec
+  Conditions de monte, pied de page et QR sur cette même page — rejoue la suite complète et échoue
+  bien si la compression adaptative (0.50.1) est désactivée (vérifié manuellement avant livraison).
+- **Statut ostéo-articulaire / Stud-books d'approbation / WFFS déplacés** depuis la boîte « Fiche
+  PDF » (colonne latérale, technique) jusqu'à l'onglet **Présentation**
+  (`gwseq_render_cheval_presentation_box()`, `includes/cheval-editorial.php`), aux côtés du reste
+  de la présentation commerciale du cheval — jugés plus à leur place ici. Mêmes noms de meta,
+  mêmes fonctions de lecture/écriture/sanitation (`includes/cheval-pdf-fields.php`, inchangées) :
+  le renderer PDF (`includes/cheval-pdf.php`) n'a pas eu besoin d'être touché.
+- **Ancien champ « Ostéo-articulaire » texte libre retiré** (`_gwseq_osteo_articulaire`, jamais lu
+  par le renderer PDF, boîte « Informations complémentaires » qui ne contenait plus que lui) —
+  remplacé par la note structurée 1-5, seule façon désormais de renseigner ce statut. Même principe
+  déjà appliqué lors du remplacement de « Points forts » par « Qualités » (Lot 2A) : aucune
+  migration, toute valeur déjà enregistrée reste intégralement en base, simplement orpheline de
+  toute interface.
+- **Statut ostéo-articulaire en notation étoiles cliquable** (pur CSS, aucun JavaScript) — 5
+  étoiles + une option « Non renseigné » explicite (valeur vide réellement possible, jamais une
+  note par défaut inventée), remplaçant le `<select>` texte précédent.
+- **Stud-books d'approbation en cases à cocher** — remplace le `<select multiple>` natif qui exigeait
+  Ctrl/Cmd + clic pour une sélection multiple ; un simple clic par stud-book désormais, dans une
+  liste déroulante bornée (scroll), même référentiel qu'avant (`includes/race-referentiel.php`).
+- **Mapping Étalon → Présentation audité, aucune anomalie trouvée** : chaque champ lu par le
+  renderer Étalon (Présentation, Conseil de croisement, Conditions de vente) correspond exactement
+  à la bonne meta de la boîte Présentation, sans coquille ni décalage — le renderer lit
+  volontairement 3 des 8 champs de cette boîte (choix métier déjà en place, pas un bug). Confirmé
+  avec le client : aucune action nécessaire, le renderer PDF n'a pas été modifié.
+
+Suite de tests complète (29 fichiers PHP + 4 JS, dont le nouveau test de non-régression pagination)
+verte.
+
 ## 0.50.1 — Pagination adaptative (correctif recette réelle Kado)
 
 Recette réelle : la fiche Kado de Félines passait sur 2 pages parce que le bloc CONDITIONS DE MONTE

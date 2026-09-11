@@ -102,7 +102,10 @@ function gwseq_cheval_admin_tabs_config() {
     array(
       'id' => 'presentation',
       'label' => __('Présentation', 'gws-core'),
-      'boxes' => array('gwseq-cheval-presentation', 'gwseq-cheval-infos-complementaires'),
+      // 'gwseq-cheval-infos-complementaires' (correctif recette réelle) : boîte retirée, ne
+      // contenait plus que l'ancien champ texte libre Ostéo-articulaire (remplacé par la note en
+      // étoiles, désormais rendue dans 'gwseq-cheval-presentation' — voir cheval-editorial.php).
+      'boxes' => array('gwseq-cheval-presentation'),
     ),
   );
 }

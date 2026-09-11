@@ -56,6 +56,18 @@
  *    Commentaire origines (600). Résultats, Conditions de vente et Ostéo-articulaire restent
  *    volontairement SANS limite (hors périmètre de ce lot).
  *
+ * CORRECTIF RECETTE RÉELLE (après le Lot 3A bis, même principe que le remplacement de « Points
+ * forts » par « Qualités » ci-dessus) : l'ancien champ texte libre « Ostéo-articulaire »
+ * (`_gwseq_osteo_articulaire`, ex-boîte « Informations complémentaires », jamais lu par le renderer
+ * PDF) est RETIRÉ de `gwseq_cheval_editorial_field_map()` et de l'interface — remplacé par la note
+ * structurée 1-5 en étoiles (`_gwseq_statut_osteo_articulaire`, valeur vide possible), déjà
+ * introduite par `includes/cheval-pdf-fields.php` mais rendue ICI, dans la boîte « Présentation »,
+ * aux côtés des stud-books d'approbation et du WFFS (voir `gwseq_render_cheval_presentation_box()`
+ * ci-dessous) — jugés plus à leur place ici qu'isolés dans la boîte technique « Fiche PDF ». AUCUNE
+ * migration de `_gwseq_osteo_articulaire` : toute valeur déjà enregistrée reste intégralement en
+ * base, simplement orpheline de toute interface (même garantie que pour `_gwseq_points_forts`). La
+ * boîte « Informations complémentaires », qui ne contenait que ce champ, est retirée.
+ *
  * ARCHITECTURE DE VALIDATION (§3 de la demande — comportement du save_post existant vérifié avant
  * d'introduire quoi que ce soit) : gwseq_save_cheval_meta()/_indices_meta()/_pedigree_meta() (etc.,
  * cheval-fields.php/cheval-indices.php/cheval-pedigree.php...) sont déjà, chacune, un callback
@@ -110,7 +122,6 @@ function gwseq_cheval_editorial_field_map() {
     'commentaire_production' => '_gwseq_commentaire_production',
     'conditions_vente' => '_gwseq_conditions_vente',
     'conseils_croisement' => '_gwseq_conseils_croisement',
-    'osteo_articulaire' => '_gwseq_osteo_articulaire',
   );
 }
 
@@ -333,7 +344,6 @@ function gwseq_cheval_editorial_rejected_field_labels() {
 
 function gwseq_add_cheval_editorial_meta_boxes() {
   add_meta_box('gwseq-cheval-presentation', __('Présentation', 'gws-core'), 'gwseq_render_cheval_presentation_box', GWSEQ_CPT_CHEVAL, 'normal', 'default');
-  add_meta_box('gwseq-cheval-infos-complementaires', __('Informations complémentaires', 'gws-core'), 'gwseq_render_cheval_infos_complementaires_box', GWSEQ_CPT_CHEVAL, 'normal', 'default');
 }
 add_action('add_meta_boxes_' . GWSEQ_CPT_CHEVAL, 'gwseq_add_cheval_editorial_meta_boxes');
 
@@ -450,16 +460,55 @@ function gwseq_render_cheval_presentation_box($post) {
     list($label, $help) = $labels[$field_key];
     gwseq_render_cheval_editorial_textarea_field($field_key, $field_map[$field_key], $label, $help, $editorial[$field_key], 4, $max_lengths[$field_key] ?? null);
   }
+  gwseq_render_cheval_pdf_presentation_fields($post);
 }
 
-function gwseq_render_cheval_infos_complementaires_box($post) {
-  wp_nonce_field(GWSEQ_CHEVAL_NONCE_ACTION, GWSEQ_CHEVAL_NONCE_FIELD);
-  $editorial = gwseq_get_cheval_editorial($post->ID);
+/**
+ * Statut ostéo-articulaire (note en étoiles), stud-books d'approbation et WFFS — correctif recette
+ * réelle : déplacés depuis la boîte « Fiche PDF » (`includes/cheval-pdf-fields.php`, qui reste
+ * l'unique source de vérité pour leurs fonctions de lecture/écriture/sanitation) jusqu'ici, à côté
+ * du reste de la présentation commerciale du cheval. Affichés sur la fiche Étalon uniquement (voir
+ * `includes/cheval-pdf.php`), mais saisis ici pour TOUS les chevaux comme le reste de cette boîte —
+ * cohérent avec le principe général de l'Étape 6 : une seule entité Cheval, tous les champs
+ * disponibles, l'utilisateur choisit ce qui est pertinent.
+ */
+function gwseq_render_cheval_pdf_presentation_fields($post) {
+  $statut_osteo = gwseq_get_cheval_statut_osteo_articulaire($post->ID);
+  $studbooks = gwseq_get_cheval_studbooks_approbation($post->ID);
+  $wffs = gwseq_get_cheval_wffs($post->ID);
   ?>
   <p>
-    <label for="gwseq-cheval-osteo-articulaire"><strong><?php esc_html_e('Ostéo-articulaire', 'gws-core'); ?></strong></label><br>
-    <textarea class="widefat" rows="4" id="gwseq-cheval-osteo-articulaire" name="_gwseq_osteo_articulaire"><?php echo esc_textarea($editorial['osteo_articulaire']); ?></textarea>
-    <span class="description"><?php esc_html_e('Information synthétique destinée à la fiche commerciale — texte libre, jamais un dossier vétérinaire (pas d’historique de soins, de traitements ni de données médicales complexes).', 'gws-core'); ?></span>
+    <label><strong><?php esc_html_e('Statut ostéo-articulaire', 'gws-core'); ?></strong></label><br>
+    <span class="description"><?php esc_html_e('Note affichée en étoiles sur la fiche Étalon — laissez « Non renseigné » si vous ne souhaitez rien afficher.', 'gws-core'); ?></span>
+    <span class="gwseq-star-rating">
+      <span class="gwseq-star-rating__stars">
+        <?php for ($i = 5; $i >= 1; $i--) : ?>
+          <input type="radio" id="gwseq-cheval-statut-osteo-<?php echo (int) $i; ?>" name="_gwseq_statut_osteo_articulaire" value="<?php echo (int) $i; ?>"<?php checked($statut_osteo, $i); ?>>
+          <label for="gwseq-cheval-statut-osteo-<?php echo (int) $i; ?>" title="<?php echo (int) $i; ?>/5">★</label>
+        <?php endfor; ?>
+      </span>
+      <label class="gwseq-star-rating__clear">
+        <input type="radio" id="gwseq-cheval-statut-osteo-0" name="_gwseq_statut_osteo_articulaire" value="0"<?php checked($statut_osteo, 0); ?>>
+        <?php esc_html_e('Non renseigné', 'gws-core'); ?>
+      </label>
+    </span>
+  </p>
+  <p>
+    <label><strong><?php esc_html_e('Stud-book(s) d’approbation', 'gws-core'); ?></strong></label><br>
+    <span class="description"><?php esc_html_e('Un ou plusieurs, simple clic — affichés sur la fiche Étalon uniquement.', 'gws-core'); ?></span>
+    <fieldset class="gwseq-checkbox-list">
+      <?php foreach (gwseq_cheval_studbook_approbation_options() as $code => $label) : ?>
+        <label>
+          <input type="checkbox" name="_gwseq_studbooks_approbation[]" value="<?php echo esc_attr($code); ?>"<?php checked(in_array($code, $studbooks, true)); ?>>
+          <?php echo esc_html($code . ' — ' . $label); ?>
+        </label>
+      <?php endforeach; ?>
+    </fieldset>
+  </p>
+  <p>
+    <label for="gwseq-cheval-wffs"><strong><?php esc_html_e('WFFS', 'gws-core'); ?></strong></label><br>
+    <input type="text" class="widefat" id="gwseq-cheval-wffs" name="_gwseq_wffs" maxlength="<?php echo (int) GWSEQ_CHEVAL_WFFS_MAX_LENGTH; ?>" value="<?php echo esc_attr($wffs); ?>" placeholder="N/N">
+    <span class="description"><?php esc_html_e('Texte libre (ex. "N/N", "Non porteur", "Porteur") — affiché sur la fiche Étalon uniquement.', 'gws-core'); ?></span>
   </p>
   <?php
 }
